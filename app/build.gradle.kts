@@ -17,8 +17,21 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("teleflix") {
+            storeFile = file("teleflix.keystore")
+            storePassword = "teleflix123"
+            keyAlias = "teleflix"
+            keyPassword = "teleflix123"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("teleflix")
+        }
         release {
+            signingConfig = signingConfigs.getByName("teleflix")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
