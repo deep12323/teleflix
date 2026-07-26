@@ -77,7 +77,9 @@ object TdlibManager {
 
     fun addChannel(context: Context, username: String) {
         var clean = username.trim()
-        if (!clean.startsWith("@")) clean = "@$clean"
+        if (!clean.startsWith("@") && clean.toLongOrNull() == null) {
+            clean = "@$clean"
+        }
         
         val current = getChannels(context).map { it.username }.toMutableList()
         if (!current.contains(clean)) {

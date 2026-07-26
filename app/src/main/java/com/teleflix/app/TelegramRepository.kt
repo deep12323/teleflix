@@ -140,8 +140,11 @@ object TelegramRepository {
     }
 
     suspend fun getChatId(identifier: String): Long? {
-        val clean = identifier.trim()
+        var clean = identifier.trim()
         if (clean.isEmpty()) return null
+        if (clean.startsWith("@-") || (clean.startsWith("@") && clean.substring(1).toLongOrNull() != null)) {
+            clean = clean.removePrefix("@")
+        }
 
         clean.toLongOrNull()?.let { numericId ->
             // For raw numeric IDs, ensure TDLib has the chat loaded in its local cache.
