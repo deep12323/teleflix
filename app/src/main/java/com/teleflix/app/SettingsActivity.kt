@@ -364,6 +364,16 @@ class SettingsActivity : AppCompatActivity() {
     private fun loadChannels() {
         channelContainer.removeAllViews()
         val list = TdlibManager.getChannels(this)
+        if (list.isEmpty()) {
+            val emptyMsg = TextView(this).apply {
+                text = "No Telegram channels monitored yet.\nEnter a channel username above (e.g. @your_channel) and press ADD!"
+                setTextColor(Color.parseColor("#6B7280"))
+                textSize = 13f
+                setPadding(8, 16, 8, 16)
+            }
+            channelContainer.addView(emptyMsg)
+            return
+        }
         list.forEach { ch ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL

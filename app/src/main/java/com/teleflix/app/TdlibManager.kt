@@ -28,13 +28,6 @@ object TdlibManager {
     const val DEFAULT_API_ID = 2040012
     const val DEFAULT_API_HASH = "b18441a1ed609c10b277028c11e4f4fb"
 
-    private val DEFAULT_CHANNELS = listOf(
-        TelegramChannel("@teleflix_movies_hd", "Teleflix 4K & 1080p Movies", "420K"),
-        TelegramChannel("@teleflix_series_zone", "Teleflix TV Series Vault", "290K"),
-        TelegramChannel("@telegram_cinema_official", "Cinema World HD", "850K"),
-        TelegramChannel("@anime_teleflix_hub", "Anime Teleflix Multi-Audio", "180K")
-    )
-
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -58,11 +51,11 @@ object TdlibManager {
     }
 
     fun getUserPhone(context: Context): String {
-        return getPrefs(context).getString("user_phone", "+1 (555) 019-2834") ?: "+1 (555) 019-2834"
+        return getPrefs(context).getString("user_phone", "") ?: ""
     }
 
     fun isSessionActive(context: Context): Boolean {
-        return getPrefs(context).getBoolean("session_active", true)
+        return getPrefs(context).getBoolean("session_active", false)
     }
 
     fun setSessionActive(context: Context, active: Boolean, phone: String = "") {
@@ -74,12 +67,12 @@ object TdlibManager {
 
     fun getChannels(context: Context): List<TelegramChannel> {
         val raw = getPrefs(context).getString("custom_channels", "") ?: ""
-        if (raw.isBlank()) return DEFAULT_CHANNELS
-        
-        val list = raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        if (list.isEmpty()) return DEFAULT_CHANNELS
+        if (raw.isBlank()) return emptyList()
 
-        return list.map { u -> TelegramChannel(u, "$u Channel", "Custom") }
+        val list = raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        if (list.isEmpty()) return emptyList()
+
+        return list.map { u -> TelegramChannel(u, "$u Channel", "Monitored") }
     }
 
     fun addChannel(context: Context, username: String) {
