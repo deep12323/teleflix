@@ -50,6 +50,17 @@ class TelegramService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "ACTION_STOP_SERVICE") {
+            Log.d(TAG, "Stop button clicked from notification")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+            stopSelf()
+            return START_NOT_STICKY
+        }
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("TDLib streaming & search engine active in background"))
         // Ensure TDLib and local streaming proxy remain awake and ready
@@ -87,6 +98,15 @@ class TelegramService : Service() {
             else PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val stopIntent = Intent(this, TelegramService::class.java).apply {
+            action = "ACTION_STOP_SERVICE"
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this, 2, stopIntent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            else PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Teleflix Streaming Engine")
             .setContentText(statusText)
@@ -94,6 +114,7 @@ class TelegramService : Service() {
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_menu_preferences, "Settings", settingsPendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
