@@ -270,8 +270,9 @@ object TelegramStreamingProxy {
 
                 if (offset >= activeDownloadEnd) {
                     val tdlibPrefetch = when {
-                        prefetchSizeMb <= 0L -> 0L // 0 in TDLib means unlimited
-                        else -> prefetchSizeMb * 1024L * 1024L
+                        prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
+                        prefetchSizeMb <= 0L -> chunkSize.toLong()
+                        else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
                     }
                     val alignedOffset = offset - (offset % (1024 * 1024))
                     runCatching {
@@ -279,11 +280,11 @@ object TelegramStreamingProxy {
                             req.fileId = fileId
                             req.priority = DOWNLOAD_PRIORITY
                             req.offset = alignedOffset
-                            req.limit = 0L // 0 forces continuous video downloading without breaking on arbitrary prefetch boundaries
+                            req.limit = tdlibPrefetch
                             req.synchronous = false
                         })
                     }
-                    activeDownloadEnd = if (tdlibPrefetch <= 0L) totalSize else alignedOffset + tdlibPrefetch
+                    activeDownloadEnd = if (tdlibPrefetch == 0L) totalSize else alignedOffset + tdlibPrefetch
                 }
 
                 val bytes = downloadChunk(fileId, offset, chunkSize)
