@@ -515,7 +515,7 @@ class MainActivity : AppCompatActivity() {
 
         val progressDialog = AlertDialog.Builder(this)
             .setTitle("Searching Telegram Streams")
-            .setMessage("Querying connected channels for:\n'$displayTitle'...")
+            .setMessage("Querying ALL groups, channels & chats for:\n'$displayTitle'...")
             .setCancelable(false)
             .show()
 

@@ -93,24 +93,51 @@ object TdlibManager {
         getPrefs(context).edit().putString("custom_channels", current.joinToString(",")).apply()
     }
 
-    // Resolves available video stream sources for a given title/episode query via real TDLib
+    // Resolves video streams across ALL joined Telegram channels, groups, and chats exactly like the Cloudstream extension
     suspend fun resolveStreams(title: String, season: Int? = null, episode: Int? = null): List<StreamSource> {
-        val cleanTitle = title.replace(Regex("[^a-zA-Z0-9 ]"), " ").replace(Regex(" +"), " ").trim()
-        val queries = mutableSetOf<String>()
+        val rawTitle = title.trim()
+        val cleanTitle = rawTitle.replace(Regex("[^a-zA-Z0-9 ]"), " ").replace(Regex(" +"), " ").trim()
+        val compactTitle = cleanTitle.replace(" ", "")
+
+        val queries = LinkedHashSet<String>()
         if (season != null && episode != null) {
-            queries.add("$cleanTitle S${String.format("%02d", season)}E${String.format("%02d", episode)}")
+            val sStr = String.format("%02d", season)
+            val eStr = String.format("%02d", episode)
+
+            // 1. Clean title with standard S01E01 (Highest match rate on Telegram!)
+            queries.add("$cleanTitle S${sStr}E${eStr}")
+            if (rawTitle != cleanTitle) {
+                queries.add("$rawTitle S${sStr}E${eStr}")
+            }
+
+            // 2. Season packs
+            queries.add("$cleanTitle S${sStr}")
+            queries.add("$cleanTitle Season $season")
+
+            // 3. Compact title
+            if (compactTitle != cleanTitle && compactTitle.length >= 3) {
+                queries.add("$compactTitle S${sStr}E${eStr}")
+            }
+
+            // 4. Alternative episode numbering
+            queries.add("$cleanTitle ${season}x${eStr}")
             queries.add("$cleanTitle S${season}E${episode}")
-            queries.add(cleanTitle)
         } else {
             queries.add(cleanTitle)
-            if (cleanTitle != title) queries.add(title)
+            if (cleanTitle != rawTitle) {
+                queries.add(rawTitle)
+            }
+            if (compactTitle != cleanTitle && compactTitle.length >= 3) {
+                queries.add(compactTitle)
+            }
         }
 
         val rawResults = mutableListOf<TelegramVideoMessage>()
         val seenIds = mutableSetOf<String>()
         for (q in queries) {
             val res = try {
-                TelegramRepository.searchVideoMessages(q, limit = 100, includeAudio = false)
+                // Searches monitored channels AND globally across ALL joined channels, groups, and chats
+                TelegramRepository.searchVideoMessages(q, limit = 150, includeAudio = false)
             } catch (e: Exception) {
                 emptyList()
             }
@@ -120,7 +147,6 @@ object TdlibManager {
                     rawResults.add(msg)
                 }
             }
-            if (rawResults.size >= 30) break
         }
 
         val filteredResults = if (season != null && episode != null) {
@@ -148,8 +174,8 @@ object TdlibManager {
                     val streamUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
                     StreamSource(
                         id = "group_${group.baseName}",
-                        quality = "SPLIT (${group.parts.size} parts)",
-                        fileName = group.baseName,
+                        quality = "SPLIT ARCHIVE (${group.parts.size} parts)",
+                        fileName = "🔗 ${group.baseName}",
                         size = formatBytes(totalSize),
                         channel = "Telegram Split Pack",
                         url = streamUrl,
@@ -166,10 +192,11 @@ object TdlibManager {
                         TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
                     }
                     val qualityTag = extractQualityTag(msg.fileName)
+                    val prefix = if (ext == "zip") "🗄️ " else "📺 "
                     StreamSource(
                         id = "single_${msg.chatId}_${msg.messageId}",
                         quality = if (qualityTag.isNotBlank()) qualityTag else ext.uppercase().ifBlank { "VIDEO" },
-                        fileName = msg.fileName.ifBlank { "telegram_video.$ext" },
+                        fileName = prefix + msg.fileName.ifBlank { "telegram_video.$ext" },
                         size = sizeStr,
                         channel = "Telegram Stream",
                         url = streamUrl,
