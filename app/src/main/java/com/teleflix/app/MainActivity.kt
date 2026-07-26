@@ -147,9 +147,9 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 0, 0, 16)
         }
 
-        val searchInput = android.widget.EditText(this).apply {
+        searchInput = EditText(this).apply {
             hint = "Search Movies & Series..."
-            hintTextColors = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#64748B"))
+            setHintTextColor(android.graphics.Color.parseColor("#64748B"))
             setTextColor(android.graphics.Color.WHITE)
             setBackgroundColor(android.graphics.Color.parseColor("#1F2937"))
             setPadding(24, 20, 24, 20)
@@ -218,6 +218,9 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+            tabRow.addView(tab)
+        }
+
         tabScroll.addView(tabRow)
         rootView.addView(tabScroll)
 
