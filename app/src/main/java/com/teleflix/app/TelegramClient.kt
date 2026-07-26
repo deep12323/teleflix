@@ -242,6 +242,8 @@ object TelegramClient {
             }
             else -> {}
         }
+    }
+
     fun clearNativeLibraryCache(context: Context) {
         // Native libraries are directly packaged in APK jniLibs, no manual extraction cache cleanup needed
     }
