@@ -415,6 +415,12 @@ class SettingsActivity : AppCompatActivity() {
                     TelegramClient.submitCode(code)
                 }
             }
+            .setNeutralButton("⬅️ Back") { _, _ ->
+                TelegramClient.logout(this)
+                TelegramClient.reset()
+                TelegramClient.initialize(this)
+                showPhoneDialog()
+            }
             .setNegativeButton("Cancel", null)
             .show()
     }
@@ -434,6 +440,12 @@ class SettingsActivity : AppCompatActivity() {
                 val password = passwordInput.text.toString()
                 Toast.makeText(this, "Verifying password...", Toast.LENGTH_SHORT).show()
                 TelegramClient.submitPassword(password)
+            }
+            .setNeutralButton("⬅️ Back") { _, _ ->
+                TelegramClient.logout(this)
+                TelegramClient.reset()
+                TelegramClient.initialize(this)
+                showPhoneDialog()
             }
             .setNegativeButton("Cancel", null)
             .show()
