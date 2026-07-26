@@ -97,11 +97,11 @@ class PlayerActivity : AppCompatActivity() {
         }
 
         vlcButton = Button(this).apply {
-            text = "VLC"
+            text = "External 📱"
             textSize = 11f
             setBackgroundColor(android.graphics.Color.parseColor("#EA580C"))
             setTextColor(android.graphics.Color.WHITE)
-            setOnClickListener { openExternalPlayer("org.videolan.vlc") }
+            setOnClickListener { showExternalPlayerPicker() }
         }
 
         topBar.addView(titleView)
@@ -113,38 +113,62 @@ class PlayerActivity : AppCompatActivity() {
         setContentView(rootView)
 
         hideSystemUI()
-        initializePlayer()
+        initPlayer()
     }
 
-    private fun initializePlayer() {
-        if (videoUrl.isEmpty()) return
-        player = ExoPlayer.Builder(this).build().also { exoPlayer ->
-            playerView.player = exoPlayer
+    private fun initPlayer() {
+        if (videoUrl.isEmpty()) {
+            Toast.makeText(this, "Error: Empty stream link", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+
+        player = ExoPlayer.Builder(this).build().also { exo ->
+            playerView.player = exo
             val mediaItem = MediaItem.fromUri(Uri.parse(videoUrl))
-            exoPlayer.setMediaItem(mediaItem)
-            exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+            exo.setMediaItem(mediaItem)
+            exo.prepare()
+            exo.playWhenReady = true
+
+            exo.addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
                     android.util.Log.e("PlayerActivity", "ExoPlayer error: ${error.message}", error)
-                    Toast.makeText(this@PlayerActivity, "Codec or format issue in Internal Player. Try opening in VLC!", Toast.LENGTH_LONG).show()
-                    androidx.appcompat.app.AlertDialog.Builder(this@PlayerActivity)
-                        .setTitle("Stream Format Not Supported by ExoPlayer")
-                        .setMessage("This Telegram file contains audio/video codecs (such as AC3, Dolby, or certain MKV profiles) that require VLC Player to decode.\n\nWould you like to switch to VLC Player now?")
-                        .setPositiveButton("Open in VLC") { _, _ -> openExternalPlayer("org.videolan.vlc") }
-                        .setNeutralButton("Open in MPV") { _, _ -> openExternalPlayer("is.xyz.mpv") }
-                        .setNegativeButton("Cancel", null)
+                    if (isDestroyed || isFinishing) return
+                    AlertDialog.Builder(this@PlayerActivity)
+                        .setTitle("Unsupported Video Codec")
+                        .setMessage("Your hardware does not natively support decoding this Telegram video stream in ExoPlayer.\n\nWould you like to choose an external player on your phone?")
+                        .setPositiveButton("Choose Player...") { _, _ ->
+                            showExternalPlayerPicker()
+                        }
+                        .setNegativeButton("Close", null)
                         .show()
                 }
             })
-            exoPlayer.prepare()
-            exoPlayer.playWhenReady = true
         }
+    }
+
+    private fun showExternalPlayerPicker() {
+        val options = arrayOf(
+            "📱 Choose From All Installed Video Players...",
+            "🧡 Open in VLC Player",
+            "🟣 Open in MPV Player"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Switch to External Player")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> openExternalPlayer("")
+                    1 -> openExternalPlayer("org.videolan.vlc")
+                    2 -> openExternalPlayer("is.xyz.mpv")
+                }
+            }
+            .show()
     }
 
     private fun cyclePlaybackSpeed() {
         currentSpeedIndex = (currentSpeedIndex + 1) % speeds.size
-        val newSpeed = speeds[currentSpeedIndex]
-        player?.playbackParameters = PlaybackParameters(newSpeed)
-        speedButton.text = "Speed: ${speedLabels[currentSpeedIndex]}"
+        player?.playbackParameters = PlaybackParameters(speeds[currentSpeedIndex])
+        speedButton.text = "${speedLabels[currentSpeedIndex]}x"
     }
 
     private fun cycleResizeMode() {
@@ -159,9 +183,10 @@ class PlayerActivity : AppCompatActivity() {
             if (packageName.isNotEmpty()) setPackage(packageName)
         }
         try {
-            startActivity(intent)
+            val finalIntent = if (packageName.isEmpty()) Intent.createChooser(intent, "Select Video Player") else intent
+            startActivity(finalIntent)
         } catch (e: Exception) {
-            Toast.makeText(this, "External player not installed", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "External video player not installed or found", Toast.LENGTH_SHORT).show()
         }
     }
 

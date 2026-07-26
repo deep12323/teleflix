@@ -576,9 +576,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPlayerActionDialog(streamUrl: String, title: String) {
-        val options = arrayOf("Play in Internal ExoPlayer", "Open in VLC Player", "Open in MPV Player")
+        val options = arrayOf(
+            "🎬 Play in Internal Player (ExoPlayer)",
+            "📱 Choose External Video Player (All Installed Players)...",
+            "🧡 Open in VLC Player",
+            "🟣 Open in MPV Player"
+        )
         AlertDialog.Builder(this)
-            .setTitle("Select Player")
+            .setTitle("Select Player for Stream")
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> {
@@ -589,6 +594,17 @@ class MainActivity : AppCompatActivity() {
                         startActivity(intent)
                     }
                     1 -> {
+                        val externalIntent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(Uri.parse(streamUrl), "video/*")
+                        }
+                        val chooser = Intent.createChooser(externalIntent, "Select Video Player")
+                        try {
+                            startActivity(chooser)
+                        } catch (e: Exception) {
+                            Toast.makeText(this, "No external video player found on phone!", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    2 -> {
                         val vlcIntent = Intent(Intent.ACTION_VIEW).apply {
                             setDataAndType(Uri.parse(streamUrl), "video/*")
                             setPackage("org.videolan.vlc")
@@ -597,7 +613,7 @@ class MainActivity : AppCompatActivity() {
                             Toast.makeText(this, "VLC Player not installed", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    2 -> {
+                    3 -> {
                         val mpvIntent = Intent(Intent.ACTION_VIEW).apply {
                             setDataAndType(Uri.parse(streamUrl), "video/*")
                             setPackage("is.xyz.mpv")
