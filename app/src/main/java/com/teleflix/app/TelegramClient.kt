@@ -229,6 +229,7 @@ object TelegramClient {
                     }
                     val phone = user?.phoneNumber?.let { if (!it.startsWith("+")) "+$it" else it } ?: ""
                     TdlibManager.setSessionActive(context, true, phone)
+                    try { TelegramRepository.sessionMarker(context).createNewFile() } catch (_: Exception) {}
                     _authState.value = TelegramAuthState.Ready(
                         firstName = user?.firstName ?: "Telegram User",
                         userId = user?.id ?: 0L
@@ -238,6 +239,7 @@ object TelegramClient {
             is TdApi.AuthorizationStateClosing,
             is TdApi.AuthorizationStateClosed -> {
                 TdlibManager.setSessionActive(context, false, "")
+                try { TelegramRepository.sessionMarker(context).delete() } catch (_: Exception) {}
                 _authState.value = TelegramAuthState.Idle
             }
             else -> {}

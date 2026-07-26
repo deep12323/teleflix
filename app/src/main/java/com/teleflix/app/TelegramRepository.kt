@@ -64,16 +64,7 @@ object TelegramRepository {
             clearCache(context)
         }
 
-        val hasValidSession = sessionMarker(context).exists()
-        val hasCredentials = getApiId(context) != 0 && getApiHash(context).isNotBlank()
-        
-        if (!hasValidSession || !hasCredentials) {
-            File(context.filesDir, "tdlib").deleteRecursively()
-            File(context.filesDir, "tdlib_files").deleteRecursively()
-            sessionMarker(context).delete()
-        } else {
-            TelegramClient.initialize(context)
-        }
+        TelegramClient.initialize(context)
     }
 
     fun getContext(): Context {
