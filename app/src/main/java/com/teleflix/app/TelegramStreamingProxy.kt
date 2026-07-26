@@ -215,11 +215,6 @@ object TelegramStreamingProxy {
             }
             lastStreamedFileId = fileId
 
-            // Cancel any active download for this file so TDLib respects our new offset.
-            runCatching {
-                TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
-            }
-
             val (rangeStart, rangeEnd) = parseRange(rangeHeader)
 
             // Get file info
@@ -274,15 +269,9 @@ object TelegramStreamingProxy {
                 val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
 
                 if (offset >= activeDownloadEnd) {
-                    // Cancel current range before starting a new one so TDLib
-                    // doesn't accumulate multiple download ranges.
-                    runCatching {
-                        TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
-                    }
                     val tdlibPrefetch = when {
-                        prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
-                        prefetchSizeMb <= 0L -> chunkSize.toLong()
-                        else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
+                        prefetchSizeMb <= 0L -> 0L // 0 in TDLib means unlimited
+                        else -> prefetchSizeMb * 1024L * 1024L
                     }
                     val alignedOffset = offset - (offset % (1024 * 1024))
                     runCatching {
@@ -290,11 +279,11 @@ object TelegramStreamingProxy {
                             req.fileId = fileId
                             req.priority = DOWNLOAD_PRIORITY
                             req.offset = alignedOffset
-                            req.limit = tdlibPrefetch
+                            req.limit = 0L // 0 forces continuous video downloading without breaking on arbitrary prefetch boundaries
                             req.synchronous = false
                         })
                     }
-                    activeDownloadEnd = if (tdlibPrefetch == 0L) totalSize else alignedOffset + tdlibPrefetch
+                    activeDownloadEnd = if (tdlibPrefetch <= 0L) totalSize else alignedOffset + tdlibPrefetch
                 }
 
                 val bytes = downloadChunk(fileId, offset, chunkSize)
@@ -694,16 +683,25 @@ object TelegramStreamingProxy {
         }
     }
 
+    private fun ensureRunning() {
+        if (!running || serverSocket == null || port == 0) {
+            start()
+        }
+    }
+
     fun getUrl(fileId: Int, fileName: String, expectedSize: Long = 0L): String {
+        ensureRunning()
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
         return "http://127.0.0.1:$port/file/$fileId/$encodedName?size=$expectedSize"
     }
 
     fun getThumbnailUrl(chatId: Long, messageId: Long): String {
+        ensureRunning()
         return "http://127.0.0.1:$port/thumbnail/$chatId/$messageId"
     }
 
     fun getMergedUrl(fileIds: List<Int>, fileName: String, sizes: List<Long>): String {
+        ensureRunning()
         val ids = fileIds.joinToString(",")
         val szs = sizes.joinToString(",")
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
@@ -711,6 +709,7 @@ object TelegramStreamingProxy {
     }
 
     fun getZipStreamUrl(fileId: Int, innerFileName: String, zipSize: Long): String {
+        ensureRunning()
         val encodedInner = java.net.URLEncoder.encode(innerFileName, "UTF-8").replace("+", "%20")
         return "http://127.0.0.1:$port/zip/$fileId/$encodedInner?size=$zipSize"
     }

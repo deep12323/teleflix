@@ -122,6 +122,19 @@ class PlayerActivity : AppCompatActivity() {
             playerView.player = exoPlayer
             val mediaItem = MediaItem.fromUri(Uri.parse(videoUrl))
             exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    android.util.Log.e("PlayerActivity", "ExoPlayer error: ${error.message}", error)
+                    Toast.makeText(this@PlayerActivity, "Codec or format issue in Internal Player. Try opening in VLC!", Toast.LENGTH_LONG).show()
+                    androidx.appcompat.app.AlertDialog.Builder(this@PlayerActivity)
+                        .setTitle("Stream Format Not Supported by ExoPlayer")
+                        .setMessage("This Telegram file contains audio/video codecs (such as AC3, Dolby, or certain MKV profiles) that require VLC Player to decode.\n\nWould you like to switch to VLC Player now?")
+                        .setPositiveButton("Open in VLC") { _, _ -> openExternalPlayer("org.videolan.vlc") }
+                        .setNeutralButton("Open in MPV") { _, _ -> openExternalPlayer("is.xyz.mpv") }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            })
             exoPlayer.prepare()
             exoPlayer.playWhenReady = true
         }
