@@ -242,6 +242,12 @@ object TelegramClient {
             }
             else -> {}
         }
+    fun clearNativeLibraryCache(context: Context) {
+        // Native libraries are directly packaged in APK jniLibs, no manual extraction cache cleanup needed
+    }
+
+    fun requestQrCode() {
+        client?.send(TdApi.RequestQrCodeAuthentication(LongArray(0)), null)
     }
 
     fun submitPhone(phone: String) {

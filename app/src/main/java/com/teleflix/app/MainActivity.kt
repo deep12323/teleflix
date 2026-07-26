@@ -106,10 +106,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         statusButton = Button(this).apply {
-            text = "TDLib Settings"
-            textSize = 10f
-            setBackgroundColor(android.graphics.Color.parseColor("#1E3A8A"))
+            text = "⚙️"
+            textSize = 20f
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setTextColor(android.graphics.Color.parseColor("#93C5FD"))
+            setPadding(12, 0, 12, 0)
             setOnClickListener {
                 startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
             }
@@ -266,13 +267,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateStatusButton() {
-        val active = TdlibManager.isSessionActive(this)
-        val channels = TdlibManager.getChannels(this).size
-        if (active || TelegramClient.authState.value is TelegramAuthState.Ready) {
-            statusButton.text = "TDLib Connected ($channels ch)"
-        } else {
-            statusButton.text = "Connect Telegram"
-        }
+        // Only display the settings icon in the header
+        statusButton.text = "⚙️"
     }
 
     // ── Catalog Loading & Endless Pagination ────────────────────
