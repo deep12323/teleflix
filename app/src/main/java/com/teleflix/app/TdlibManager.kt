@@ -91,42 +91,132 @@ object TdlibManager {
         getPrefs(context).edit().putString("custom_channels", current.joinToString(",")).apply()
     }
 
-    // Resolves available video stream sources for a given title/episode query
-    fun resolveStreams(title: String, season: Int? = null, episode: Int? = null): List<StreamSource> {
-        val query = if (season != null && episode != null) {
-            "$title S${String.format("%02d", season)}E${String.format("%02d", episode)}"
+    // Resolves available video stream sources for a given title/episode query via real TDLib
+    suspend fun resolveStreams(title: String, season: Int? = null, episode: Int? = null): List<StreamSource> {
+        val cleanTitle = title.replace(Regex("[^a-zA-Z0-9 ]"), " ").replace(Regex(" +"), " ").trim()
+        val queries = mutableSetOf<String>()
+        if (season != null && episode != null) {
+            queries.add("$cleanTitle S${String.format("%02d", season)}E${String.format("%02d", episode)}")
+            queries.add("$cleanTitle S${season}E${episode}")
+            queries.add(cleanTitle)
         } else {
-            title
+            queries.add(cleanTitle)
+            if (cleanTitle != title) queries.add(title)
         }
 
-        val baseClean = query.replace(Regex("[^a-zA-Z0-9 ]"), "").replace(Regex(" +"), ".")
+        val rawResults = mutableListOf<TelegramVideoMessage>()
+        val seenIds = mutableSetOf<String>()
+        for (q in queries) {
+            val res = try {
+                TelegramRepository.searchVideoMessages(q, limit = 100, includeAudio = false)
+            } catch (e: Exception) {
+                emptyList()
+            }
+            for (msg in res) {
+                val key = "${msg.chatId}_${msg.messageId}"
+                if (seenIds.add(key)) {
+                    rawResults.add(msg)
+                }
+            }
+            if (rawResults.size >= 30) break
+        }
 
-        return listOf(
-            StreamSource(
-                id = "stream-1080p",
-                quality = "1080p WEB-DL x264",
-                fileName = "$baseClean.1080p.WEB-DL.x264.AAC5.1-Teleflix.mkv",
-                size = "2.4 GB",
-                channel = "@teleflix_movies_hd",
-                url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-            ),
-            StreamSource(
-                id = "stream-720p",
-                quality = "720p HD x265 HEVC",
-                fileName = "$baseClean.720p.HDTV.HEVC-Teleflix.mkv",
-                size = "1.1 GB",
-                channel = "@teleflix_series_zone",
-                url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
-            ),
-            StreamSource(
-                id = "stream-split",
-                quality = "1080p REMUX (.001 Split Virtual Stitch)",
-                fileName = "$baseClean.1080p.REMUX.001",
-                size = "4.8 GB (Merged Byte-Range)",
-                channel = "@telegram_cinema_official",
-                url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-                isSplit = true
-            )
+        val filteredResults = if (season != null && episode != null) {
+            rawResults.filter { msg ->
+                isMatchingEpisode(msg.fileName, msg.caption, season, episode)
+            }
+        } else {
+            rawResults
+        }
+
+        val items = TelegramRepository.groupAndPreserveOrder(filteredResults).sortedByDescending { item ->
+            when (item) {
+                is DisplayItem.Group -> item.group.totalSize
+                is DisplayItem.Single -> item.message.fileSize
+            }
+        }
+
+        return items.mapNotNull { item ->
+            when (item) {
+                is DisplayItem.Group -> {
+                    val group = item.group
+                    val freshIds = group.parts.map { it.fileId }
+                    val partSizes = group.parts.map { it.fileSize }
+                    val totalSize = partSizes.sum()
+                    val streamUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
+                    StreamSource(
+                        id = "group_${group.baseName}",
+                        quality = "SPLIT (${group.parts.size} parts)",
+                        fileName = group.baseName,
+                        size = formatBytes(totalSize),
+                        channel = "Telegram Split Pack",
+                        url = streamUrl,
+                        isSplit = true
+                    )
+                }
+                is DisplayItem.Single -> {
+                    val msg = item.message
+                    val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+                    val sizeStr = formatBytes(msg.fileSize)
+                    val streamUrl = if (ext == "zip" && msg.fileSize > 1_000_000) {
+                        TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                    } else {
+                        TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                    }
+                    val qualityTag = extractQualityTag(msg.fileName)
+                    StreamSource(
+                        id = "single_${msg.chatId}_${msg.messageId}",
+                        quality = if (qualityTag.isNotBlank()) qualityTag else ext.uppercase().ifBlank { "VIDEO" },
+                        fileName = msg.fileName.ifBlank { "telegram_video.$ext" },
+                        size = sizeStr,
+                        channel = "Telegram Stream",
+                        url = streamUrl,
+                        isZip = (ext == "zip")
+                    )
+                }
+            }
+        }
+    }
+
+    private fun extractQualityTag(name: String): String {
+        val upper = name.uppercase()
+        val tags = mutableListOf<String>()
+        if (upper.contains("2160P") || upper.contains("4K")) tags.add("4K")
+        else if (upper.contains("1080P")) tags.add("1080p")
+        else if (upper.contains("720P")) tags.add("720p")
+        else if (upper.contains("480P")) tags.add("480p")
+
+        if (upper.contains("WEB-DL") || upper.contains("WEBDL")) tags.add("WEB-DL")
+        else if (upper.contains("BLURAY") || upper.contains("BLU-RAY") || upper.contains("BRRIP")) tags.add("BluRay")
+        else if (upper.contains("HDRIP") || upper.contains("HD-RIP") || upper.contains("HDTV")) tags.add("HDTV")
+        else if (upper.contains("REMUX")) tags.add("REMUX")
+
+        if (upper.contains("X265") || upper.contains("HEVC") || upper.contains("H265")) tags.add("x265")
+        else if (upper.contains("X264") || upper.contains("H264")) tags.add("x264")
+        else if (upper.contains("AV1") || upper.contains("AV-1")) tags.add("AV1")
+
+        return tags.joinToString(" ")
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        if (bytes <= 0) return "0 B"
+        val units = arrayOf("B", "KB", "MB", "GB", "TB")
+        val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
+        return String.format("%.1f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+    }
+
+    private fun isMatchingEpisode(fileName: String, caption: String, targetSeason: Int, targetEpisode: Int): Boolean {
+        val text = "$fileName $caption".lowercase()
+        val sNum = targetSeason
+        val eNum = targetEpisode
+        val sStr = String.format("%02d", sNum)
+        val eStr = String.format("%02d", eNum)
+        val patterns = listOf(
+            "s${sStr}e${eStr}", "s${sNum}e${eNum}", "s${sStr}.e${eStr}",
+            "${sNum}x${eStr}", "${sNum}x${eNum}", "ep${eStr}", "episode ${eNum}", "ep ${eNum}"
         )
+        if (patterns.any { text.contains(it) }) return true
+        val fullSeasonRegex = Regex("(?i)(?:s0*$sNum|season\\s*0*$sNum)[._\\s-]*(?:complete|full|pack|all)")
+        return fullSeasonRegex.containsMatchIn(text)
     }
 }

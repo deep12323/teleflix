@@ -261,7 +261,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        TelegramClient.initialize(this)
+        TelegramRepository.initialize(this)
         updateStatusButton()
     }
 
@@ -511,22 +511,49 @@ class MainActivity : AppCompatActivity() {
     // ── Stream Selection ────────────────────────────────────────
 
     private fun showStreamOptions(title: String, season: Int? = null, episode: Int? = null) {
-        val streams = TdlibManager.resolveStreams(title, season, episode)
         val displayTitle = if (season != null && episode != null) {
             "$title S${String.format("%02d", season)}E${String.format("%02d", episode)}"
         } else {
             title
         }
-        val streamTitles = streams.map { "${it.quality} (${it.size}) - ${it.channel}" }.toTypedArray()
 
-        AlertDialog.Builder(this)
-            .setTitle("$displayTitle — Select Stream")
-            .setItems(streamTitles) { _, which ->
-                val selectedStream = streams[which]
-                showPlayerActionDialog(selectedStream.url, displayTitle)
-            }
-            .setNegativeButton("Cancel", null)
+        val progressDialog = AlertDialog.Builder(this)
+            .setTitle("Searching Telegram Streams")
+            .setMessage("Querying connected channels for:\n'$displayTitle'...")
+            .setCancelable(false)
             .show()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val streams = try {
+                TdlibManager.resolveStreams(title, season, episode)
+            } catch (e: Exception) {
+                emptyList()
+            }
+
+            withContext(Dispatchers.Main) {
+                try { progressDialog.dismiss() } catch (_: Exception) {}
+
+                if (streams.isEmpty()) {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("No Streams Found")
+                        .setMessage("Could not find video files matching '$displayTitle' across your connected Telegram account or monitored channels.\n\nMake sure your account is connected in Settings and that your monitored channels contain video streams.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                    return@withContext
+                }
+
+                val streamTitles = streams.map { "${it.fileName}\nQuality: ${it.quality} (${it.size})" }.toTypedArray()
+
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("$displayTitle — Select Stream")
+                    .setItems(streamTitles) { _, which ->
+                        val selectedStream = streams[which]
+                        showPlayerActionDialog(selectedStream.url, displayTitle)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }
     }
 
     private fun showPlayerActionDialog(streamUrl: String, title: String) {
