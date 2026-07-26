@@ -65,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     private val categories = listOf(
         "Top Movies" to "movie/top",
         "Top Series" to "series/top",
+        "🕒 History" to "history/list",
         "New Movies" to "movie/year",
         "New Series" to "series/year",
         "IMDB Top" to "movie/imdbRating"
@@ -91,49 +92,73 @@ class MainActivity : AppCompatActivity() {
             WindowInsetsCompat.CONSUMED
         }
 
-        // Header Bar
-        val header = LinearLayout(this).apply {
+        // Top App Header
+        val headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 12)
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, 16)
         }
 
         val titleView = TextView(this).apply {
             text = "TELEFLIX"
-            textSize = 22f
+            textSize = 24f
             setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor(android.graphics.Color.parseColor("#E50914"))
+            setTextColor(android.graphics.Color.parseColor("#E50914")) // Netflix Red
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         statusButton = Button(this).apply {
             text = "⚙️"
-            textSize = 20f
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            setTextColor(android.graphics.Color.parseColor("#93C5FD"))
-            setPadding(12, 0, 12, 0)
+            textSize = 14f
+            setBackgroundColor(android.graphics.Color.parseColor("#1E293B"))
+            setTextColor(android.graphics.Color.WHITE)
             setOnClickListener {
                 startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
             }
         }
 
-        header.addView(titleView)
-        header.addView(statusButton)
-        rootView.addView(header)
+        headerLayout.addView(titleView)
+        headerLayout.addView(statusButton)
+        rootView.addView(headerLayout)
 
-        // Search Section
+        // Category Banner / Current Selection Header
+        categoryLabel = TextView(this).apply {
+            text = selectedLabel
+            textSize = 18f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(0, 8, 0, 12)
+        }
+        rootView.addView(categoryLabel)
+
+        // Loading and Search Spinner / Text
+        loadingText = TextView(this).apply {
+            text = "Loading catalog..."
+            textSize = 13f
+            setTextColor(android.graphics.Color.parseColor("#9CA3AF"))
+            setPadding(0, 4, 0, 12)
+            visibility = android.view.View.GONE
+        }
+        rootView.addView(loadingText)
+
+        // Search Box (Cinemeta Search)
         val searchLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 12)
+            setPadding(0, 0, 0, 16)
         }
 
-        searchInput = EditText(this).apply {
-            hint = "Search movies, series..."
-            setHintTextColor(android.graphics.Color.parseColor("#6B7280"))
+        val searchInput = android.widget.EditText(this).apply {
+            hint = "Search Movies & Series..."
+            hintTextColors = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#64748B"))
             setTextColor(android.graphics.Color.WHITE)
-            setBackgroundColor(android.graphics.Color.parseColor("#161B28"))
-            setPadding(24, 14, 24, 14)
+            setBackgroundColor(android.graphics.Color.parseColor("#1F2937"))
+            setPadding(24, 20, 24, 20)
             textSize = 14f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            maxLines = 1
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, 12, 0)
+            }
         }
 
         searchButton = Button(this).apply {
@@ -193,33 +218,12 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-            tabRow.addView(tab)
-        }
-
         tabScroll.addView(tabRow)
         rootView.addView(tabScroll)
 
-        // Category Label
-        categoryLabel = TextView(this).apply {
-            text = "Top Movies"
-            textSize = 16f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor(android.graphics.Color.WHITE)
-            setPadding(0, 0, 0, 8)
-        }
-        rootView.addView(categoryLabel)
-
-        // Loading indicator
-        loadingText = TextView(this).apply {
-            text = "Loading from Cinemeta..."
-            textSize = 13f
-            setTextColor(android.graphics.Color.parseColor("#6B7280"))
-            setPadding(0, 0, 0, 8)
-        }
-        rootView.addView(loadingText)
-
         // Media Grid
         mediaAdapter = MediaAdapter(mediaList) { item ->
+            saveToHistory(item)
             if (item.type == "series") {
                 fetchSeriesEpisodes(item)
             } else {
@@ -281,6 +285,22 @@ class MainActivity : AppCompatActivity() {
         currentSkip = 0
         hasMoreItems = true
         isLoadingMore = true
+
+        if (catalogId == "history/list") {
+            hasMoreItems = false
+            isLoadingMore = false
+            mediaList.clear()
+            val history = loadWatchHistory()
+            mediaList.addAll(history)
+            mediaAdapter?.notifyDataSetChanged()
+            if (history.isEmpty()) {
+                loadingText.text = "Watch history is empty. Movies and series you open will be automatically saved here!"
+                loadingText.visibility = android.view.View.VISIBLE
+            } else {
+                loadingText.visibility = android.view.View.GONE
+            }
+            return
+        }
 
         loadingText.text = "Loading $label from Cinemeta..."
         loadingText.visibility = android.view.View.VISIBLE
@@ -589,5 +609,57 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .show()
+    }
+
+    private fun saveToHistory(item: MediaItem) {
+        try {
+            val prefs = getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE)
+            val currentList = loadWatchHistory().toMutableList()
+            currentList.removeAll { it.id == item.id || it.title == item.title }
+            currentList.add(0, item)
+            val trimmed = if (currentList.size > 60) currentList.subList(0, 60) else currentList
+            val jsonArray = JSONArray()
+            for (m in trimmed) {
+                val obj = JSONObject().apply {
+                    put("id", m.id)
+                    put("title", m.title)
+                    put("posterUrl", m.posterUrl)
+                    put("year", m.year)
+                    put("rating", m.rating)
+                    put("overview", m.overview)
+                    put("type", m.type)
+                }
+                jsonArray.put(obj)
+            }
+            prefs.edit().putString("history_items", jsonArray.toString()).apply()
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Error saving watch history: ${e.message}")
+        }
+    }
+
+    private fun loadWatchHistory(): List<MediaItem> {
+        val list = mutableListOf<MediaItem>()
+        try {
+            val prefs = getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE)
+            val jsonStr = prefs.getString("history_items", null) ?: return list
+            val array = JSONArray(jsonStr)
+            for (i in 0 until array.length()) {
+                val obj = array.optJSONObject(i) ?: continue
+                list.add(
+                    MediaItem(
+                        id = obj.optString("id", ""),
+                        title = obj.optString("title", "Unknown"),
+                        posterUrl = obj.optString("posterUrl", ""),
+                        year = obj.optString("year", ""),
+                        rating = obj.optString("rating", ""),
+                        overview = obj.optString("overview", ""),
+                        type = obj.optString("type", "movie")
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Error loading watch history: ${e.message}")
+        }
+        return list
     }
 }
