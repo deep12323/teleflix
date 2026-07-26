@@ -261,16 +261,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        TelegramClient.initialize(this)
         updateStatusButton()
     }
 
     private fun updateStatusButton() {
         val active = TdlibManager.isSessionActive(this)
         val channels = TdlibManager.getChannels(this).size
-        if (active) {
-            statusButton.text = "TDLib ($channels ch)"
+        if (active || TelegramClient.authState.value is TelegramAuthState.Ready) {
+            statusButton.text = "TDLib Connected ($channels ch)"
         } else {
-            statusButton.text = "Login"
+            statusButton.text = "Connect Telegram"
         }
     }
 
