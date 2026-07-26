@@ -196,7 +196,85 @@ class SettingsActivity : AppCompatActivity() {
         apiBox.addView(saveApiBtn)
 
         root.addView(apiBox)
+
+        // Streaming Buffer & Cache Box
+        val storageBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#161B28"))
+            setPadding(24, 24, 24, 24)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 24, 0, 24)
+            }
+        }
+
+        val storageTitle = TextView(this).apply {
+            text = "Streaming Buffer & Cache"
+            textSize = 16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+        }
+        storageBox.addView(storageTitle)
+
+        val bufferDesc = TextView(this).apply {
+            text = "Video Pre-fetch Buffer Size (Current: ${TelegramRepository.getBufferSizeMb(this@SettingsActivity)} MB)"
+            textSize = 14f
+            setTextColor(Color.parseColor("#93C5FD"))
+            setPadding(0, 12, 0, 8)
+        }
+        storageBox.addView(bufferDesc)
+
+        val bufferBtn = Button(this).apply {
+            text = "Change Buffer Size (5MB - 100MB)"
+            setBackgroundColor(Color.parseColor("#1E3A8A"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                val sizes = arrayOf("5 MB (Low RAM)", "10 MB", "20 MB (Default)", "50 MB (Smooth 4K)", "100 MB (Ultra Smooth)")
+                val values = arrayOf(5L, 10L, 20L, 50L, 100L)
+                AlertDialog.Builder(this@SettingsActivity)
+                    .setTitle("Select Video Buffer Size")
+                    .setItems(sizes) { _, which ->
+                        val selected = values[which]
+                        TelegramRepository.saveBufferSizeMb(this@SettingsActivity, selected)
+                        TelegramStreamingProxy.prefetchSizeMb = selected
+                        bufferDesc.text = "Video Pre-fetch Buffer Size (Current: $selected MB)"
+                        Toast.makeText(this@SettingsActivity, "Buffer set to $selected MB", Toast.LENGTH_SHORT).show()
+                    }
+                    .show()
+            }
+        }
+        storageBox.addView(bufferBtn)
+
+        val cacheDesc = TextView(this).apply {
+            text = "Calculating video cache size..."
+            textSize = 14f
+            setTextColor(Color.parseColor("#9CA3AF"))
+            setPadding(0, 16, 0, 8)
+        }
+        storageBox.addView(cacheDesc)
+
+        val clearCacheBtn = Button(this).apply {
+            text = "Clear Streamed Video Cache"
+            setBackgroundColor(Color.parseColor("#EF4444"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                TelegramRepository.clearCache(this@SettingsActivity)
+                cacheDesc.text = "Video Cache Size: 0.0 MB (Cleared)"
+                Toast.makeText(this@SettingsActivity, "Video cache cleared successfully!", Toast.LENGTH_SHORT).show()
+            }
+        }
+        storageBox.addView(clearCacheBtn)
+
+        root.addView(storageBox)
+
         setContentView(scrollView)
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val sizeBytes = try { TelegramRepository.getCacheSize(this@SettingsActivity) } catch (_: Exception) { 0L }
+            val sizeMb = sizeBytes / (1024.0 * 1024.0)
+            withContext(Dispatchers.Main) {
+                try { cacheDesc.text = String.format("Video Cache Size: %.1f MB", sizeMb) } catch (_: Exception) {}
+            }
+        }
 
         loadChannels()
     }
