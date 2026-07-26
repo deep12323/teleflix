@@ -53,7 +53,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var loadingText: TextView
 
     private val mediaList = mutableListOf<MediaItem>()
+    private var mediaAdapter: MediaAdapter? = null
+
     private var selectedCategory = "movie/top"
+    private var selectedLabel = "Top Movies"
+    private var currentSkip = 0
+    private var isLoadingMore = false
+    private var hasMoreItems = true
+    private var isInSearchMode = false
 
     private val categories = listOf(
         "Top Movies" to "movie/top",
@@ -172,8 +179,9 @@ class MainActivity : AppCompatActivity() {
                 layoutParams = lp
                 setOnClickListener {
                     selectedCategory = catalogId
+                    selectedLabel = label
                     categoryLabel.text = label
-                    loadCinemeta(catalogId, label)
+                    loadInitialCinemeta(catalogId, label)
                     for (i in 0 until tabRow.childCount) {
                         val child = tabRow.getChildAt(i) as Button
                         val cat = categories[i].second
@@ -210,18 +218,45 @@ class MainActivity : AppCompatActivity() {
         rootView.addView(loadingText)
 
         // Media Grid
+        mediaAdapter = MediaAdapter(mediaList) { item ->
+            if (item.type == "series") {
+                fetchSeriesEpisodes(item)
+            } else {
+                showStreamOptions(item.title)
+            }
+        }
+
+        val gridLayoutManager = GridLayoutManager(this, 2)
         recyclerView = RecyclerView(this).apply {
-            layoutManager = GridLayoutManager(this@MainActivity, 2)
+            layoutManager = gridLayoutManager
+            adapter = mediaAdapter
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 0, 1f
             )
         }
-        rootView.addView(recyclerView)
 
+        // Attach Endless Scroll Listener
+        recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(recyclerView, dx, dy)
+                if (dy <= 0) return // Only check on downward scroll
+
+                if (!isLoadingMore && hasMoreItems && !isInSearchMode) {
+                    val totalItemCount = gridLayoutManager.itemCount
+                    val lastVisibleItemPosition = gridLayoutManager.findLastVisibleItemPosition()
+
+                    if (totalItemCount > 0 && lastVisibleItemPosition + 4 >= totalItemCount) {
+                        loadMoreCinemeta()
+                    }
+                }
+            }
+        })
+
+        rootView.addView(recyclerView)
         setContentView(rootView)
 
-        loadCinemeta("movie/top", "Top Movies")
+        loadInitialCinemeta("movie/top", "Top Movies")
     }
 
     override fun onResume() {
@@ -239,11 +274,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadCinemeta(catalogId: String, label: String) {
+    // ── Catalog Loading & Endless Pagination ────────────────────
+
+    private fun loadInitialCinemeta(catalogId: String, label: String) {
+        isInSearchMode = false
+        currentSkip = 0
+        hasMoreItems = true
+        isLoadingMore = true
+
         loadingText.text = "Loading $label from Cinemeta..."
         loadingText.visibility = android.view.View.VISIBLE
 
-        // Detect type from catalogId
         val type = if (catalogId.startsWith("series")) "series" else "movie"
 
         CoroutineScope(Dispatchers.IO).launch {
@@ -257,16 +298,22 @@ class MainActivity : AppCompatActivity() {
                 val json = JSONObject(text)
                 val metas = json.optJSONArray("metas") ?: JSONArray()
 
-                val results = parseMetas(metas, 20, type)
+                val results = parseMetas(metas, type)
 
                 withContext(Dispatchers.Main) {
                     mediaList.clear()
                     mediaList.addAll(results)
+                    mediaAdapter?.notifyDataSetChanged()
                     loadingText.visibility = android.view.View.GONE
-                    updateGrid()
+                    isLoadingMore = false
+
+                    if (results.size < 20) {
+                        hasMoreItems = false
+                    }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
+                    isLoadingMore = false
                     loadingText.text = "Failed to load. Showing fallback."
                     loadFallbackCatalog()
                 }
@@ -274,7 +321,55 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun loadMoreCinemeta() {
+        if (isLoadingMore || !hasMoreItems || isInSearchMode) return
+
+        isLoadingMore = true
+        currentSkip += 100  // Cinemeta steps pagination by 100 items
+
+        loadingText.text = "Loading more $selectedLabel..."
+        loadingText.visibility = android.view.View.VISIBLE
+
+        val type = if (selectedCategory.startsWith("series")) "series" else "movie"
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val url = URL("https://v3-cinemeta.strem.io/catalog/$selectedCategory/skip=$currentSkip.json")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 8000
+                connection.readTimeout = 8000
+                val text = connection.inputStream.bufferedReader().readText()
+                val json = JSONObject(text)
+                val metas = json.optJSONArray("metas") ?: JSONArray()
+
+                val newItems = parseMetas(metas, type)
+
+                withContext(Dispatchers.Main) {
+                    isLoadingMore = false
+                    loadingText.visibility = android.view.View.GONE
+
+                    if (newItems.isNotEmpty()) {
+                        val startPos = mediaList.size
+                        mediaList.addAll(newItems)
+                        mediaAdapter?.notifyItemRangeInserted(startPos, newItems.size)
+                    }
+
+                    if (newItems.isEmpty() || newItems.size < 10) {
+                        hasMoreItems = false
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    isLoadingMore = false
+                    loadingText.visibility = android.view.View.GONE
+                }
+            }
+        }
+    }
+
     private fun performSearch(query: String) {
+        isInSearchMode = true
         categoryLabel.text = "Search: \"$query\""
         loadingText.text = "Searching Cinemeta..."
         loadingText.visibility = android.view.View.VISIBLE
@@ -292,7 +387,7 @@ class MainActivity : AppCompatActivity() {
                     val text = connection.inputStream.bufferedReader().readText()
                     val json = JSONObject(text)
                     val metas = json.optJSONArray("metas") ?: JSONArray()
-                    allResults.addAll(parseMetas(metas, 10, type))
+                    allResults.addAll(parseMetas(metas, type))
                 } catch (_: Exception) { }
             }
 
@@ -304,14 +399,14 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     loadingText.text = "No results found for \"$query\""
                 }
-                updateGrid()
+                mediaAdapter?.notifyDataSetChanged()
             }
         }
     }
 
-    private fun parseMetas(metas: JSONArray, limit: Int, type: String): List<MediaItem> {
+    private fun parseMetas(metas: JSONArray, type: String): List<MediaItem> {
         val results = mutableListOf<MediaItem>()
-        for (i in 0 until minOf(metas.length(), limit)) {
+        for (i in 0 until metas.length()) {
             val obj = metas.getJSONObject(i)
             results.add(MediaItem(
                 id = obj.optString("id"),
@@ -332,17 +427,7 @@ class MainActivity : AppCompatActivity() {
         mediaList.add(MediaItem("tt0944947", "Game of Thrones", "", "2011", "9.2", "Nine noble families fight for control over Westeros.", "series"))
         mediaList.add(MediaItem("tt4574334", "Stranger Things", "", "2016", "8.7", "When a young boy vanishes, a small town uncovers a mystery.", "series"))
         mediaList.add(MediaItem("tt0816692", "Interstellar", "", "2014", "8.7", "A team of researchers travels through a wormhole in space.", "movie"))
-        updateGrid()
-    }
-
-    private fun updateGrid() {
-        recyclerView.adapter = MediaAdapter(mediaList) { item ->
-            if (item.type == "series") {
-                fetchSeriesEpisodes(item)
-            } else {
-                showStreamOptions(item.title)
-            }
-        }
+        mediaAdapter?.notifyDataSetChanged()
     }
 
     // ── Series Episode Browser ──────────────────────────────────
@@ -378,7 +463,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                // Group by season
                 val seasons = episodes.groupBy { it.season }.toSortedMap()
 
                 withContext(Dispatchers.Main) {
@@ -419,9 +503,7 @@ class MainActivity : AppCompatActivity() {
                 val ep = episodes[which]
                 showStreamOptions(seriesTitle, season, ep.episode)
             }
-            .setNegativeButton("Back") { _, _ ->
-                // Go back to season picker - re-fetch would be needed, but we can just use cached
-            }
+            .setNegativeButton("Back", null)
             .show()
     }
 
