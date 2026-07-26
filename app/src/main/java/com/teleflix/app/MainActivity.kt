@@ -263,6 +263,9 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         TelegramRepository.initialize(this)
+        if (TdlibManager.isSessionActive(this)) {
+            try { TelegramService.start(this) } catch (_: Exception) {}
+        }
         updateStatusButton()
     }
 
