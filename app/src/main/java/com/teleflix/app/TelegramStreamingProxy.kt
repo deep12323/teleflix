@@ -224,6 +224,18 @@ object TelegramStreamingProxy {
         }
     }
 
+    private fun calculateSafeTdlibLimit(offset: Long, totalSize: Long, prefetchMb: Long, chunkSize: Int): Long {
+        val rawPrefetch = when {
+            prefetchMb >= 102400L || prefetchMb == -1L -> 0L // 0 in TDLib means unlimited (download to EOF)
+            prefetchMb <= 0L -> chunkSize.toLong()
+            else -> maxOf(chunkSize.toLong(), prefetchMb * 1024L * 1024L)
+        }
+        if (rawPrefetch == 0L) return 0L
+        if (totalSize <= 0L) return rawPrefetch
+        val remaining = maxOf(0L, totalSize - offset)
+        return minOf(rawPrefetch, remaining)
+    }
+
     private suspend fun streamFile(fileId: Int, fileName: String?, rangeHeader: String?, output: java.io.OutputStream, urlSize: Long, isHead: Boolean = false) {
         val currentJob = kotlin.coroutines.coroutineContext[Job]
         if (currentJob != null) {
@@ -265,6 +277,12 @@ object TelegramStreamingProxy {
                 start = rangeStart ?: 0L
                 end = rangeEnd ?: (totalSize - 1L)
             }
+
+            if (start >= totalSize) {
+                output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$totalSize\r\n\r\n".toByteArray())
+                return
+            }
+
             val length = end - start + 1
 
             val ext = fileName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
@@ -299,25 +317,22 @@ object TelegramStreamingProxy {
             while (offset <= end && running) {
                 val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
 
-                val tdlibPrefetch = when {
-                    prefetchSizeMb >= 102400L || prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
-                    prefetchSizeMb <= 0L -> chunkSize.toLong()
-                    else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
-                }
-                val triggerThreshold = if (tdlibPrefetch > 0L) tdlibPrefetch / 2 else 0L
+                val safeLimit = calculateSafeTdlibLimit(offset, totalSize, prefetchSizeMb, chunkSize)
+                val triggerThreshold = if (safeLimit > 0L) safeLimit / 2 else 0L
 
                 if (offset >= activeDownloadEnd - triggerThreshold) {
                     val alignedOffset = offset - (offset % (1024 * 1024))
+                    val alignedSafeLimit = calculateSafeTdlibLimit(alignedOffset, totalSize, prefetchSizeMb, chunkSize)
                     runCatching {
                         TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                             req.fileId = fileId
                             req.priority = DOWNLOAD_PRIORITY
                             req.offset = alignedOffset
-                            req.limit = tdlibPrefetch
+                            req.limit = alignedSafeLimit
                             req.synchronous = false
                         })
                     }
-                    activeDownloadEnd = if (tdlibPrefetch == 0L) totalSize else alignedOffset + tdlibPrefetch
+                    activeDownloadEnd = if (alignedSafeLimit == 0L) totalSize else alignedOffset + alignedSafeLimit
                 }
 
                 val bytes = downloadChunk(fileId, offset, chunkSize)
@@ -863,18 +878,17 @@ object TelegramStreamingProxy {
                 // Immediately trigger DownloadFile on attempt 0 and re-assert every 250ms (every 5 attempts)
                 // so concurrent range requests (e.g. MKV end-of-file Cues) never stall or starve the playback stream
                 if (attempts % 5 == 0) {
-                    val tdlibPrefetch = when {
-                        prefetchSizeMb >= 102400L || prefetchSizeMb == -1L -> 0L
-                        prefetchSizeMb <= 0L -> limit.toLong()
-                        else -> maxOf(limit.toLong(), prefetchSizeMb * 1024L * 1024L)
-                    }
                     val alignedOffset = offset - (offset % (1024 * 1024))
+                    val fileInfo = getFileInfo(fileId)
+                    val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
+                    val safeLimit = calculateSafeTdlibLimit(alignedOffset, totalSize, prefetchSizeMb, limit)
+
                     runCatching {
                         TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                             req.fileId = fileId
                             req.priority = DOWNLOAD_PRIORITY
                             req.offset = alignedOffset
-                            req.limit = tdlibPrefetch
+                            req.limit = safeLimit
                             req.synchronous = false
                         })
                     }
