@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.teleflix.app-mergeDebugResources-35:/values-v34/values-v34.xml",
+            "outputFile": "com.teleflix.app-mergeDebugResources-32:/values-v34/values-v34.xml",
             "map": [
                 {
                     "source": "/data/data/com.termux/files/home/.gradle/caches/8.12/transforms/81a8eab4483279b99e3edc7f658a68df/transformed/material-1.12.0/res/values-v34/values-v34.xml",

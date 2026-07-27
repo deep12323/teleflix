@@ -15,8 +15,8 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import is.xyz.mpv.MPVLib
-import is.xyz.mpv.MPVView
+import `is`.xyz.mpv.MPVLib
+import `is`.xyz.mpv.MPVView
 
 class PlayerActivity : AppCompatActivity() {
 
@@ -37,12 +37,12 @@ class PlayerActivity : AppCompatActivity() {
     private val updateRunnable = object : Runnable {
         override fun run() {
             try {
-                val currentSec = MPVLib.getPropertyDouble("time-pos")
-                val totalSec = MPVLib.getPropertyDouble("duration")
-                val isPaused = MPVLib.getPropertyBoolean("pause")
+                val currentSec = (MPVLib.getPropertyDouble("time-pos") ?: 0.0).toDouble()
+                val totalSec = (MPVLib.getPropertyDouble("duration") ?: 0.0).toDouble()
+                val isPaused = (MPVLib.getPropertyBoolean("pause") ?: false)
                 playPauseButton.text = if (isPaused) "▶️" else "⏸️"
 
-                if (totalSec > 0) {
+                if (totalSec > 0.0) {
                     seekBar.max = 1000
                     if (!isUserSeeking) {
                         val progress = ((currentSec / totalSec) * 1000).toInt()
@@ -52,9 +52,9 @@ class PlayerActivity : AppCompatActivity() {
                     totalTimeText.text = formatTime(totalSec.toLong())
 
                     // Save resume point automatically if beyond first 5 seconds
-                    if (currentSec > 5 && (totalSec - currentSec) > 5) {
-                        saveResumePosition((currentSec * 1000).toLong())
-                    } else if (totalSec > 0 && (totalSec - currentSec) <= 5) {
+                    if (currentSec > 5.0 && (totalSec - currentSec) > 5.0) {
+                        saveResumePosition((currentSec * 1000.0).toLong())
+                    } else if (totalSec > 0.0 && (totalSec - currentSec) <= 5.0) {
                         clearResumePosition()
                     }
                 }
@@ -235,7 +235,7 @@ class PlayerActivity : AppCompatActivity() {
             layoutParams = FrameLayout.LayoutParams(dpToPx(80), dpToPx(80), Gravity.CENTER)
             setOnClickListener {
                 try {
-                    val isPaused = MPVLib.getPropertyBoolean("pause")
+                    val isPaused = (MPVLib.getPropertyBoolean("pause") ?: false)
                     MPVLib.setPropertyBoolean("pause", !isPaused)
                     text = if (!isPaused) "▶️" else "⏸️"
                     scheduleHideControls()
@@ -275,8 +275,8 @@ class PlayerActivity : AppCompatActivity() {
                 }
                 override fun onStopTrackingTouch(seekBar: SeekBar?) {
                     try {
-                        val totalSec = MPVLib.getPropertyDouble("duration")
-                        if (totalSec > 0 && seekBar != null) {
+                        val totalSec = (MPVLib.getPropertyDouble("duration") ?: 0.0).toDouble()
+                        if (totalSec > 0.0 && seekBar != null) {
                             val targetSec = (seekBar.progress / 1000.0) * totalSec
                             MPVLib.setPropertyDouble("time-pos", targetSec)
                         }

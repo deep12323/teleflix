@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="notification_action_color_filter">@color/androidx_core_secondary_text_default_material_light</color>
-    <dimen name="exo_styled_controls_padding">24dp</dimen>
     <item format="float" name="m3_sys_state_dragged_state_layer_opacity" type="dimen">0.32</item>
     <item format="float" name="m3_sys_state_focus_state_layer_opacity" type="dimen">0.2</item>
     <item format="float" name="m3_sys_state_hover_state_layer_opacity" type="dimen">0.16</item>
@@ -291,11 +290,6 @@
       <item name="android:popupElevation">8dp</item>
       <item name="android:dropDownVerticalOffset">1dp</item>
     </style>
-    <style name="ExoStyledControls.Button.Center">
-    <item name="android:layout_width">@dimen/exo_icon_size</item>
-    <item name="android:layout_height">@dimen/exo_icon_size</item>
-    <item name="android:background">?android:attr/selectableItemBackgroundBorderless</item>
-  </style>
     <style name="MaterialAlertDialog.MaterialComponents.Picker.Date.Calendar" parent="android:Widget.DeviceDefault.DatePicker">
     <item name="backgroundInsetTop">@dimen/mtrl_alert_dialog_picker_background_inset</item>
     <item name="backgroundInsetBottom">@dimen/mtrl_alert_dialog_picker_background_inset</item>
@@ -353,20 +347,8 @@
     </style>
     <style name="TextAppearance.Compat.Notification" parent="@android:style/TextAppearance.Material.Notification"/>
     <style name="TextAppearance.Compat.Notification.Info" parent="@android:style/TextAppearance.Material.Notification.Info"/>
-    <style name="TextAppearance.Compat.Notification.Info.Media">
-        <item name="android:textColor">@color/secondary_text_default_material_dark</item>
-    </style>
-    <style name="TextAppearance.Compat.Notification.Media">
-        <item name="android:textColor">@color/secondary_text_default_material_dark</item>
-    </style>
     <style name="TextAppearance.Compat.Notification.Time" parent="@android:style/TextAppearance.Material.Notification.Time"/>
-    <style name="TextAppearance.Compat.Notification.Time.Media">
-        <item name="android:textColor">@color/secondary_text_default_material_dark</item>
-    </style>
     <style name="TextAppearance.Compat.Notification.Title" parent="@android:style/TextAppearance.Material.Notification.Title"/>
-    <style name="TextAppearance.Compat.Notification.Title.Media">
-        <item name="android:textColor">@color/primary_text_default_material_dark</item>
-    </style>
     <style name="TextAppearance.M3.Sys.Typescale.BodyLarge" parent="TextAppearance.AppCompat.Body2">
     <item name="fontFamily">@string/m3_ref_typeface_plain_regular</item>
     <item name="android:fontFamily">@string/m3_ref_typeface_plain_regular</item>

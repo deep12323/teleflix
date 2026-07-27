@@ -11,6 +11,9 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
@@ -22,6 +25,23 @@
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
 
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+
+            <data android:mimeType="video/*" />
+        </intent>
+
+        <package android:name="id.nzxm.mpvex" />
+        <package android:name="id.nzxm.mpvex.debug" />
+        <package android:name="is.xyz.mpv" />
+        <package android:name="org.videolan.vlc" />
+        <package android:name="com.mxtech.videoplayer.ad" />
+        <package android:name="com.mxtech.videoplayer.pro" />
+        <package android:name="dev.anilbeesetti.nextplayer" />
+        <package android:name="com.brianvalente.videoplayer" />
+    </queries>
+
     <permission
         android:name="com.teleflix.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         android:protectionLevel="signature" />
@@ -29,19 +49,24 @@
     <uses-permission android:name="com.teleflix.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
 
     <application
-        android:allowBackup="true"
+        package="is.xyz.mpv"
+        android:allowBackup="false"
         android:appComponentFactory="androidx.core.app.CoreComponentFactory"
         android:debuggable="true"
         android:extractNativeLibs="true"
+        android:fullBackupContent="false"
         android:icon="@drawable/ic_launcher"
-        android:label="Teleflix Streamer"
+        android:label="Teleflix"
         android:roundIcon="@drawable/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.Teleflix"
-        android:usesCleartextTraffic="true" >
+        android:usesCleartextTraffic="true"
+        android:versionCode="1"
+        android:versionName="1.0" >
         <activity
             android:name="com.teleflix.app.MainActivity"
             android:exported="true"
+            android:label="Teleflix"
             android:theme="@style/Theme.Teleflix" >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -50,14 +75,21 @@
             </intent-filter>
         </activity>
         <activity
-            android:name="com.teleflix.app.PlayerActivity"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
-            android:exported="false"
-            android:theme="@style/Theme.Teleflix.Fullscreen" />
-        <activity
             android:name="com.teleflix.app.SettingsActivity"
             android:exported="false"
             android:theme="@style/Theme.Teleflix" />
+        <activity
+            android:name="com.teleflix.app.PlayerActivity"
+            android:configChanges="orientation|screenSize|layoutDirection|keyboardHidden"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.Teleflix" />
+
+        <service
+            android:name="com.teleflix.app.TelegramService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <provider
             android:name="androidx.startup.InitializationProvider"
