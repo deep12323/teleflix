@@ -119,6 +119,25 @@ class PlayerActivity : AppCompatActivity() {
         // Initialize engine and start playback
         try {
             mpvView.initialize(filesDir.path, cacheDir.path)
+            
+            // Critical Android Subtitle Rendering & Font Config
+            try {
+                mpvView.mpv.setPropertyString("sub-visibility", "yes")
+                mpvView.mpv.setPropertyString("sub-auto", "fuzzy")
+                mpvView.mpv.setPropertyString("sub-font", "sans-serif")
+                mpvView.mpv.setPropertyString("sub-font-size", "52")
+                mpvView.mpv.setPropertyString("sub-color", "#FFFFFFFF")
+                mpvView.mpv.setPropertyString("sub-border-color", "#FF000000")
+                mpvView.mpv.setPropertyString("sub-border-size", "3")
+                mpvView.mpv.setPropertyString("sub-shadow-color", "#80000000")
+                mpvView.mpv.setPropertyString("sub-shadow-offset", "2")
+                mpvView.mpv.setPropertyString("sub-use-margins", "yes")
+                mpvView.mpv.setPropertyString("slang", "en,eng,english")
+                mpvView.mpv.setPropertyString("sid", "auto")
+            } catch (e: Exception) {
+                android.util.Log.e("PlayerActivity", "Error setting subtitle defaults: ${e.message}")
+            }
+
             if (resumeMs > 0) {
                 mpvView.mpv.setPropertyDouble("start", resumeMs / 1000.0)
             }
@@ -345,11 +364,15 @@ class PlayerActivity : AppCompatActivity() {
                 .setTitle("Select Subtitle Track")
                 .setItems(labels.toTypedArray()) { _, which ->
                     if (which == 0) {
+                        mpvView.mpv.setPropertyString("sub-visibility", "no")
                         mpvView.mpv.setPropertyString("sid", "no")
                         Toast.makeText(this, "Subtitles Disabled", Toast.LENGTH_SHORT).show()
                     } else {
                         val selectedId = subTracks[which - 1].first
-                        mpvView.mpv.setPropertyInt("sid", selectedId)
+                        mpvView.mpv.setPropertyString("sub-visibility", "yes")
+                        try { mpvView.mpv.setPropertyInt("sid", selectedId) } catch (_: Exception) {
+                            mpvView.mpv.setPropertyString("sid", selectedId.toString())
+                        }
                         Toast.makeText(this, "Selected: ${subTracks[which - 1].second}", Toast.LENGTH_SHORT).show()
                     }
                 }
