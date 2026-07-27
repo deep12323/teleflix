@@ -267,6 +267,30 @@ class PlayerActivity : AppCompatActivity() {
             )
         }
 
+        val rewindButton = TextView(this).apply {
+            text = "⏪ -10s"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(Color.parseColor("#334155"))
+                cornerRadius = dpToPx(6).toFloat()
+            }
+            background = bg
+            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                rightMargin = dpToPx(8)
+            }
+            setOnClickListener {
+                try {
+                    val current = (mpvView.mpv.getPropertyDouble("time-pos") ?: 0.0).toDouble()
+                    mpvView.mpv.setPropertyDouble("time-pos", (current - 10.0).coerceAtLeast(0.0))
+                    scheduleHideControls()
+                } catch (_: Exception) {}
+            }
+        }
+
         playPauseButton = TextView(this).apply {
             text = "❚❚  PAUSE"
             textSize = 14f
@@ -280,13 +304,38 @@ class PlayerActivity : AppCompatActivity() {
             background = bg
             setPadding(dpToPx(14), dpToPx(8), dpToPx(14), dpToPx(8))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = dpToPx(12)
+                rightMargin = dpToPx(8)
             }
             setOnClickListener {
                 try {
                     val isPaused = (mpvView.mpv.getPropertyBoolean("pause") ?: false)
                     mpvView.mpv.setPropertyBoolean("pause", !isPaused)
                     text = if (!isPaused) "►  PLAY" else "❚❚  PAUSE"
+                    scheduleHideControls()
+                } catch (_: Exception) {}
+            }
+        }
+
+        val forwardButton = TextView(this).apply {
+            text = "+10s ⏩"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(Color.parseColor("#334155"))
+                cornerRadius = dpToPx(6).toFloat()
+            }
+            background = bg
+            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                rightMargin = dpToPx(12)
+            }
+            setOnClickListener {
+                try {
+                    val current = (mpvView.mpv.getPropertyDouble("time-pos") ?: 0.0).toDouble()
+                    val total = (mpvView.mpv.getPropertyDouble("duration") ?: 999999.0).toDouble()
+                    mpvView.mpv.setPropertyDouble("time-pos", (current + 10.0).coerceAtMost(total))
                     scheduleHideControls()
                 } catch (_: Exception) {}
             }
@@ -330,7 +379,9 @@ class PlayerActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
         }
 
+        bottomBar.addView(rewindButton)
         bottomBar.addView(playPauseButton)
+        bottomBar.addView(forwardButton)
         bottomBar.addView(currentTimeText)
         bottomBar.addView(seekBar)
         bottomBar.addView(totalTimeText)
