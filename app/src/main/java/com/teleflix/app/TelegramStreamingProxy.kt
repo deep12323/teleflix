@@ -39,7 +39,7 @@ object TelegramStreamingProxy {
     private val messageThumbMap = java.util.concurrent.ConcurrentHashMap<Pair<Long, Long>, Int>()
     @Volatile private var lastStreamedFileId: Int? = null
 
-    private fun triggerTdlibDownload(fileId: Int, offset: Long, limit: Long) {
+    private suspend fun triggerTdlibDownload(fileId: Int, offset: Long, limit: Long) {
         val now = System.currentTimeMillis()
         val lastOffset = lastDownloadRequestOffset[fileId]
         val lastTime = lastDownloadRequestTime[fileId] ?: 0L
