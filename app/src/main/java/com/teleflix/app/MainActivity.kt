@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var loadingText: TextView
     private lateinit var modeToggleButton: TextView
     private lateinit var tabScroll: HorizontalScrollView
+    private lateinit var tabRow: LinearLayout
     private var isTelegramCatalogMode = false
     private var currentOpenChannelId: String? = null
     private val telegramStreamCache = mutableMapOf<String, Pair<String, String>>()
@@ -74,7 +75,8 @@ class MainActivity : AppCompatActivity() {
         "🕒 History" to "history/list",
         "New Movies" to "movie/year",
         "New Series" to "series/year",
-        "IMDB Top" to "movie/imdbRating"
+        "IMDB Top" to "movie/imdbRating",
+        "🎭 Genres" to "genres/picker"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -215,7 +217,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 0, 0, 12)
         }
 
-        val tabRow = LinearLayout(this).apply {
+        tabRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
 
@@ -235,19 +237,16 @@ class MainActivity : AppCompatActivity() {
                 ).apply { setMargins(0, 0, 8, 0) }
                 layoutParams = lp
                 setOnClickListener {
+                    if (catalogId == "genres/picker") {
+                        showGenreSelectionDialog()
+                        return@setOnClickListener
+                    }
                     selectedCategory = catalogId
                     selectedLabel = label
                     categoryLabel.text = label
                     categoryLabel.isClickable = false
                     loadInitialCinemeta(catalogId, label)
-                    for (i in 0 until tabRow.childCount) {
-                        val child = tabRow.getChildAt(i) as Button
-                        val cat = categories[i].second
-                        child.setBackgroundColor(
-                            if (cat == selectedCategory) android.graphics.Color.parseColor("#E50914")
-                            else android.graphics.Color.parseColor("#1F2937")
-                        )
-                    }
+                    updateTabSelection(catalogId)
                 }
             }
             tabRow.addView(tab)
@@ -351,6 +350,61 @@ class MainActivity : AppCompatActivity() {
     private fun updateStatusButton() {
         // Only display the settings icon in the header
         statusButton.text = "⚙️"
+    }
+
+    private fun updateTabSelection(activeCatalogId: String) {
+        if (!::tabRow.isInitialized) return
+        for (i in 0 until tabRow.childCount) {
+            val child = tabRow.getChildAt(i) as? Button ?: continue
+            val cat = categories.getOrNull(i)?.second ?: ""
+            val isSelected = if (activeCatalogId.contains("genre=")) {
+                cat == "genres/picker"
+            } else {
+                cat == activeCatalogId
+            }
+            child.setBackgroundColor(
+                if (isSelected) android.graphics.Color.parseColor("#E50914")
+                else android.graphics.Color.parseColor("#1F2937")
+            )
+        }
+    }
+
+    private fun showGenreSelectionDialog() {
+        val genres = listOf(
+            "Action", "Adventure", "Animation", "Biography", "Comedy",
+            "Crime", "Documentary", "Drama", "Family", "Fantasy",
+            "History", "Horror", "Mystery", "Romance", "Sci-Fi",
+            "Sport", "Thriller", "War", "Western"
+        )
+        val genreIcons = arrayOf(
+            "💥 Action", "🗺️ Adventure", "🦄 Animation", "📖 Biography", "😂 Comedy",
+            "🕵️ Crime", "🎥 Documentary", "🎭 Drama", "👨‍👩‍👧 Family", "✨ Fantasy",
+            "📜 History", "👻 Horror", "🔍 Mystery", "❤️ Romance", "🛸 Sci-Fi",
+            "⚽ Sport", "🔪 Thriller", "⚔️ War", "🤠 Western"
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle("🎭 Pick a Genre")
+            .setItems(genreIcons) { _, which ->
+                val genre = genres[which]
+                val formatOptions = arrayOf("🎬 Top $genre Movies", "📺 Top $genre Series")
+                AlertDialog.Builder(this)
+                    .setTitle("Select Format for $genre")
+                    .setItems(formatOptions) { _, fmt ->
+                        val catalogId = if (fmt == 0) "movie/top/genre=$genre" else "series/top/genre=$genre"
+                        val label = formatOptions[fmt]
+                        selectedCategory = catalogId
+                        selectedLabel = label
+                        categoryLabel.text = label
+                        categoryLabel.isClickable = false
+                        updateTabSelection(catalogId)
+                        loadInitialCinemeta(catalogId, label)
+                    }
+                    .setNegativeButton("Back") { _, _ -> showGenreSelectionDialog() }
+                    .show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     // ── Catalog Loading & Endless Pagination ────────────────────
