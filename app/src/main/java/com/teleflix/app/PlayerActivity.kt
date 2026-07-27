@@ -31,7 +31,6 @@ class TeleflixMpvView(context: Context, attrs: AttributeSet? = null) : BaseMPVVi
             mpv.setPropertyString("demuxer-readahead-secs", "15")
             mpv.setPropertyString("force-seekable", "yes")
             mpv.setPropertyString("hr-seek", "default")
-            mpv.setPropertyString("demuxer-lavf-o", "seekable=1")
         } catch (_: Exception) {}
     }
     override fun postInitOptions() {}

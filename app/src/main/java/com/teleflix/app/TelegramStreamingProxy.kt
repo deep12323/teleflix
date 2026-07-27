@@ -285,7 +285,7 @@ object TelegramStreamingProxy {
             }
 
             val start: Long
-            val end: Long
+            var end: Long
 
             if (rangeStart == null && rangeEnd != null) {
                 // Suffix byte range: e.g., bytes=-500 means the last 500 bytes
@@ -296,8 +296,11 @@ object TelegramStreamingProxy {
                 end = rangeEnd ?: (totalSize - 1L)
             }
 
-            if (start >= totalSize) {
-                output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$totalSize\r\n\r\n".toByteArray())
+            end = minOf(end, totalSize - 1L)
+
+            if (start >= totalSize || start > end) {
+                output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$totalSize\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                output.flush()
                 return
             }
 
