@@ -99,35 +99,73 @@ object TelegramRepository {
         wipeTdlibFiles(context)
     }
 
+    private fun getFolderSize(file: File?): Long {
+        if (file == null || !file.exists()) return 0L
+        if (file.isFile) return file.length()
+        return file.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+    }
+
+    private fun clearFolder(dir: File?, preserveDb: Boolean = false) {
+        if (dir == null || !dir.exists()) return
+        if (!dir.isDirectory) {
+            dir.delete()
+            return
+        }
+        dir.walkBottomUp().forEach { file ->
+            if (file != dir) {
+                if (preserveDb) {
+                    val name = file.name.lowercase()
+                    val parentName = file.parentFile?.name?.lowercase() ?: ""
+                    if (!name.contains("binlog") && !name.contains("sqlite") && !parentName.contains("db")) {
+                        file.delete()
+                    }
+                } else {
+                    file.delete()
+                }
+            }
+        }
+    }
+
     suspend fun getCacheSize(context: Context): Long {
         return try {
-            val stats = TelegramClient.sendRequest(TdApi.GetStorageStatisticsFast()) as? TdApi.StorageStatisticsFast
-            val tdlibSize = stats?.filesSize ?: 0L
-            if (tdlibSize > 0L) {
-                tdlibSize
-            } else {
-                val dir1 = File(context.filesDir, "tdlib_files")
-                val dir2 = File(context.filesDir, "tdlib")
-                val size1 = if (dir1.exists()) dir1.walkBottomUp().filter { it.isFile }.sumOf { it.length() } else 0L
-                val size2 = if (dir2.exists()) dir2.walkBottomUp().filter { it.isFile }.sumOf { it.length() } else 0L
-                size1 + size2
+            var total = 0L
+            total += getFolderSize(context.cacheDir)
+            total += getFolderSize(context.externalCacheDir)
+            
+            val tdlibDir1 = File(context.filesDir, "tdlib_files")
+            val tdlibDir2 = File(context.filesDir, "tdlib")
+            
+            listOf(tdlibDir1, tdlibDir2).forEach { dir ->
+                if (dir.exists()) {
+                    dir.walkBottomUp().filter { it.isFile }.forEach { f ->
+                        val name = f.name.lowercase()
+                        val pName = f.parentFile?.name?.lowercase() ?: ""
+                        if (!name.contains("binlog") && !name.contains("sqlite") && !pName.contains("db")) {
+                            total += f.length()
+                        }
+                    }
+                }
             }
+
+            val stats = try { TelegramClient.sendRequest(TdApi.GetStorageStatisticsFast()) as? TdApi.StorageStatisticsFast } catch (e: Exception) { null }
+            val tdlibReported = stats?.filesSize ?: 0L
+            if (tdlibReported > total) tdlibReported else total
         } catch (e: Exception) {
-            val dir1 = File(context.filesDir, "tdlib_files")
-            val dir2 = File(context.filesDir, "tdlib")
-            val size1 = if (dir1.exists()) dir1.walkBottomUp().filter { it.isFile }.sumOf { it.length() } else 0L
-            val size2 = if (dir2.exists()) dir2.walkBottomUp().filter { it.isFile }.sumOf { it.length() } else 0L
-            size1 + size2
+            0L
         }
     }
 
     fun clearCache(context: Context) {
-        TelegramClient.optimizeStorage()
-        
-        // Also try to manually wipe just in case
         try {
-            File(context.filesDir, "tdlib_files").listFiles()?.forEach { it.deleteRecursively() }
-        } catch (e: Exception) {}
+            TelegramClient.optimizeStorage()
+        } catch (_: Exception) {}
+        
+        try {
+            clearFolder(context.cacheDir, preserveDb = false)
+            clearFolder(context.externalCacheDir, preserveDb = false)
+            clearFolder(File(context.filesDir, "tdlib_files"), preserveDb = true)
+            clearFolder(File(context.filesDir, "tdlib"), preserveDb = true)
+        } catch (_: Exception) {}
     }
 
     suspend fun getChatId(identifier: String): Long? {

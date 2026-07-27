@@ -257,7 +257,7 @@ class MainActivity : AppCompatActivity() {
         rootView.addView(tabScroll)
 
         // Media Grid
-        mediaAdapter = MediaAdapter(mediaList) { item ->
+        mediaAdapter = MediaAdapter(mediaList, { item ->
             saveToHistory(item)
             when (item.type) {
                 "channel" -> loadTelegramChannelMedia(item.id, item.title)
@@ -274,7 +274,9 @@ class MainActivity : AppCompatActivity() {
                 "series" -> fetchSeriesEpisodes(item)
                 else -> showStreamOptions(item.title)
             }
-        }
+        }, { item ->
+            handleItemLongPress(item)
+        })
 
         val gridLayoutManager = GridLayoutManager(this, 2).apply {
             spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
@@ -1143,6 +1145,72 @@ class MainActivity : AppCompatActivity() {
             android.util.Log.e("MainActivity", "Error loading watch history: ${e.message}")
         }
         return list
+    }
+
+    private fun handleItemLongPress(item: MediaItem): Boolean {
+        if (item.type == "channel" || item.id == "watch_history" || item.id == "settings") return false
+        
+        val isHistoryTab = selectedCategory == "history/list"
+        val options = if (isHistoryTab) {
+            arrayOf("🗑️ Delete from Watch History", "🧹 Clear Entire Watch History", "Cancel")
+        } else {
+            arrayOf("🗑️ Remove from Watch History & Reset Resume Progress", "Cancel")
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Select: ${item.title}")
+            .setItems(options) { _, which ->
+                when {
+                    which == 0 -> {
+                        val currentList = loadWatchHistory().toMutableList()
+                        currentList.removeAll { it.id == item.id || it.title == item.title }
+                        val jsonArray = JSONArray()
+                        for (m in currentList) {
+                            val obj = JSONObject().apply {
+                                put("id", m.id)
+                                put("title", m.title)
+                                put("posterUrl", m.posterUrl)
+                                put("year", m.year)
+                                put("rating", m.rating)
+                                put("overview", m.overview)
+                                put("type", m.type)
+                                put("streamUrl", m.streamUrl)
+                            }
+                            jsonArray.put(obj)
+                        }
+                        getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE)
+                            .edit().putString("history_items", jsonArray.toString()).apply()
+
+                        getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
+                            .edit().remove("resume_${item.title}").apply()
+
+                        if (isHistoryTab) {
+                            mediaList.removeAll { it.id == item.id || it.title == item.title }
+                            mediaAdapter?.notifyDataSetChanged()
+                            if (mediaList.isEmpty()) {
+                                categoryLabel.text = selectedLabel
+                                categoryLabel.isClickable = false
+                                loadingText.text = "Watch history is empty. Movies and series you open will be automatically saved here!"
+                                loadingText.visibility = android.view.View.VISIBLE
+                            }
+                        }
+                        Toast.makeText(this, "Removed from Watch History", Toast.LENGTH_SHORT).show()
+                    }
+                    isHistoryTab && which == 1 -> {
+                        getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE).edit().clear().apply()
+                        getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE).edit().clear().apply()
+                        mediaList.clear()
+                        mediaAdapter?.notifyDataSetChanged()
+                        categoryLabel.text = selectedLabel
+                        categoryLabel.isClickable = false
+                        loadingText.text = "Watch history is empty. Movies and series you open will be automatically saved here!"
+                        loadingText.visibility = android.view.View.VISIBLE
+                        Toast.makeText(this, "Watch history deleted", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .show()
+        return true
     }
 
     override fun onBackPressed() {

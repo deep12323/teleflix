@@ -17,7 +17,8 @@ import android.view.View
 
 class MediaAdapter(
     private val items: List<MediaItem>,
-    private val onClick: (MediaItem) -> Unit
+    private val onClick: (MediaItem) -> Unit,
+    private val onLongClick: ((MediaItem) -> Boolean)? = null
 ) : RecyclerView.Adapter<MediaAdapter.ViewHolder>() {
 
     companion object {
@@ -282,6 +283,9 @@ class MediaAdapter(
         }
 
         holder.layout.setOnClickListener { onClick(item) }
+        holder.layout.setOnLongClickListener {
+            onLongClick?.invoke(item) ?: false
+        }
     }
 
     override fun getItemCount(): Int = items.size
