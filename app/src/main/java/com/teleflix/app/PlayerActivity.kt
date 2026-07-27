@@ -127,10 +127,15 @@ class PlayerActivity : AppCompatActivity() {
             return
         }
 
+        val resumeMs = intent.getLongExtra("RESUME_MS", 0L)
+
         player = ExoPlayer.Builder(this).build().also { exo ->
             playerView.player = exo
             val mediaItem = MediaItem.fromUri(Uri.parse(videoUrl))
             exo.setMediaItem(mediaItem)
+            if (resumeMs > 0L) {
+                exo.seekTo(resumeMs)
+            }
             exo.prepare()
             exo.playWhenReady = true
 
@@ -210,7 +215,32 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    private fun savePlaybackProgress() {
+        val exo = player ?: return
+        val pos = exo.currentPosition
+        val duration = exo.duration
+        val prefs = getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE).edit()
+        if (duration > 0 && pos > 10_000L && pos < duration * 0.95) {
+            prefs.putLong("resume_$videoTitle", pos).apply()
+        } else if (duration > 0 && pos >= duration * 0.95) {
+            prefs.remove("resume_$videoTitle").apply()
+        } else if (duration <= 0 && pos > 10_000L) {
+            prefs.putLong("resume_$videoTitle", pos).apply()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        savePlaybackProgress()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        savePlaybackProgress()
+    }
+
     override fun onDestroy() {
+        savePlaybackProgress()
         super.onDestroy()
         player?.release()
         player = null

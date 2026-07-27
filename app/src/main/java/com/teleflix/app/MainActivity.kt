@@ -564,21 +564,138 @@ class MainActivity : AppCompatActivity() {
                     return@withContext
                 }
 
-                val streamTitles = streams.map { "${it.fileName}\nQuality: ${it.quality} (${it.size})" }.toTypedArray()
+                val scrollView = android.widget.ScrollView(this@MainActivity).apply {
+                    setBackgroundColor(android.graphics.Color.parseColor("#090A0F"))
+                }
+                val cardList = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(24, 24, 24, 24)
+                }
 
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle("$displayTitle — Select Stream")
-                    .setItems(streamTitles) { _, which ->
-                        val selectedStream = streams[which]
-                        showPlayerActionDialog(selectedStream.url, displayTitle)
+                val headerText = TextView(this@MainActivity).apply {
+                    text = "Streams Found for $displayTitle (${streams.size})"
+                    textSize = 16f
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                    setTextColor(android.graphics.Color.parseColor("#E2E8F0"))
+                    setPadding(8, 8, 8, 24)
+                }
+                cardList.addView(headerText)
+
+                val streamDialog = AlertDialog.Builder(this@MainActivity)
+                    .setView(scrollView)
+                    .setNegativeButton("Close", null)
+                    .create()
+
+                for (stream in streams) {
+                    val card = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setBackgroundColor(android.graphics.Color.parseColor("#1E293B"))
+                        setPadding(32, 28, 32, 28)
+                        val lp = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { setMargins(0, 0, 0, 20) }
+                        layoutParams = lp
+                        isClickable = true
+                        isFocusable = true
+                        setOnClickListener {
+                            streamDialog.dismiss()
+                            checkResumeAndSelectPlayer(stream.url, displayTitle)
+                        }
                     }
-                    .setNegativeButton("Cancel", null)
-                    .show()
+
+                    val titleText = TextView(this@MainActivity).apply {
+                        text = stream.fileName
+                        textSize = 14f
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        setTextColor(android.graphics.Color.WHITE)
+                        setPadding(0, 0, 0, 12)
+                    }
+                    card.addView(titleText)
+
+                    val infoRow = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                    }
+
+                    val qualityBadge = TextView(this@MainActivity).apply {
+                        text = "🎬 ${stream.quality}"
+                        textSize = 12f
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        setTextColor(android.graphics.Color.parseColor("#10B981"))
+                        val badgeLp = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { setMargins(0, 0, 24, 0) }
+                        layoutParams = badgeLp
+                    }
+                    infoRow.addView(qualityBadge)
+
+                    val sizeBadge = TextView(this@MainActivity).apply {
+                        text = "💾 ${stream.size}"
+                        textSize = 12f
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        setTextColor(android.graphics.Color.parseColor("#38BDF8"))
+                    }
+                    infoRow.addView(sizeBadge)
+
+                    val spacer = View(this@MainActivity).apply {
+                        layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+                    }
+                    infoRow.addView(spacer)
+
+                    val playAction = TextView(this@MainActivity).apply {
+                        text = "▶ PLAY"
+                        textSize = 13f
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        setTextColor(android.graphics.Color.parseColor("#E50914"))
+                    }
+                    infoRow.addView(playAction)
+
+                    card.addView(infoRow)
+                    cardList.addView(card)
+                }
+
+                scrollView.addView(cardList)
+                streamDialog.show()
             }
         }
     }
 
-    private fun showPlayerActionDialog(streamUrl: String, title: String) {
+    private fun checkResumeAndSelectPlayer(streamUrl: String, title: String) {
+        val prefs = getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
+        val savedPositionMs = prefs.getLong("resume_$title", 0L)
+
+        if (savedPositionMs > 10_000L) {
+            val formattedTime = formatMillisToTime(savedPositionMs)
+            AlertDialog.Builder(this)
+                .setTitle("Resume Playback")
+                .setMessage("You previously watched '$title' up to $formattedTime.\n\nDo you want to resume where you left off or start from the beginning?")
+                .setPositiveButton("▶ Resume ($formattedTime)") { _, _ ->
+                    showPlayerActionDialog(streamUrl, title, savedPositionMs)
+                }
+                .setNegativeButton("🔄 Start Over") { _, _ ->
+                    showPlayerActionDialog(streamUrl, title, 0L)
+                }
+                .setNeutralButton("Cancel", null)
+                .show()
+        } else {
+            showPlayerActionDialog(streamUrl, title, 0L)
+        }
+    }
+
+    private fun formatMillisToTime(millis: Long): String {
+        val totalSeconds = millis / 1000
+        val seconds = totalSeconds % 60
+        val minutes = (totalSeconds / 60) % 60
+        val hours = totalSeconds / 3600
+        return if (hours > 0) {
+            String.format("%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format("%02d:%02d", minutes, seconds)
+        }
+    }
+
+    private fun showPlayerActionDialog(streamUrl: String, title: String, resumeMs: Long = 0L) {
         val options = arrayOf(
             "🎬 Play in Internal Player (ExoPlayer)",
             "📱 Choose External Video Player (All Installed Players)...",
@@ -593,12 +710,18 @@ class MainActivity : AppCompatActivity() {
                         val intent = Intent(this, PlayerActivity::class.java).apply {
                             putExtra("VIDEO_URL", streamUrl)
                             putExtra("VIDEO_TITLE", title)
+                            putExtra("RESUME_MS", resumeMs)
                         }
                         startActivity(intent)
                     }
                     1 -> {
                         val externalIntent = Intent(Intent.ACTION_VIEW).apply {
                             setDataAndType(Uri.parse(streamUrl), "video/*")
+                            if (resumeMs > 0) {
+                                putExtra("position", resumeMs.toInt())
+                                putExtra("extra_position", resumeMs)
+                                putExtra("from_start", false)
+                            }
                         }
                         val chooser = Intent.createChooser(externalIntent, "Select Video Player")
                         try {
@@ -611,6 +734,11 @@ class MainActivity : AppCompatActivity() {
                         val vlcIntent = Intent(Intent.ACTION_VIEW).apply {
                             setDataAndType(Uri.parse(streamUrl), "video/*")
                             setPackage("org.videolan.vlc")
+                            if (resumeMs > 0) {
+                                putExtra("position", resumeMs.toInt())
+                                putExtra("extra_position", resumeMs)
+                                putExtra("from_start", false)
+                            }
                         }
                         try { startActivity(vlcIntent) } catch (e: Exception) {
                             Toast.makeText(this, "VLC Player not installed", Toast.LENGTH_SHORT).show()
@@ -620,6 +748,10 @@ class MainActivity : AppCompatActivity() {
                         val mpvIntent = Intent(Intent.ACTION_VIEW).apply {
                             setDataAndType(Uri.parse(streamUrl), "video/*")
                             setPackage("is.xyz.mpv")
+                            if (resumeMs > 0) {
+                                putExtra("position", resumeMs.toInt())
+                                putExtra("extra_position", resumeMs)
+                            }
                         }
                         try { startActivity(mpvIntent) } catch (e: Exception) {
                             Toast.makeText(this, "MPV Player not installed", Toast.LENGTH_SHORT).show()
