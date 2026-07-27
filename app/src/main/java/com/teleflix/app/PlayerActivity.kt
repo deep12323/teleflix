@@ -45,6 +45,7 @@ class PlayerActivity : AppCompatActivity() {
     private var streamUrl: String = ""
     private var videoTitle: String = ""
     private var resumeMs: Long = 0L
+    private var currentScalingMode: Int = 0 // 0=Fit, 1=Zoom, 2=Stretched
 
     private val updateRunnable = object : Runnable {
         override fun run() {
@@ -120,17 +121,19 @@ class PlayerActivity : AppCompatActivity() {
         try {
             mpvView.initialize(filesDir.path, cacheDir.path)
             
-            // Critical Android Subtitle Rendering & Font Config
+            // Critical Android Subtitle Rendering & Cinematic Typography
             try {
                 mpvView.mpv.setPropertyString("sub-visibility", "yes")
                 mpvView.mpv.setPropertyString("sub-auto", "fuzzy")
                 mpvView.mpv.setPropertyString("sub-font", "sans-serif")
-                mpvView.mpv.setPropertyString("sub-font-size", "52")
+                mpvView.mpv.setPropertyString("sub-bold", "yes")
+                mpvView.mpv.setPropertyString("sub-font-size", "46")
                 mpvView.mpv.setPropertyString("sub-color", "#FFFFFFFF")
-                mpvView.mpv.setPropertyString("sub-border-color", "#FF000000")
-                mpvView.mpv.setPropertyString("sub-border-size", "3")
-                mpvView.mpv.setPropertyString("sub-shadow-color", "#80000000")
-                mpvView.mpv.setPropertyString("sub-shadow-offset", "2")
+                mpvView.mpv.setPropertyString("sub-border-color", "#E6000000")
+                mpvView.mpv.setPropertyString("sub-border-size", "2.8")
+                mpvView.mpv.setPropertyString("sub-shadow-color", "#B3000000")
+                mpvView.mpv.setPropertyString("sub-shadow-offset", "2.5")
+                mpvView.mpv.setPropertyString("sub-margin-y", "36")
                 mpvView.mpv.setPropertyString("sub-use-margins", "yes")
                 mpvView.mpv.setPropertyString("slang", "en,eng,english")
                 mpvView.mpv.setPropertyString("sid", "auto")
@@ -339,30 +342,41 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun showSubtitlesDialog() {
         try {
+            val currentSidStr = try { mpvView.mpv.getPropertyString("sid") } catch (_: Exception) { "no" } ?: "no"
+            val currentSid = currentSidStr.toIntOrNull() ?: -1
+
             val count = (mpvView.mpv.getPropertyInt("track-list/count") ?: 0).toInt()
             val subTracks = mutableListOf<Pair<Int, String>>()
+            var selectedIndex = if (currentSidStr == "no" || currentSid == -1) 0 else -1
+
             for (i in 0 until count) {
                 val type = mpvView.mpv.getPropertyString("track-list/$i/type")
                 if (type == "sub") {
                     val id = (mpvView.mpv.getPropertyInt("track-list/$i/id") ?: 0).toInt()
                     val lang = mpvView.mpv.getPropertyString("track-list/$i/lang") ?: ""
                     val title = mpvView.mpv.getPropertyString("track-list/$i/title") ?: ""
-                    val label = buildString {
-                        append("Subtitle #$id")
-                        if (lang.isNotBlank()) append(" [$lang]")
-                        if (title.isNotBlank() && title != lang) append(" - $title")
-                    }
+                    val codec = try { mpvView.mpv.getPropertyString("track-list/$i/codec") } catch (_: Exception) { null } ?: ""
+
+                    val isSelected = (currentSid == id)
+                    if (isSelected) selectedIndex = subTracks.size + 1
+
+                    val statusPrefix = if (isSelected) "🟢 [Active]" else "⚪"
+                    val cleanLang = if (lang.isNotBlank()) "[$lang]" else "[Sub]"
+                    val codecBadge = if (codec.isNotBlank()) " ($codec)" else ""
+                    val cleanTitle = if (title.isNotBlank() && title != lang) " - $title" else ""
+                    
+                    val label = "$statusPrefix $cleanLang Track #$id$codecBadge$cleanTitle"
                     subTracks.add(Pair(id, label))
                 }
             }
 
             val labels = mutableListOf<String>()
-            labels.add("❌ Disable Subtitles (Off)")
+            labels.add(if (selectedIndex == 0) "🟢 [Active] ❌ Disable Subtitles (Off)" else "⚪ ❌ Disable Subtitles (Off)")
             labels.addAll(subTracks.map { it.second })
 
             AlertDialog.Builder(this)
-                .setTitle("Select Subtitle Track")
-                .setItems(labels.toTypedArray()) { _, which ->
+                .setTitle("💬 Select Subtitle Track")
+                .setSingleChoiceItems(labels.toTypedArray(), selectedIndex.coerceAtLeast(0)) { dialog, which ->
                     if (which == 0) {
                         mpvView.mpv.setPropertyString("sub-visibility", "no")
                         mpvView.mpv.setPropertyString("sid", "no")
@@ -373,9 +387,11 @@ class PlayerActivity : AppCompatActivity() {
                         try { mpvView.mpv.setPropertyInt("sid", selectedId) } catch (_: Exception) {
                             mpvView.mpv.setPropertyString("sid", selectedId.toString())
                         }
-                        Toast.makeText(this, "Selected: ${subTracks[which - 1].second}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Subtitles Enabled: ${subTracks[which - 1].second.replace("🟢 [Active] ", "").replace("⚪ ", "")}", Toast.LENGTH_SHORT).show()
                     }
+                    dialog.dismiss()
                 }
+                .setNegativeButton("Close", null)
                 .show()
         } catch (e: Exception) {
             Toast.makeText(this, "Could not load subtitles: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -384,19 +400,32 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun showAudioDialog() {
         try {
+            val currentAidStr = try { mpvView.mpv.getPropertyString("aid") } catch (_: Exception) { "" } ?: ""
+            val currentAid = currentAidStr.toIntOrNull() ?: -1
+
             val count = (mpvView.mpv.getPropertyInt("track-list/count") ?: 0).toInt()
             val audioTracks = mutableListOf<Pair<Int, String>>()
+            var selectedIndex = 0
+
             for (i in 0 until count) {
                 val type = mpvView.mpv.getPropertyString("track-list/$i/type")
                 if (type == "audio") {
                     val id = (mpvView.mpv.getPropertyInt("track-list/$i/id") ?: 0).toInt()
                     val lang = mpvView.mpv.getPropertyString("track-list/$i/lang") ?: ""
                     val title = mpvView.mpv.getPropertyString("track-list/$i/title") ?: ""
-                    val label = buildString {
-                        append("Audio #$id")
-                        if (lang.isNotBlank()) append(" [$lang]")
-                        if (title.isNotBlank() && title != lang) append(" - $title")
-                    }
+                    val codec = try { mpvView.mpv.getPropertyString("track-list/$i/codec") } catch (_: Exception) { null } ?: ""
+                    val channels = try { mpvView.mpv.getPropertyInt("track-list/$i/audio-channels") } catch (_: Exception) { null } ?: 0
+
+                    val isSelected = (currentAid == id)
+                    if (isSelected) selectedIndex = audioTracks.size
+
+                    val statusPrefix = if (isSelected) "🟢 [Active]" else "⚪"
+                    val cleanLang = if (lang.isNotBlank()) "[$lang]" else "[Audio]"
+                    val codecBadge = if (codec.isNotBlank()) " ($codec)" else ""
+                    val chanBadge = if (channels > 2) " [${channels}ch Surround]" else if (channels > 0) " [${channels}ch]" else ""
+                    val cleanTitle = if (title.isNotBlank() && title != lang) " - $title" else ""
+                    
+                    val label = "$statusPrefix $cleanLang Track #$id$chanBadge$codecBadge$cleanTitle"
                     audioTracks.add(Pair(id, label))
                 }
             }
@@ -408,12 +437,16 @@ class PlayerActivity : AppCompatActivity() {
 
             val labels = audioTracks.map { it.second }.toTypedArray()
             AlertDialog.Builder(this)
-                .setTitle("Select Audio Track")
-                .setItems(labels) { _, which ->
+                .setTitle("🔊 Select Audio Track")
+                .setSingleChoiceItems(labels, selectedIndex.coerceIn(0, audioTracks.size - 1)) { dialog, which ->
                     val selectedId = audioTracks[which].first
-                    mpvView.mpv.setPropertyInt("aid", selectedId)
-                    Toast.makeText(this, "Selected: ${audioTracks[which].second}", Toast.LENGTH_SHORT).show()
+                    try { mpvView.mpv.setPropertyInt("aid", selectedId) } catch (_: Exception) {
+                        mpvView.mpv.setPropertyString("aid", selectedId.toString())
+                    }
+                    Toast.makeText(this, "Audio Changed: ${audioTracks[which].second.replace("🟢 [Active] ", "").replace("⚪ ", "")}", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
                 }
+                .setNegativeButton("Close", null)
                 .show()
         } catch (e: Exception) {
             Toast.makeText(this, "Could not load audio tracks: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -422,41 +455,46 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun showAspectRatioDialog(button: TextView) {
         val options = arrayOf(
-            "Fit (Proportional Default)",
-            "Zoom (Crop & Fill Screen)",
-            "Stretched (Stretch to Screen Dimensions)"
+            if (currentScalingMode == 0) "🟢 [Active] 🖼️ Fit (Original Proportional Default)" else "⚪ 🖼️ Fit (Original Proportional Default)",
+            if (currentScalingMode == 1) "🟢 [Active] 🔍 Zoom (Crop & Fill Entire Screen)" else "⚪ 🔍 Zoom (Crop & Fill Entire Screen)",
+            if (currentScalingMode == 2) "🟢 [Active] ↔️ Stretched (Stretch Video to Screen Edges)" else "⚪ ↔️ Stretched (Stretch Video to Screen Edges)"
         )
         AlertDialog.Builder(this)
-            .setTitle("Select Aspect Ratio & Scaling")
-            .setItems(options) { _, which ->
+            .setTitle("📐 Aspect Ratio & Scaling")
+            .setSingleChoiceItems(options, currentScalingMode.coerceIn(0, 2)) { dialog, which ->
                 try {
+                    currentScalingMode = which
                     when (which) {
                         0 -> {
                             mpvView.mpv.setPropertyDouble("panscan", 0.0)
                             mpvView.mpv.setPropertyString("video-aspect-override", "-1")
                             button.text = "🖼️ Fit"
-                            Toast.makeText(this, "Aspect Ratio: Fit (Proportional)", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "Scaling: Fit (Proportional)", Toast.LENGTH_SHORT).show()
                         }
                         1 -> {
                             mpvView.mpv.setPropertyDouble("panscan", 1.0)
                             mpvView.mpv.setPropertyString("video-aspect-override", "-1")
-                            button.text = "🖼️ Zoom"
-                            Toast.makeText(this, "Aspect Ratio: Zoomed (Fill Screen)", Toast.LENGTH_SHORT).show()
+                            button.text = "🔍 Zoom"
+                            Toast.makeText(this, "Scaling: Zoom (Fill Screen)", Toast.LENGTH_SHORT).show()
                         }
                         2 -> {
                             mpvView.mpv.setPropertyDouble("panscan", 0.0)
                             val w = mpvView.width.toDouble()
                             val h = mpvView.height.toDouble()
-                            val ratio = if (h > 0) w / h else 1.7778
-                            mpvView.mpv.setPropertyDouble("video-aspect-override", ratio)
-                            button.text = "🖼️ Stretched"
-                            Toast.makeText(this, "Aspect Ratio: Stretched to Screen", Toast.LENGTH_SHORT).show()
+                            val ratio = if (h > 0 && w > 0) w / h else 1.7778
+                            try { mpvView.mpv.setPropertyDouble("video-aspect-override", ratio) } catch (_: Exception) {
+                                mpvView.mpv.setPropertyString("video-aspect-override", ratio.toString())
+                            }
+                            button.text = "↔️ Stretch"
+                            Toast.makeText(this, "Scaling: Stretched to Screen", Toast.LENGTH_SHORT).show()
                         }
                     }
                 } catch (e: Exception) {
                     Toast.makeText(this, "Failed to update scaling: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
+                dialog.dismiss()
             }
+            .setNegativeButton("Close", null)
             .show()
     }
 
