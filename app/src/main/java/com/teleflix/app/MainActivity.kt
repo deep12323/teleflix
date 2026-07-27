@@ -238,6 +238,7 @@ class MainActivity : AppCompatActivity() {
                     selectedCategory = catalogId
                     selectedLabel = label
                     categoryLabel.text = label
+                    categoryLabel.isClickable = false
                     loadInitialCinemeta(catalogId, label)
                     for (i in 0 until tabRow.childCount) {
                         val child = tabRow.getChildAt(i) as Button
@@ -345,10 +346,32 @@ class MainActivity : AppCompatActivity() {
             mediaList.addAll(history)
             mediaAdapter?.notifyDataSetChanged()
             if (history.isEmpty()) {
+                categoryLabel.text = label
+                categoryLabel.isClickable = false
                 loadingText.text = "Watch history is empty. Movies and series you open will be automatically saved here!"
                 loadingText.visibility = android.view.View.VISIBLE
             } else {
                 loadingText.visibility = android.view.View.GONE
+                categoryLabel.text = "$label  •  [ 🗑️ Clear History ]"
+                categoryLabel.isClickable = true
+                categoryLabel.setOnClickListener {
+                    AlertDialog.Builder(this)
+                        .setTitle("Clear Watch History?")
+                        .setMessage("Are you sure you want to permanently delete your entire Watch History and saved playback positions?")
+                        .setPositiveButton("🗑️ Clear All") { _, _ ->
+                            getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE).edit().clear().apply()
+                            getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE).edit().clear().apply()
+                            mediaList.clear()
+                            mediaAdapter?.notifyDataSetChanged()
+                            categoryLabel.text = label
+                            categoryLabel.isClickable = false
+                            loadingText.text = "Watch history is empty. Movies and series you open will be automatically saved here!"
+                            loadingText.visibility = android.view.View.VISIBLE
+                            Toast.makeText(this, "Watch history deleted", Toast.LENGTH_SHORT).show()
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
             }
             return
         }

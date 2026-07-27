@@ -315,6 +315,25 @@ class SettingsActivity : AppCompatActivity() {
         }
         storageBox.addView(clearCacheBtn)
 
+        val clearHistoryBtn = Button(this).apply {
+            text = "Clear All Watch History & Resume Points"
+            setBackgroundColor(Color.parseColor("#B91C1C"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                AlertDialog.Builder(this@SettingsActivity)
+                    .setTitle("Clear Watch History & Resume Points?")
+                    .setMessage("This will permanently remove all saved movies, series, Telegram videos from Watch History, and clear saved video playback positions.")
+                    .setPositiveButton("Clear All") { _, _ ->
+                        getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE).edit().clear().apply()
+                        getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE).edit().clear().apply()
+                        Toast.makeText(this@SettingsActivity, "Watch History & Resume Points Cleared!", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }
+        storageBox.addView(clearHistoryBtn)
+
         root.addView(storageBox)
 
         setContentView(scrollView)
