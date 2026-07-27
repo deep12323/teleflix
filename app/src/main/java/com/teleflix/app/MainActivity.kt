@@ -302,7 +302,7 @@ class MainActivity : AppCompatActivity() {
                 super.onScrolled(recyclerView, dx, dy)
                 if (dy <= 0) return // Only check on downward scroll
 
-                if (!isLoadingMore && hasMoreItems && !isInSearchMode) {
+                if (!isLoadingMore && hasMoreItems && !isInSearchMode && !isTelegramCatalogMode) {
                     val totalItemCount = gridLayoutManager.itemCount
                     val lastVisibleItemPosition = gridLayoutManager.findLastVisibleItemPosition()
 
@@ -545,6 +545,8 @@ class MainActivity : AppCompatActivity() {
     private fun loadTelegramChannelsCatalog() {
         isInSearchMode = false
         currentOpenChannelId = null
+        hasMoreItems = false
+        isLoadingMore = false
         mediaList.clear()
         mediaAdapter?.notifyDataSetChanged()
         loadingText.visibility = android.view.View.VISIBLE
@@ -586,6 +588,8 @@ class MainActivity : AppCompatActivity() {
     private fun loadTelegramChannelMedia(channelUsername: String, title: String) {
         isInSearchMode = false
         currentOpenChannelId = channelUsername
+        hasMoreItems = false
+        isLoadingMore = false
         mediaList.clear()
         mediaAdapter?.notifyDataSetChanged()
         loadingText.visibility = android.view.View.VISIBLE
