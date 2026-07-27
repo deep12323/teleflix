@@ -39,13 +39,23 @@ class TelegramService : Service() {
 
         fun stop(context: Context) {
             try {
-                val intent = Intent(context, TelegramService::class.java).apply {
+                val prefs = context.getSharedPreferences("TeleflixConfig", Context.MODE_PRIVATE)
+                prefs.edit().putBoolean("pref_run_in_background", false).apply()
+
+                val stopIntent = Intent(context, TelegramService::class.java).apply {
                     action = "ACTION_STOP_SERVICE"
                 }
                 try {
-                    context.startService(intent)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(stopIntent)
+                    } else {
+                        context.startService(stopIntent)
+                    }
                 } catch (_: Exception) {}
-                context.stopService(intent)
+                
+                try {
+                    context.stopService(Intent(context, TelegramService::class.java))
+                } catch (_: Exception) {}
 
                 val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
                 manager?.cancel(NOTIFICATION_ID)
@@ -59,24 +69,39 @@ class TelegramService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        val prefs = getSharedPreferences("TeleflixConfig", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("pref_run_in_background", true)) {
+            Log.d(TAG, "onCreate: run in background disabled, terminating immediately")
+            stopSelf()
+            return
+        }
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("TDLib streaming & search engine active in background"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "ACTION_STOP_SERVICE") {
-            Log.d(TAG, "Stop button clicked from notification")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-            } else {
-                @Suppress("DEPRECATION")
-                stopForeground(true)
+        val prefs = getSharedPreferences("TeleflixConfig", Context.MODE_PRIVATE)
+        val isEnabled = prefs.getBoolean("pref_run_in_background", true)
+
+        if (!isEnabled || intent?.action == "ACTION_STOP_SERVICE") {
+            Log.d(TAG, "Stopping service: enabled=$isEnabled, action=${intent?.action}")
+            if (intent?.action == "ACTION_STOP_SERVICE") {
+                prefs.edit().putBoolean("pref_run_in_background", false).apply()
             }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
-            manager?.cancel(NOTIFICATION_ID)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+                val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+                manager?.cancel(NOTIFICATION_ID)
+            } catch (_: Exception) {}
             stopSelf()
             return START_NOT_STICKY
         }
+
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("TDLib streaming & search engine active in background"))
         // Ensure TDLib and local streaming proxy remain awake and ready
@@ -85,7 +110,7 @@ class TelegramService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing repository in service: ${e.message}")
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? {
