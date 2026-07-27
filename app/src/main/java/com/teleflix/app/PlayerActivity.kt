@@ -46,6 +46,7 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
 
         videoUrl = intent.getStringExtra("VIDEO_URL") ?: ""
         videoTitle = intent.getStringExtra("VIDEO_TITLE") ?: "Video Stream"

@@ -199,11 +199,7 @@ object TelegramStreamingProxy {
     private suspend fun streamFile(fileId: Int, fileName: String?, rangeHeader: String?, output: java.io.OutputStream, urlSize: Long) {
         val currentJob = kotlin.coroutines.coroutineContext[Job]
         if (currentJob != null) {
-            val previousJob = activeFileJobs.put(fileId, currentJob)
-            if (previousJob != null && previousJob !== currentJob && previousJob.isActive) {
-                Log.d(TAG, "Cancelling previous stream job for fileId=$fileId due to new range request: $rangeHeader")
-                previousJob.cancel()
-            }
+            activeFileJobs.put(fileId, currentJob)
         }
 
         try {
