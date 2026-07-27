@@ -268,7 +268,7 @@ class MainActivity : AppCompatActivity() {
                     val chatId = parts.getOrNull(0)?.toLongOrNull()
                     val messageId = parts.getOrNull(1)?.toLongOrNull()
 
-                    if (chatId != null && messageId != null && (streamInfo == null || currentTab == TAB_HISTORY)) {
+                    if (chatId != null && messageId != null && streamInfo == null) {
                         Toast.makeText(this@MainActivity, "🔄 Reconnecting Telegram stream...", Toast.LENGTH_SHORT).show()
                         CoroutineScope(Dispatchers.Main).launch {
                             val freshUrl = TelegramRepository.getFreshMediaUrl(chatId, messageId)
