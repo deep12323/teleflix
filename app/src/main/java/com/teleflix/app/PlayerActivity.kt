@@ -7,6 +7,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.AttributeSet
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -15,12 +16,23 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import io.github.abdallahmehiz.mpv.MPVLib
-import io.github.abdallahmehiz.mpv.MPVView
+import `is`.xyz.mpv.BaseMPVView
+import `is`.xyz.mpv.MPV
+
+class TeleflixMpvView(context: Context, attrs: AttributeSet? = null) : BaseMPVView(context, attrs) {
+    override fun initOptions() {
+        try {
+            mpv.setPropertyString("vo", "gpu")
+            mpv.setPropertyString("hwdec", "auto")
+        } catch (_: Exception) {}
+    }
+    override fun postInitOptions() {}
+    override fun observeProperties() {}
+}
 
 class PlayerActivity : AppCompatActivity() {
 
-    private lateinit var mpvView: MPVView
+    private lateinit var mpvView: TeleflixMpvView
     private lateinit var controlsOverlay: FrameLayout
     private lateinit var playPauseButton: TextView
     private lateinit var currentTimeText: TextView
@@ -37,9 +49,9 @@ class PlayerActivity : AppCompatActivity() {
     private val updateRunnable = object : Runnable {
         override fun run() {
             try {
-                val currentSec = (MPVLib.getPropertyDouble("time-pos") ?: 0.0).toDouble()
-                val totalSec = (MPVLib.getPropertyDouble("duration") ?: 0.0).toDouble()
-                val isPaused = (MPVLib.getPropertyBoolean("pause") ?: false)
+                val currentSec = (mpvView.mpv.getPropertyDouble("time-pos") ?: 0.0).toDouble()
+                val totalSec = (mpvView.mpv.getPropertyDouble("duration") ?: 0.0).toDouble()
+                val isPaused = (mpvView.mpv.getPropertyBoolean("pause") ?: false)
                 playPauseButton.text = if (isPaused) "▶️" else "⏸️"
 
                 if (totalSec > 0.0) {
@@ -80,16 +92,6 @@ class PlayerActivity : AppCompatActivity() {
             return
         }
 
-        // Initialize MPV native engine
-        try {
-            MPVLib.create(applicationContext)
-            MPVLib.init()
-            MPVLib.setPropertyString("vo", "gpu")
-            MPVLib.setPropertyString("hwdec", "auto")
-        } catch (e: Exception) {
-            Log.e("PlayerActivity", "MPVLib initialization failed: ${e.message}")
-        }
-
         // Root container
         val rootLayout = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
@@ -100,7 +102,7 @@ class PlayerActivity : AppCompatActivity() {
         }
 
         // MPV Video Surface View
-        mpvView = MPVView(this).apply {
+        mpvView = TeleflixMpvView(this, null).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -114,12 +116,13 @@ class PlayerActivity : AppCompatActivity() {
         rootLayout.addView(controlsOverlay)
         setContentView(rootLayout)
 
-        // Start playback
+        // Initialize engine and start playback
         try {
+            mpvView.initialize(filesDir.path, cacheDir.path)
             if (resumeMs > 0) {
-                MPVLib.setPropertyDouble("start", resumeMs / 1000.0)
+                mpvView.mpv.setPropertyDouble("start", resumeMs / 1000.0)
             }
-            MPVLib.command(arrayOf("loadfile", streamUrl))
+            mpvView.playFile(streamUrl)
             handler.post(updateRunnable)
             scheduleHideControls()
         } catch (e: Exception) {
@@ -188,7 +191,7 @@ class PlayerActivity : AppCompatActivity() {
             setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6))
             setOnClickListener {
                 try {
-                    MPVLib.command(arrayOf("cycle", "sub"))
+                    mpvView.mpv.command("cycle", "sub")
                     Toast.makeText(context, "Cycled Subtitle Track", Toast.LENGTH_SHORT).show()
                 } catch (_: Exception) {}
             }
@@ -210,7 +213,7 @@ class PlayerActivity : AppCompatActivity() {
             }
             setOnClickListener {
                 try {
-                    MPVLib.command(arrayOf("cycle", "audio"))
+                    mpvView.mpv.command("cycle", "audio")
                     Toast.makeText(context, "Cycled Audio Track", Toast.LENGTH_SHORT).show()
                 } catch (_: Exception) {}
             }
@@ -235,8 +238,8 @@ class PlayerActivity : AppCompatActivity() {
             layoutParams = FrameLayout.LayoutParams(dpToPx(80), dpToPx(80), Gravity.CENTER)
             setOnClickListener {
                 try {
-                    val isPaused = (MPVLib.getPropertyBoolean("pause") ?: false)
-                    MPVLib.setPropertyBoolean("pause", !isPaused)
+                    val isPaused = (mpvView.mpv.getPropertyBoolean("pause") ?: false)
+                    mpvView.mpv.setPropertyBoolean("pause", !isPaused)
                     text = if (!isPaused) "▶️" else "⏸️"
                     scheduleHideControls()
                 } catch (_: Exception) {}
@@ -275,10 +278,10 @@ class PlayerActivity : AppCompatActivity() {
                 }
                 override fun onStopTrackingTouch(seekBar: SeekBar?) {
                     try {
-                        val totalSec = (MPVLib.getPropertyDouble("duration") ?: 0.0).toDouble()
+                        val totalSec = (mpvView.mpv.getPropertyDouble("duration") ?: 0.0).toDouble()
                         if (totalSec > 0.0 && seekBar != null) {
                             val targetSec = (seekBar.progress / 1000.0) * totalSec
-                            MPVLib.setPropertyDouble("time-pos", targetSec)
+                            mpvView.mpv.setPropertyDouble("time-pos", targetSec)
                         }
                     } catch (_: Exception) {}
                     isUserSeeking = false
@@ -364,8 +367,7 @@ class PlayerActivity : AppCompatActivity() {
         super.onDestroy()
         handler.removeCallbacksAndMessages(null)
         try {
-            MPVLib.command(arrayOf("stop"))
-            MPVLib.destroy()
+            mpvView.destroy()
         } catch (_: Exception) {}
     }
 }
