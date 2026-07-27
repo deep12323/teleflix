@@ -493,6 +493,79 @@ class SettingsActivity : AppCompatActivity() {
         storageBox.addView(clearHistoryBtn)
         storageSectionContainer.addView(storageBox)
 
+        // --- Diagnostic & Streaming Logs Section ---
+        val logsSectionContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 24, 0, 0)
+        }
+
+        val logsHeader = TextView(this).apply {
+            text = "📋 Diagnostic & Streaming Logs"
+            textSize = 18f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor(Color.parseColor("#38BDF8"))
+            setPadding(0, 0, 0, 12)
+        }
+        logsSectionContainer.addView(logsHeader)
+
+        val logsBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 20, 20, 20)
+            val bg = GradientDrawable().apply {
+                setColor(Color.parseColor("#1E293B"))
+                cornerRadius = 16f
+                setStroke(2, Color.parseColor("#334155"))
+            }
+            background = bg
+        }
+
+        val logsDesc = TextView(this).apply {
+            text = "Copy or view real-time streaming proxy, TDLib range requests, and video player logs to easily diagnose playback or buffering issues."
+            textSize = 13f
+            setTextColor(Color.parseColor("#9CA3AF"))
+            setPadding(0, 0, 0, 16)
+        }
+        logsBox.addView(logsDesc)
+
+        val copyLogsBtn = Button(this).apply {
+            text = "📋 Copy Diagnostic Logs to Clipboard"
+            setBackgroundColor(Color.parseColor("#2563EB"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                val copied = TeleflixLogger.copyLogsToClipboard(this@SettingsActivity)
+                if (copied) {
+                    Toast.makeText(this@SettingsActivity, "📋 Diagnostic logs copied to clipboard!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@SettingsActivity, "Failed to copy logs to clipboard", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        logsBox.addView(copyLogsBtn)
+
+        val viewLogsBtn = Button(this).apply {
+            text = "👁️ View Real-time Streaming Logs"
+            setBackgroundColor(Color.parseColor("#0D9488"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                showLogsViewerDialog()
+            }
+        }
+        logsBox.addView(viewLogsBtn)
+
+        val clearLogsBtn = Button(this).apply {
+            text = "🗑️ Clear Diagnostic Logs"
+            setBackgroundColor(Color.parseColor("#475569"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                TeleflixLogger.clearLogs()
+                Toast.makeText(this@SettingsActivity, "Diagnostic logs cleared", Toast.LENGTH_SHORT).show()
+            }
+        }
+        logsBox.addView(clearLogsBtn)
+
+        logsSectionContainer.addView(logsBox)
+        root.addView(logsSectionContainer)
+
         setContentView(scrollView)
 
         CoroutineScope(Dispatchers.IO).launch {
@@ -736,5 +809,29 @@ class SettingsActivity : AppCompatActivity() {
         if (requestCode == 101 && grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
             try { TelegramService.start(this) } catch (_: Exception) {}
         }
+    }
+
+    private fun showLogsViewerDialog() {
+        val logsText = TeleflixLogger.getFormattedLogs()
+        val scrollView = ScrollView(this)
+        val textView = TextView(this).apply {
+            text = logsText
+            textSize = 12f
+            setTypeface(android.graphics.Typeface.MONOSPACE)
+            setTextColor(Color.parseColor("#38BDF8"))
+            setPadding(24, 24, 24, 24)
+            setTextIsSelectable(true)
+        }
+        scrollView.addView(textView)
+
+        AlertDialog.Builder(this)
+            .setTitle("📋 Diagnostic & Streaming Logs")
+            .setView(scrollView)
+            .setPositiveButton("📋 Copy All") { _, _ ->
+                TeleflixLogger.copyLogsToClipboard(this)
+                Toast.makeText(this, "Copied logs to clipboard!", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 }

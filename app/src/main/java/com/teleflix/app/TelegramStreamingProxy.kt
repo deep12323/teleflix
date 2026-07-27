@@ -182,6 +182,8 @@ object TelegramStreamingProxy {
                 }
             }
 
+            TeleflixLogger.log(TAG, "HTTP $method $path | Range: ${rangeHeader ?: "full"}")
+
             if (isThumbnail) {
                 serveThumbnail(fileId, output, isHead)
             } else if (mergedFileIds != null && mergedSizes != null && mergedFileIds!!.size == mergedSizes!!.size) {
@@ -202,10 +204,6 @@ object TelegramStreamingProxy {
                     }
                     if (count <= 0) {
                         synchronized(activeStreams) { activeStreams.remove(fileId) }
-                        // No CancelDownloadFile here! Let the download continue.
-                        // The next streamFile() call will cancel it before starting
-                        // a new offset. This prevents the race condition where
-                        // cleanup cancel kills a newly-opened connection's download.
                         scope.launch {
                             delay(30_000)
                             if (!isCacheEnabled() && (activeStreams[fileId] ?: 0) <= 0) {
@@ -216,11 +214,11 @@ object TelegramStreamingProxy {
                 }
             }
         } catch (e: java.util.concurrent.CancellationException) {
-            Log.d(TAG, "Client stream cancelled")
+            TeleflixLogger.log(TAG, "Client stream cancelled")
         } catch (e: IOException) {
-            Log.d(TAG, "Client disconnected: ${e.message}")
+            TeleflixLogger.log(TAG, "Client disconnected: ${e.message}")
         } catch (e: Exception) {
-            Log.e(TAG, "Error handling client: ${e.message}", e)
+            TeleflixLogger.log(TAG, "Error handling client: ${e.message}", isError = true)
         } finally {
             try { socket.close() } catch (_: Exception) {}
         }
@@ -249,7 +247,7 @@ object TelegramStreamingProxy {
             val totalSize = exactSize ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
             val localPath = fileInfo?.first
             
-            Log.d(TAG, "Streaming fileId=$fileId totalSize=$totalSize range=$rangeHeader prefetchMb=$prefetchSizeMb isHead=$isHead")
+            TeleflixLogger.log(TAG, "Streaming fileId=$fileId totalSize=$totalSize range=${rangeHeader ?: "full"} prefetchMb=$prefetchSizeMb isHead=$isHead")
 
             if (totalSize <= 0L) {
                 output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
