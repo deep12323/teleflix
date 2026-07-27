@@ -20,6 +20,11 @@ class TelegramService : Service() {
 
         fun start(context: Context) {
             try {
+                val prefs = context.getSharedPreferences("TeleflixConfig", Context.MODE_PRIVATE)
+                if (!prefs.getBoolean("pref_run_in_background", true)) {
+                    Log.d(TAG, "TelegramService start ignored: disabled by user in settings")
+                    return
+                }
                 val intent = Intent(context, TelegramService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)

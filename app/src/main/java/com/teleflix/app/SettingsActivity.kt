@@ -329,7 +329,69 @@ class SettingsActivity : AppCompatActivity() {
         playerBox.addView(changePlayerBtn)
         playbackSectionContainer.addView(playerBox)
 
-        // 4. Storage, Cache & History Section (Collapsible)
+        // 4. Background Service Section (Collapsible)
+        val bgSectionContainer = createCollapsibleSection("⚡ Background Service & Execution")
+        val bgBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#161B28"))
+            setPadding(24, 24, 24, 24)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        val bgTitle = TextView(this).apply {
+            text = "Run in Background Option"
+            textSize = 16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+        }
+        bgBox.addView(bgTitle)
+
+        val bgDesc = TextView(this).apply {
+            text = "When enabled, Teleflix keeps a persistent background service running for faster media streaming & notifications. Turn this OFF if you want Teleflix to completely shut down when you exit the app."
+            textSize = 14f
+            setTextColor(Color.parseColor("#93C5FD"))
+            setPadding(0, 12, 0, 16)
+        }
+        bgBox.addView(bgDesc)
+
+        var isBackgroundEnabled = prefs.getBoolean("pref_run_in_background", true)
+        val bgStatusText = TextView(this).apply {
+            text = if (isBackgroundEnabled) "Status: Enabled (Active in background)" else "Status: Disabled (Stops when closed)"
+            textSize = 15f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(if (isBackgroundEnabled) Color.parseColor("#10B981") else Color.parseColor("#EF4444"))
+            setPadding(0, 0, 0, 16)
+        }
+        bgBox.addView(bgStatusText)
+
+        val bgToggleButton = Button(this).apply {
+            text = if (isBackgroundEnabled) "❌ TURN OFF RUN IN BACKGROUND" else "✅ TURN ON RUN IN BACKGROUND"
+            setBackgroundColor(if (isBackgroundEnabled) Color.parseColor("#DC2626") else Color.parseColor("#059669"))
+            setTextColor(Color.WHITE)
+            setPadding(24, 16, 24, 16)
+            setOnClickListener {
+                isBackgroundEnabled = !isBackgroundEnabled
+                prefs.edit().putBoolean("pref_run_in_background", isBackgroundEnabled).apply()
+                if (isBackgroundEnabled) {
+                    TelegramService.start(this@SettingsActivity)
+                    text = "❌ TURN OFF RUN IN BACKGROUND"
+                    setBackgroundColor(Color.parseColor("#DC2626"))
+                    bgStatusText.text = "Status: Enabled (Active in background)"
+                    bgStatusText.setTextColor(Color.parseColor("#10B981"))
+                    Toast.makeText(this@SettingsActivity, "Run in background Turned ON & Started", Toast.LENGTH_SHORT).show()
+                } else {
+                    TelegramService.stop(this@SettingsActivity)
+                    text = "✅ TURN ON RUN IN BACKGROUND"
+                    setBackgroundColor(Color.parseColor("#059669"))
+                    bgStatusText.text = "Status: Disabled (Stops when closed)"
+                    bgStatusText.setTextColor(Color.parseColor("#EF4444"))
+                    Toast.makeText(this@SettingsActivity, "Run in background Turned OFF & Stopped", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        bgBox.addView(bgToggleButton)
+        bgSectionContainer.addView(bgBox)
+
+        // 5. Storage, Cache & History Section (Collapsible)
         val storageSectionContainer = createCollapsibleSection("💾 Storage, Video Cache & Watch History")
 
         val storageBox = LinearLayout(this).apply {
