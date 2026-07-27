@@ -15,8 +15,8 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import `is`.xyz.mpv.MPVLib
-import `is`.xyz.mpv.MPVView
+import io.github.abdallahmehiz.mpv.MPVLib
+import io.github.abdallahmehiz.mpv.MPVView
 
 class PlayerActivity : AppCompatActivity() {
 
