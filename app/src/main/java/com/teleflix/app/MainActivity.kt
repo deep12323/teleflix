@@ -178,9 +178,9 @@ class MainActivity : AppCompatActivity() {
 
         searchInput = EditText(this).apply {
             hint = "Search Movies & Series..."
-            setHintTextColor(android.graphics.Color.parseColor("#64748B"))
+            setHintTextColor(android.graphics.Color.parseColor("#808080"))
             setTextColor(android.graphics.Color.WHITE)
-            setBackgroundColor(android.graphics.Color.parseColor("#1F2937"))
+            setBackgroundColor(android.graphics.Color.parseColor("#1A1A1A")) // Netflix Dark Matte
             setPadding(24, 20, 24, 20)
             textSize = 14f
             maxLines = 1
@@ -193,7 +193,7 @@ class MainActivity : AppCompatActivity() {
         searchButton = Button(this).apply {
             text = "🔍"
             textSize = 16f
-            setBackgroundColor(android.graphics.Color.parseColor("#E50914"))
+            setBackgroundColor(android.graphics.Color.parseColor("#B81D24")) // Netflix Crimson
             setTextColor(android.graphics.Color.WHITE)
             setOnClickListener {
                 val q = searchInput.text.toString()
@@ -225,11 +225,11 @@ class MainActivity : AppCompatActivity() {
             val tab = Button(this).apply {
                 text = label
                 textSize = 11f
-                setTextColor(android.graphics.Color.WHITE)
                 val isSelected = catalogId == selectedCategory
+                setTextColor(if (isSelected) android.graphics.Color.WHITE else android.graphics.Color.parseColor("#A3A3A3"))
                 setBackgroundColor(
-                    if (isSelected) android.graphics.Color.parseColor("#E50914")
-                    else android.graphics.Color.parseColor("#1F2937")
+                    if (isSelected) android.graphics.Color.parseColor("#B81D24")
+                    else android.graphics.Color.parseColor("#1A1A1A")
                 )
                 val lp = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -362,9 +362,10 @@ class MainActivity : AppCompatActivity() {
             } else {
                 cat == activeCatalogId
             }
+            child.setTextColor(if (isSelected) android.graphics.Color.WHITE else android.graphics.Color.parseColor("#A3A3A3"))
             child.setBackgroundColor(
-                if (isSelected) android.graphics.Color.parseColor("#E50914")
-                else android.graphics.Color.parseColor("#1F2937")
+                if (isSelected) android.graphics.Color.parseColor("#B81D24")
+                else android.graphics.Color.parseColor("#1A1A1A")
             )
         }
     }

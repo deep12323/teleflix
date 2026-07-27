@@ -409,8 +409,11 @@ class SettingsActivity : AppCompatActivity() {
         }
         storageBox.addView(storageTitle)
 
+        val currentBufMb = TelegramRepository.getBufferSizeMb(this)
+        val bufDisplay = if (currentBufMb >= 1024L) "${currentBufMb / 1024} GB" else "$currentBufMb MB"
+
         val bufferDesc = TextView(this).apply {
-            text = "Video Pre-fetch RAM Buffer Size (Current: ${TelegramRepository.getBufferSizeMb(this@SettingsActivity)} MB)\n\n⚡ Video & Audio file caching is permanently disabled. Streamed video/audio buffers are cleaned up immediately after watching to save device storage!"
+            text = "Video Pre-fetch RAM Buffer Size (Current: $bufDisplay)\n\n⚡ Video & Audio file caching is permanently disabled. Streamed video/audio buffers are cleaned up immediately after watching to save device storage!"
             textSize = 14f
             setTextColor(Color.parseColor("#93C5FD"))
             setPadding(0, 12, 0, 8)
@@ -418,20 +421,21 @@ class SettingsActivity : AppCompatActivity() {
         storageBox.addView(bufferDesc)
 
         val bufferBtn = Button(this).apply {
-            text = "Change Pre-fetch RAM Buffer (5MB - 100MB)"
+            text = "Change Pre-fetch RAM Buffer (5 MB - 100 GB)"
             setBackgroundColor(Color.parseColor("#1E3A8A"))
             setTextColor(Color.WHITE)
             setOnClickListener {
-                val sizes = arrayOf("5 MB (Low RAM)", "10 MB", "20 MB (Default)", "50 MB (Smooth 4K)", "100 MB (Ultra Smooth)")
-                val values = arrayOf(5L, 10L, 20L, 50L, 100L)
+                val sizes = arrayOf("5 MB (Low RAM)", "10 MB", "20 MB (Default)", "50 MB (Smooth 4K)", "100 MB (Ultra Smooth)", "100 GB (Full Media Buffer / Download)")
+                val values = arrayOf(5L, 10L, 20L, 50L, 100L, 102400L)
                 AlertDialog.Builder(this@SettingsActivity)
                     .setTitle("Select Video Pre-fetch Buffer Size")
                     .setItems(sizes) { _, which ->
                         val selected = values[which]
+                        val selDisplay = if (selected >= 1024L) "${selected / 1024} GB" else "$selected MB"
                         TelegramRepository.saveBufferSizeMb(this@SettingsActivity, selected)
                         TelegramStreamingProxy.prefetchSizeMb = selected
-                        bufferDesc.text = "Video Pre-fetch RAM Buffer Size (Current: $selected MB)\n\n⚡ Video & Audio file caching is permanently disabled. Streamed video/audio buffers are cleaned up immediately after watching to save device storage!"
-                        Toast.makeText(this@SettingsActivity, "Buffer set to $selected MB", Toast.LENGTH_SHORT).show()
+                        bufferDesc.text = "Video Pre-fetch RAM Buffer Size (Current: $selDisplay)\n\n⚡ Video & Audio file caching is permanently disabled. Streamed video/audio buffers are cleaned up immediately after watching to save device storage!"
+                        Toast.makeText(this@SettingsActivity, "Buffer set to $selDisplay", Toast.LENGTH_SHORT).show()
                     }
                     .show()
             }
