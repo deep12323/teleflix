@@ -39,9 +39,18 @@ class TelegramService : Service() {
 
         fun stop(context: Context) {
             try {
-                val intent = Intent(context, TelegramService::class.java)
+                val intent = Intent(context, TelegramService::class.java).apply {
+                    action = "ACTION_STOP_SERVICE"
+                }
+                try {
+                    context.startService(intent)
+                } catch (_: Exception) {}
                 context.stopService(intent)
-                Log.d(TAG, "Requested TelegramService stop")
+
+                val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+                manager?.cancel(NOTIFICATION_ID)
+
+                Log.d(TAG, "Requested TelegramService stop and notification canceled")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to stop TelegramService: ${e.message}")
             }
@@ -63,6 +72,8 @@ class TelegramService : Service() {
                 @Suppress("DEPRECATION")
                 stopForeground(true)
             }
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+            manager?.cancel(NOTIFICATION_ID)
             stopSelf()
             return START_NOT_STICKY
         }
@@ -83,7 +94,17 @@ class TelegramService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d(TAG, "TelegramService stopped")
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+            manager?.cancel(NOTIFICATION_ID)
+        } catch (_: Exception) {}
+        Log.d(TAG, "TelegramService stopped and notification removed")
     }
 
     private fun buildNotification(statusText: String): android.app.Notification {
