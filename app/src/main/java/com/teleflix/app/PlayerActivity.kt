@@ -254,33 +254,31 @@ class PlayerActivity : AppCompatActivity() {
         topBar.addView(audioButton)
         topBar.addView(aspectButton)
 
-        // BOTTOM BAR WITH CLEAN PLAY/PAUSE BUTTON
-        val bottomBar = LinearLayout(this).apply {
+        // CENTER CONTROLS (REWIND, PLAY/PAUSE, FAST FORWARD)
+        val centerControls = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.parseColor("#D9000000"))
-            setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
+            gravity = Gravity.CENTER
             layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
             )
         }
 
         val rewindButton = TextView(this).apply {
             text = "⏪ -10s"
-            textSize = 14f
+            textSize = 18f
             setTextColor(Color.WHITE)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             val bg = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(Color.parseColor("#334155"))
-                cornerRadius = dpToPx(6).toFloat()
+                setColor(Color.parseColor("#B31E293B"))
+                cornerRadius = dpToPx(24).toFloat()
             }
             background = bg
-            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
+            setPadding(dpToPx(20), dpToPx(14), dpToPx(20), dpToPx(14))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = dpToPx(8)
+                rightMargin = dpToPx(32)
             }
             setOnClickListener {
                 try {
@@ -293,19 +291,16 @@ class PlayerActivity : AppCompatActivity() {
 
         playPauseButton = TextView(this).apply {
             text = "❚❚  PAUSE"
-            textSize = 14f
+            textSize = 18f
             setTextColor(Color.WHITE)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             val bg = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(Color.parseColor("#334155"))
-                cornerRadius = dpToPx(6).toFloat()
+                setColor(Color.parseColor("#D92563EB")) // Accent blue highlight for primary play/pause
+                cornerRadius = dpToPx(24).toFloat()
             }
             background = bg
-            setPadding(dpToPx(14), dpToPx(8), dpToPx(14), dpToPx(8))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = dpToPx(8)
-            }
+            setPadding(dpToPx(28), dpToPx(16), dpToPx(28), dpToPx(16))
             setOnClickListener {
                 try {
                     val isPaused = (mpvView.mpv.getPropertyBoolean("pause") ?: false)
@@ -318,18 +313,18 @@ class PlayerActivity : AppCompatActivity() {
 
         val forwardButton = TextView(this).apply {
             text = "+10s ⏩"
-            textSize = 14f
+            textSize = 18f
             setTextColor(Color.WHITE)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             val bg = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(Color.parseColor("#334155"))
-                cornerRadius = dpToPx(6).toFloat()
+                setColor(Color.parseColor("#B31E293B"))
+                cornerRadius = dpToPx(24).toFloat()
             }
             background = bg
-            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
+            setPadding(dpToPx(20), dpToPx(14), dpToPx(20), dpToPx(14))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = dpToPx(12)
+                leftMargin = dpToPx(32)
             }
             setOnClickListener {
                 try {
@@ -341,16 +336,34 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
 
+        centerControls.addView(rewindButton)
+        centerControls.addView(playPauseButton)
+        centerControls.addView(forwardButton)
+
+        // BOTTOM BAR (TIMELINE SCRUBBER)
+        val bottomBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.parseColor("#D9000000"))
+            setPadding(dpToPx(20), dpToPx(14), dpToPx(20), dpToPx(14))
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM
+            )
+        }
+
         currentTimeText = TextView(this).apply {
             text = "00:00"
             textSize = 14f
             setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
 
         seekBar = SeekBar(this).apply {
             max = 1000
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(dpToPx(12), 0, dpToPx(12), 0)
+                setMargins(dpToPx(16), 0, dpToPx(16), 0)
             }
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {}
@@ -377,16 +390,15 @@ class PlayerActivity : AppCompatActivity() {
             text = "00:00"
             textSize = 14f
             setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
 
-        bottomBar.addView(rewindButton)
-        bottomBar.addView(playPauseButton)
-        bottomBar.addView(forwardButton)
         bottomBar.addView(currentTimeText)
         bottomBar.addView(seekBar)
         bottomBar.addView(totalTimeText)
 
         overlay.addView(topBar)
+        overlay.addView(centerControls)
         overlay.addView(bottomBar)
         return overlay
     }
