@@ -11,6 +11,21 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
 
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="video/*" />
+        </intent>
+        <package android:name="id.nzxm.mpvex" />
+        <package android:name="id.nzxm.mpvex.debug" />
+        <package android:name="is.xyz.mpv" />
+        <package android:name="org.videolan.vlc" />
+        <package android:name="com.mxtech.videoplayer.ad" />
+        <package android:name="com.mxtech.videoplayer.pro" />
+        <package android:name="dev.anilbeesetti.nextplayer" />
+        <package android:name="com.brianvalente.videoplayer" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"

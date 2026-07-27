@@ -1054,70 +1054,81 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openStreamInPlayer(playerType: String, streamUrl: String, title: String, resumeMs: Long) {
-        when (playerType) {
-            "mpvex", "exo" -> {
-                val mpvexIntent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(Uri.parse(streamUrl), "video/*")
-                    setPackage("id.nzxm.mpvex")
-                    putExtra("title", title)
-                    putExtra("filename", title)
-                    if (resumeMs > 0) {
-                        putExtra("position", resumeMs.toInt())
-                        putExtra("extra_position", resumeMs)
-                    }
-                }
-                try {
-                    startActivity(mpvexIntent)
-                } catch (e: Exception) {
-                    try {
-                        mpvexIntent.setPackage("id.nzxm.mpvex.debug")
-                        startActivity(mpvexIntent)
-                    } catch (_: Exception) {
-                        Toast.makeText(this, "Internal MPVEX Player not installed! Please install MPVEX.", Toast.LENGTH_LONG).show()
-                    }
-                }
+        val baseIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(Uri.parse(streamUrl), "video/*")
+            putExtra("title", title)
+            putExtra("filename", title)
+            if (resumeMs > 0) {
+                putExtra("position", resumeMs.toInt())
+                putExtra("extra_position", resumeMs)
+                putExtra("from_start", false)
             }
-            "mpv" -> {
-                val mpvIntent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(Uri.parse(streamUrl), "video/*")
-                    setPackage("is.xyz.mpv")
-                    putExtra("title", title)
-                    putExtra("filename", title)
-                    if (resumeMs > 0) {
-                        putExtra("position", resumeMs.toInt())
-                        putExtra("extra_position", resumeMs)
-                    }
+        }
+
+        when (playerType) {
+            "mpvex", "exo", "mpv" -> {
+                val packagesToTry = if (playerType == "mpv") {
+                    listOf("is.xyz.mpv", "id.nzxm.mpvex", "id.nzxm.mpvex.debug", "dev.anilbeesetti.nextplayer")
+                } else {
+                    listOf("id.nzxm.mpvex", "id.nzxm.mpvex.debug", "is.xyz.mpv", "dev.anilbeesetti.nextplayer")
                 }
-                try { startActivity(mpvIntent) } catch (e: Exception) {
-                    Toast.makeText(this, "MPV Player is not installed on your phone", Toast.LENGTH_SHORT).show()
+
+                var launched = false
+                for (pkg in packagesToTry) {
+                    try {
+                        val intent = Intent(baseIntent).apply { setPackage(pkg) }
+                        startActivity(intent)
+                        launched = true
+                        break
+                    } catch (_: Exception) {}
+                }
+
+                if (!launched) {
+                    try {
+                        val resolveInfo = packageManager.queryIntentActivities(baseIntent, 0)
+                        val mpvMatch = resolveInfo.firstOrNull { 
+                            val pkgName = it.activityInfo.packageName.lowercase()
+                            val label = it.loadLabel(packageManager).toString().lowercase()
+                            pkgName.contains("mpv") || label.contains("mpv") || pkgName.contains("nextplayer")
+                        }
+                        if (mpvMatch != null) {
+                            val intent = Intent(baseIntent).apply { setPackage(mpvMatch.activityInfo.packageName) }
+                            startActivity(intent)
+                            launched = true
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                if (!launched) {
+                    AlertDialog.Builder(this)
+                        .setTitle("🟢 MPVEX / MPV Not Found")
+                        .setMessage("MPVEX Player was not detected on your phone (Android 11+ requires granting visibility or installing the APK).\n\nWould you like to pick another existing player to start watching immediately, or download MPVEX from GitHub?")
+                        .setPositiveButton("Choose Installed Player") { _, _ ->
+                            val chooser = Intent.createChooser(baseIntent, "Select Video Player")
+                            try { startActivity(chooser) } catch (_: Exception) {
+                                Toast.makeText(this, "No video player found on device!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .setNeutralButton("Download MPVEX APK") { _, _ ->
+                            try {
+                                val dlIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/marlboro-advance/mpvEx/releases"))
+                                startActivity(dlIntent)
+                            } catch (_: Exception) {
+                                Toast.makeText(this, "Could not open browser", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
                 }
             }
             "vlc" -> {
-                val vlcIntent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(Uri.parse(streamUrl), "video/*")
-                    setPackage("org.videolan.vlc")
-                    putExtra("title", title)
-                    if (resumeMs > 0) {
-                        putExtra("position", resumeMs.toInt())
-                        putExtra("extra_position", resumeMs)
-                        putExtra("from_start", false)
-                    }
-                }
+                val vlcIntent = Intent(baseIntent).apply { setPackage("org.videolan.vlc") }
                 try { startActivity(vlcIntent) } catch (e: Exception) {
-                    Toast.makeText(this, "VLC Player is not installed on your phone", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "VLC Player is not installed on your device", Toast.LENGTH_SHORT).show()
                 }
             }
             else -> {
-                val externalIntent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(Uri.parse(streamUrl), "video/*")
-                    putExtra("title", title)
-                    if (resumeMs > 0) {
-                        putExtra("position", resumeMs.toInt())
-                        putExtra("extra_position", resumeMs)
-                        putExtra("from_start", false)
-                    }
-                }
-                val chooser = Intent.createChooser(externalIntent, "Select Video Player")
+                val chooser = Intent.createChooser(baseIntent, "Select Video Player")
                 try { startActivity(chooser) } catch (e: Exception) {
                     Toast.makeText(this, "No video player found on phone!", Toast.LENGTH_SHORT).show()
                 }
