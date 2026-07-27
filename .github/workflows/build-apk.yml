@@ -36,7 +36,7 @@ jobs:
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Teleflix-Streamer-Debug
+          name: Teleflix-Debug
           path: app/build/outputs/apk/debug/app-debug.apk
 
       - name: Get Short SHA
@@ -48,21 +48,22 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0-build.${{ github.run_number }}
-          name: "Teleflix Streamer v1.0.0 (Build #${{ github.run_number }})"
+          name: "Teleflix v1.0.0 (Build #${{ github.run_number }})"
           body: |
-            ## 📱 Teleflix Streamer - Auto Build
+            ## 📱 Teleflix - Auto Build
 
             **Commit:** `${{ steps.slug.outputs.sha }}`
             **Branch:** `master`
 
-            ### Features
-            - Live Cinemeta catalogue (Top Movies, Top Series, New, IMDB Top)
-            - Built-in ExoPlayer with speed & aspect ratio controls
-            - VLC & MPV external player launch
-            - TDLib Telegram channel manager & auth
+            ### Key Features
+            - **Dual-Mode Catalogs:** Switch seamlessly between Cinemeta movies/series & Monitored Telegram Channels
+            - **Live Video Thumbnails & Posters:** Widescreen 16:9 thumbnails for video items & real human-readable Telegram chat titles
+            - **Real-Time Split & ZIP Archive Streaming:** Automatic grouping of split archives (`.001/.002`, `.part1`, `.zip`) with on-the-fly streaming directly from Telegram cloud without extracting
+            - **Intelligent Caption Parsing:** Automatically resolves titles from video captions for educational lectures and unnamed media
+            - **Built-in & External Player Integration:** Smooth resumption & playback in ExoPlayer, VLC, MX Player, and MPV
 
             ### Install
-            Download `Teleflix-Streamer-Debug.apk` below and install on your Android device.
+            Download `app-debug.apk` below and install on your Android device.
           files: app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
