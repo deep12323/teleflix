@@ -121,20 +121,42 @@ class PlayerActivity : AppCompatActivity() {
         try {
             mpvView.initialize(filesDir.path, cacheDir.path)
             
+            // Prepare fallback font directory for libass to render SRT/TEXT subtitles properly on Android
+            val subFontsDir = java.io.File(filesDir, "fonts").apply { if (!exists()) mkdirs() }
+            try {
+                val systemFontsDir = java.io.File("/system/fonts")
+                if (systemFontsDir.exists() && systemFontsDir.isDirectory) {
+                    val candidates = arrayOf("Roboto-Regular.ttf", "Roboto-Medium.ttf", "DroidSans.ttf", "NotoSans-Regular.ttf", "Roboto-Bold.ttf")
+                    for (fontName in candidates) {
+                        val src = java.io.File(systemFontsDir, fontName)
+                        if (src.exists()) {
+                            val dst = java.io.File(subFontsDir, fontName)
+                            if (!dst.exists() || dst.length() != src.length()) {
+                                src.copyTo(dst, overwrite = true)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("PlayerActivity", "Error copying system fonts for libass: ${e.message}")
+            }
+            
             // Critical Android Subtitle Rendering & Cinematic Typography
             try {
+                mpvView.mpv.setPropertyString("sub-fonts-dir", subFontsDir.absolutePath)
+                mpvView.mpv.setPropertyString("sub-font", "Roboto-Regular")
                 mpvView.mpv.setPropertyString("sub-visibility", "yes")
                 mpvView.mpv.setPropertyString("sub-auto", "fuzzy")
-                mpvView.mpv.setPropertyString("sub-font", "sans-serif")
                 mpvView.mpv.setPropertyString("sub-bold", "yes")
                 mpvView.mpv.setPropertyString("sub-font-size", "46")
-                mpvView.mpv.setPropertyString("sub-color", "#FFFFFFFF")
-                mpvView.mpv.setPropertyString("sub-border-color", "#E6000000")
+                mpvView.mpv.setPropertyString("sub-color", "#FFFFFF")
+                mpvView.mpv.setPropertyString("sub-border-color", "#000000")
                 mpvView.mpv.setPropertyString("sub-border-size", "2.8")
-                mpvView.mpv.setPropertyString("sub-shadow-color", "#B3000000")
+                mpvView.mpv.setPropertyString("sub-shadow-color", "#000000")
                 mpvView.mpv.setPropertyString("sub-shadow-offset", "2.5")
                 mpvView.mpv.setPropertyString("sub-margin-y", "36")
                 mpvView.mpv.setPropertyString("sub-use-margins", "yes")
+                mpvView.mpv.setPropertyString("sub-ass-override", "force")
                 mpvView.mpv.setPropertyString("slang", "en,eng,english")
                 mpvView.mpv.setPropertyString("sid", "auto")
             } catch (e: Exception) {
