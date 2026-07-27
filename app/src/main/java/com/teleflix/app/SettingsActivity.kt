@@ -65,53 +65,59 @@ class SettingsActivity : AppCompatActivity() {
         }
         root.addView(header)
 
-        // Teleflix Login Section (Collapsible Header & Container)
-        val loginHeaderCard = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#1F2937"))
-            setPadding(32, 28, 32, 28)
-            isClickable = true
-            isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, 16)
+        fun createCollapsibleSection(titleText: String): LinearLayout {
+            val headerCard = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setBackgroundColor(Color.parseColor("#1F2937"))
+                setPadding(32, 28, 32, 28)
+                isClickable = true
+                isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, 0, 16)
+                }
             }
-        }
 
-        val loginTitle = TextView(this).apply {
-            text = "🔐 Teleflix Login"
-            textSize = 17f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        loginHeaderCard.addView(loginTitle)
-
-        val arrowText = TextView(this).apply {
-            text = "▼"
-            textSize = 16f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.parseColor("#9CA3AF"))
-        }
-        loginHeaderCard.addView(arrowText)
-        root.addView(loginHeaderCard)
-
-        val loginSettingsContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = android.view.View.GONE
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, 24)
+            val title = TextView(this).apply {
+                text = titleText
+                textSize = 17f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
+            headerCard.addView(title)
+
+            val arrow = TextView(this).apply {
+                text = "▼"
+                textSize = 16f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.parseColor("#9CA3AF"))
+            }
+            headerCard.addView(arrow)
+            root.addView(headerCard)
+
+            val container = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = android.view.View.GONE
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, 0, 24)
+                }
+            }
+            root.addView(container)
+
+            headerCard.setOnClickListener {
+                if (container.visibility == android.view.View.VISIBLE) {
+                    container.visibility = android.view.View.GONE
+                    arrow.text = "▼"
+                } else {
+                    container.visibility = android.view.View.VISIBLE
+                    arrow.text = "▲"
+                }
+            }
+            return container
         }
 
-        loginHeaderCard.setOnClickListener {
-            if (loginSettingsContainer.visibility == android.view.View.VISIBLE) {
-                loginSettingsContainer.visibility = android.view.View.GONE
-                arrowText.text = "▼"
-            } else {
-                loginSettingsContainer.visibility = android.view.View.VISIBLE
-                arrowText.text = "▲"
-            }
-        }
+        // 1. Teleflix Login Section
+        val loginSettingsContainer = createCollapsibleSection("🔐 Teleflix Login & Account")
 
         // Session Status Box
         val sessionBox = LinearLayout(this).apply {
@@ -200,17 +206,24 @@ class SettingsActivity : AppCompatActivity() {
         apiBox.addView(saveApiBtn)
 
         loginSettingsContainer.addView(apiBox)
-        root.addView(loginSettingsContainer)
 
-        // Channels Section
-        val channelTitle = TextView(this).apply {
-            text = "Monitored Telegram Channels"
-            textSize = 16f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            setPadding(0, 16, 0, 12)
+        // 2. Catalogue Channels Section (Collapsible)
+        val channelsSectionContainer = createCollapsibleSection("📡 Catalogue Monitored Channels")
+
+        val channelsCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#161B28"))
+            setPadding(24, 24, 24, 24)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
-        root.addView(channelTitle)
+
+        val channelDesc = TextView(this).apply {
+            text = "Manage Telegram channels to show in your catalog:"
+            textSize = 14f
+            setTextColor(Color.parseColor("#93C5FD"))
+            setPadding(0, 0, 0, 12)
+        }
+        channelsCard.addView(channelDesc)
 
         val addLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -221,7 +234,7 @@ class SettingsActivity : AppCompatActivity() {
             hint = "Enter @channel_name..."
             setHintTextColor(Color.parseColor("#6B7280"))
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#161B28"))
+            setBackgroundColor(Color.parseColor("#12151F"))
             setPadding(20, 16, 20, 16)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
@@ -241,25 +254,90 @@ class SettingsActivity : AppCompatActivity() {
 
         addLayout.addView(channelInput)
         addLayout.addView(addBtn)
-        root.addView(addLayout)
+        channelsCard.addView(addLayout)
 
         channelContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
-        root.addView(channelContainer)
+        channelsCard.addView(channelContainer)
+        channelsSectionContainer.addView(channelsCard)
 
-        // Streaming Buffer & Cache Box
+        // 3. Video Playback & Preferred Player Section (Collapsible)
+        val playbackSectionContainer = createCollapsibleSection("🎬 Video Playback & Internal Player")
+
+        val playerBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#161B28"))
+            setPadding(24, 24, 24, 24)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+
+        val playerTitle = TextView(this).apply {
+            text = "Preferred Video Player"
+            textSize = 16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+        }
+        playerBox.addView(playerTitle)
+
+        val prefs = getSharedPreferences("teleflix_preferences", android.content.Context.MODE_PRIVATE)
+        val currentDefault = prefs.getString("default_player", "ask") ?: "ask"
+        val playerMap = mapOf(
+            "ask" to "Always Ask (Select Player on Tap)",
+            "mpvex" to "🟢 Internal Player (MPVEX)",
+            "exo" to "🟢 Internal Player (MPVEX)",
+            "mpv" to "🟣 MPV Player",
+            "vlc" to "🧡 VLC Player",
+            "chooser" to "📱 Android System Player Chooser"
+        )
+        val playerDesc = TextView(this).apply {
+            text = "Current Preferred Player:\n${playerMap[currentDefault] ?: "Always Ask"}"
+            textSize = 14f
+            setTextColor(Color.parseColor("#93C5FD"))
+            setPadding(0, 12, 0, 12)
+        }
+        playerBox.addView(playerDesc)
+
+        val changePlayerBtn = Button(this).apply {
+            text = "Select Default Player (MPVEX / MPV / VLC)"
+            setBackgroundColor(Color.parseColor("#3B82F6"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                val labels = arrayOf(
+                    "Always Ask (Select Player on Tap)",
+                    "🟢 Internal Player (MPVEX)",
+                    "🟣 MPV Player",
+                    "🧡 VLC Player",
+                    "📱 Android System Player Chooser"
+                )
+                val keys = arrayOf("ask", "mpvex", "mpv", "vlc", "chooser")
+                AlertDialog.Builder(this@SettingsActivity)
+                    .setTitle("Select Preferred Video Player")
+                    .setItems(labels) { _, which ->
+                        val selectedKey = keys[which]
+                        val selectedLabel = labels[which]
+                        prefs.edit().putString("default_player", selectedKey).apply()
+                        playerDesc.text = "Current Preferred Player:\n$selectedLabel"
+                        Toast.makeText(this@SettingsActivity, "Default player set to: $selectedLabel", Toast.LENGTH_SHORT).show()
+                    }
+                    .show()
+            }
+        }
+        playerBox.addView(changePlayerBtn)
+        playbackSectionContainer.addView(playerBox)
+
+        // 4. Storage, Cache & History Section (Collapsible)
+        val storageSectionContainer = createCollapsibleSection("💾 Storage, Video Cache & Watch History")
+
         val storageBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#161B28"))
             setPadding(24, 24, 24, 24)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 24, 0, 24)
-            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
 
         val storageTitle = TextView(this).apply {
-            text = "Streaming Buffer & Cache"
+            text = "Streaming Buffer & Storage Management"
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.WHITE)
@@ -333,72 +411,7 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
         storageBox.addView(clearHistoryBtn)
-
-        root.addView(storageBox)
-
-        // Default Player Box
-        val playerBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#161B28"))
-            setPadding(24, 24, 24, 24)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, 24)
-            }
-        }
-
-        val playerTitle = TextView(this).apply {
-            text = "Video Playback & Preferred Player"
-            textSize = 16f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-        }
-        playerBox.addView(playerTitle)
-
-        val prefs = getSharedPreferences("teleflix_preferences", android.content.Context.MODE_PRIVATE)
-        val currentDefault = prefs.getString("default_player", "ask") ?: "ask"
-        val playerMap = mapOf(
-            "ask" to "Always Ask (Select Player on Tap)",
-            "mpvex" to "🟢 Internal Player (MPVEX)",
-            "exo" to "🟢 Internal Player (MPVEX)",
-            "mpv" to "🟣 MPV Player",
-            "vlc" to "🧡 VLC Player",
-            "chooser" to "📱 Android System Player Chooser"
-        )
-        val playerDesc = TextView(this).apply {
-            text = "Current Preferred Player:\n${playerMap[currentDefault] ?: "Always Ask"}"
-            textSize = 14f
-            setTextColor(Color.parseColor("#93C5FD"))
-            setPadding(0, 12, 0, 12)
-        }
-        playerBox.addView(playerDesc)
-
-        val changePlayerBtn = Button(this).apply {
-            text = "Select Default Player (MPVEX / MPV / VLC)"
-            setBackgroundColor(Color.parseColor("#3B82F6"))
-            setTextColor(Color.WHITE)
-            setOnClickListener {
-                val labels = arrayOf(
-                    "Always Ask (Select Player on Tap)",
-                    "🟢 Internal Player (MPVEX)",
-                    "🟣 MPV Player",
-                    "🧡 VLC Player",
-                    "📱 Android System Player Chooser"
-                )
-                val keys = arrayOf("ask", "mpvex", "mpv", "vlc", "chooser")
-                AlertDialog.Builder(this@SettingsActivity)
-                    .setTitle("Select Preferred Video Player")
-                    .setItems(labels) { _, which ->
-                        val selectedKey = keys[which]
-                        val selectedLabel = labels[which]
-                        prefs.edit().putString("default_player", selectedKey).apply()
-                        playerDesc.text = "Current Preferred Player:\n$selectedLabel"
-                        Toast.makeText(this@SettingsActivity, "Default player set to: $selectedLabel", Toast.LENGTH_SHORT).show()
-                    }
-                    .show()
-            }
-        }
-        playerBox.addView(changePlayerBtn)
-        root.addView(playerBox)
+        storageSectionContainer.addView(storageBox)
 
         setContentView(scrollView)
 
