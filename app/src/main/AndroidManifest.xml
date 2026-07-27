@@ -15,7 +15,7 @@
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:icon="@drawable/ic_launcher"
-        android:label="@string/app_name"
+        android:label="Teleflix"
         android:roundIcon="@drawable/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.Teleflix"
@@ -23,6 +23,7 @@
 
         <activity
             android:name="com.teleflix.app.MainActivity"
+            android:label="Teleflix"
             android:exported="true"
             android:theme="@style/Theme.Teleflix">
             <intent-filter>
