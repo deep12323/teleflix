@@ -258,7 +258,6 @@ class MainActivity : AppCompatActivity() {
 
         // Media Grid
         mediaAdapter = MediaAdapter(mediaList, { item ->
-            saveToHistory(item)
             when (item.type) {
                 "channel" -> loadTelegramChannelMedia(item.id, item.title)
                 "telegram_media" -> {
@@ -273,11 +272,11 @@ class MainActivity : AppCompatActivity() {
                         CoroutineScope(Dispatchers.Main).launch {
                             val freshUrl = TelegramRepository.getFreshMediaUrl(chatId, messageId)
                             if (freshUrl != null && freshUrl.isNotBlank()) {
-                                checkResumeAndSelectPlayer(freshUrl, titleToPlay)
+                                checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id)
                             } else {
                                 val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
                                 if (backupUrl.isNotBlank()) {
-                                    checkResumeAndSelectPlayer(backupUrl, titleToPlay)
+                                    checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id)
                                 } else {
                                     Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
                                 }
@@ -287,14 +286,14 @@ class MainActivity : AppCompatActivity() {
                         val rawUrl = streamInfo?.first ?: item.streamUrl
                         val urlToPlay = TelegramStreamingProxy.refreshUrl(rawUrl)
                         if (urlToPlay.isNotBlank()) {
-                            checkResumeAndSelectPlayer(urlToPlay, titleToPlay)
+                            checkResumeAndSelectPlayer(urlToPlay, titleToPlay, item.posterUrl, item.id)
                         } else {
                             Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
                 "series" -> fetchSeriesEpisodes(item)
-                else -> showStreamOptions(item.title)
+                else -> showStreamOptions(item.title, null, null, item.posterUrl)
             }
         }, { item ->
             handleItemLongPress(item)
@@ -384,6 +383,7 @@ class MainActivity : AppCompatActivity() {
                         .setMessage("Are you sure you want to permanently delete your entire Watch History and saved playback positions?")
                         .setPositiveButton("🗑️ Clear All") { _, _ ->
                             getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE).edit().clear().apply()
+                            getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE).edit().clear().apply()
                             getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE).edit().clear().apply()
                             mediaList.clear()
                             mediaAdapter?.notifyDataSetChanged()
@@ -847,7 +847,7 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this@MainActivity, "No episodes found", Toast.LENGTH_SHORT).show()
                         return@withContext
                     }
-                    showSeasonPicker(item.title, seasons)
+                    showSeasonPicker(item.title, seasons, item.posterUrl)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -857,7 +857,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showSeasonPicker(seriesTitle: String, seasons: Map<Int, List<EpisodeItem>>) {
+    private fun showSeasonPicker(seriesTitle: String, seasons: Map<Int, List<EpisodeItem>>, posterUrl: String = "") {
         val seasonLabels = seasons.keys.map { "Season $it (${seasons[it]?.size ?: 0} episodes)" }.toTypedArray()
 
         AlertDialog.Builder(this)
@@ -865,20 +865,20 @@ class MainActivity : AppCompatActivity() {
             .setItems(seasonLabels) { _, which ->
                 val seasonNum = seasons.keys.toList()[which]
                 val episodes = seasons[seasonNum] ?: return@setItems
-                showEpisodePicker(seriesTitle, seasonNum, episodes)
+                showEpisodePicker(seriesTitle, seasonNum, episodes, posterUrl)
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun showEpisodePicker(seriesTitle: String, season: Int, episodes: List<EpisodeItem>) {
+    private fun showEpisodePicker(seriesTitle: String, season: Int, episodes: List<EpisodeItem>, posterUrl: String = "") {
         val episodeLabels = episodes.map { "E${String.format("%02d", it.episode)} — ${it.title}" }.toTypedArray()
 
         AlertDialog.Builder(this)
             .setTitle("$seriesTitle — Season $season")
             .setItems(episodeLabels) { _, which ->
                 val ep = episodes[which]
-                showStreamOptions(seriesTitle, season, ep.episode)
+                showStreamOptions(seriesTitle, season, ep.episode, posterUrl)
             }
             .setNegativeButton("Back", null)
             .show()
@@ -886,7 +886,7 @@ class MainActivity : AppCompatActivity() {
 
     // ── Stream Selection ────────────────────────────────────────
 
-    private fun showStreamOptions(title: String, season: Int? = null, episode: Int? = null) {
+    private fun showStreamOptions(title: String, season: Int? = null, episode: Int? = null, posterUrl: String = "") {
         val displayTitle = if (season != null && episode != null) {
             "$title S${String.format("%02d", season)}E${String.format("%02d", episode)}"
         } else {
@@ -954,7 +954,7 @@ class MainActivity : AppCompatActivity() {
                         isFocusable = true
                         setOnClickListener {
                             streamDialog.dismiss()
-                            checkResumeAndSelectPlayer(stream.url, displayTitle)
+                            checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, "stream_${stream.url.hashCode()}")
                         }
                     }
 
@@ -1015,9 +1015,30 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun checkResumeAndSelectPlayer(streamUrl: String, title: String) {
-        val prefs = getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
-        val savedPositionMs = prefs.getLong("resume_$title", 0L)
+    private fun saveLinkToWatchHistory(streamUrl: String, title: String, posterUrl: String, mediaId: String) {
+        if (streamUrl.isBlank() && mediaId.isBlank()) return
+        val effectiveId = if (mediaId.isNotBlank()) mediaId else "link_" + streamUrl.hashCode()
+        val item = MediaItem(
+            id = effectiveId,
+            title = title,
+            posterUrl = posterUrl,
+            year = "Watched",
+            rating = "▶",
+            overview = "Playing stream: $title",
+            type = "telegram_media",
+            streamUrl = streamUrl
+        )
+        saveToHistory(item)
+    }
+
+    private fun checkResumeAndSelectPlayer(streamUrl: String, title: String, posterUrl: String = "", mediaId: String = "") {
+        saveLinkToWatchHistory(streamUrl, title, posterUrl, mediaId)
+        val prefsLink = getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE)
+        val prefsTitle = getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
+        var savedPositionMs = prefsLink.getLong(streamUrl, 0L)
+        if (savedPositionMs <= 10_000L) {
+            savedPositionMs = prefsTitle.getLong("resume_$title", 0L)
+        }
 
         if (savedPositionMs > 10_000L) {
             val formattedTime = formatMillisToTime(savedPositionMs)
@@ -1263,6 +1284,8 @@ class MainActivity : AppCompatActivity() {
                         getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE)
                             .edit().putString("history_items", jsonArray.toString()).apply()
 
+                        getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE)
+                            .edit().remove(item.streamUrl).apply()
                         getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
                             .edit().remove("resume_${item.title}").apply()
 
@@ -1280,6 +1303,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     isHistoryTab && which == 1 -> {
                         getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE).edit().clear().apply()
+                        getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE).edit().clear().apply()
                         getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE).edit().clear().apply()
                         mediaList.clear()
                         mediaAdapter?.notifyDataSetChanged()
