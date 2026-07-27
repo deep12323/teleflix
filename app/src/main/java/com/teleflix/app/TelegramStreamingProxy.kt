@@ -44,6 +44,14 @@ object TelegramStreamingProxy {
         val lastOffset = lastDownloadRequestOffset[fileId]
         val lastTime = lastDownloadRequestTime[fileId] ?: 0L
 
+        // When offset jumps (e.g. MKV end-of-file Cues index read or user seek),
+        // cancel TDLib's previous background download range so TDLib strictly enforces the buffer limit
+        if (lastOffset != null && Math.abs(offset - lastOffset) > 2 * 1024 * 1024L) {
+            runCatching {
+                TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+            }
+        }
+
         // Prevent spamming TDLib with DownloadFile for the same offset within 5 seconds
         if (lastOffset == offset && (now - lastTime) < 5000L) {
             return
