@@ -1092,7 +1092,16 @@ class MainActivity : AppCompatActivity() {
         saveLinkToWatchHistory(streamUrl, title, posterUrl, mediaId)
         val prefsLink = getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE)
         val prefsTitle = getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
-        var savedPositionMs = prefsLink.getLong(streamUrl, 0L)
+        var savedPositionMs = 0L
+        if (mediaId.isNotBlank()) {
+            savedPositionMs = prefsLink.getLong("id_$mediaId", 0L)
+            if (savedPositionMs <= 10_000L) {
+                savedPositionMs = prefsLink.getLong(mediaId, 0L)
+            }
+        }
+        if (savedPositionMs <= 10_000L) {
+            savedPositionMs = prefsLink.getLong(streamUrl, 0L)
+        }
         if (savedPositionMs <= 10_000L) {
             savedPositionMs = prefsTitle.getLong("resume_$title", 0L)
         }
@@ -1103,25 +1112,25 @@ class MainActivity : AppCompatActivity() {
                 .setTitle("Resume Playback")
                 .setMessage("You previously watched '$title' up to $formattedTime.\n\nDo you want to resume where you left off or start from the beginning?")
                 .setPositiveButton("▶ Resume ($formattedTime)") { _, _ ->
-                    handlePlayerLaunch(streamUrl, title, savedPositionMs)
+                    handlePlayerLaunch(streamUrl, title, savedPositionMs, mediaId)
                 }
                 .setNegativeButton("🔄 Start Over") { _, _ ->
-                    handlePlayerLaunch(streamUrl, title, 0L)
+                    handlePlayerLaunch(streamUrl, title, 0L, mediaId)
                 }
                 .setNeutralButton("Cancel", null)
                 .show()
         } else {
-            handlePlayerLaunch(streamUrl, title, 0L)
+            handlePlayerLaunch(streamUrl, title, 0L, mediaId)
         }
     }
 
-    private fun handlePlayerLaunch(streamUrl: String, title: String, resumeMs: Long) {
+    private fun handlePlayerLaunch(streamUrl: String, title: String, resumeMs: Long, mediaId: String = "") {
         val prefPlayer = getSharedPreferences("teleflix_preferences", android.content.Context.MODE_PRIVATE)
             .getString("default_player", "ask") ?: "ask"
         if (prefPlayer == "ask") {
-            showPlayerActionDialog(streamUrl, title, resumeMs)
+            showPlayerActionDialog(streamUrl, title, resumeMs, mediaId)
         } else {
-            openStreamInPlayer(prefPlayer, streamUrl, title, resumeMs)
+            openStreamInPlayer(prefPlayer, streamUrl, title, resumeMs, mediaId)
         }
     }
 
@@ -1137,7 +1146,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showPlayerActionDialog(streamUrl: String, title: String, resumeMs: Long = 0L) {
+    private fun showPlayerActionDialog(streamUrl: String, title: String, resumeMs: Long = 0L, mediaId: String = "") {
         val options = arrayOf(
             "🟣 Internal Player (Built-in MPV Engine)",
             "🟢 MPVEX Player (External App)",
@@ -1149,17 +1158,17 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Select Video Player")
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> openStreamInPlayer("internal_mpv", streamUrl, title, resumeMs)
-                    1 -> openStreamInPlayer("mpvex", streamUrl, title, resumeMs)
-                    2 -> openStreamInPlayer("mpv", streamUrl, title, resumeMs)
-                    3 -> openStreamInPlayer("vlc", streamUrl, title, resumeMs)
-                    4 -> openStreamInPlayer("chooser", streamUrl, title, resumeMs)
+                    0 -> openStreamInPlayer("internal_mpv", streamUrl, title, resumeMs, mediaId)
+                    1 -> openStreamInPlayer("mpvex", streamUrl, title, resumeMs, mediaId)
+                    2 -> openStreamInPlayer("mpv", streamUrl, title, resumeMs, mediaId)
+                    3 -> openStreamInPlayer("vlc", streamUrl, title, resumeMs, mediaId)
+                    4 -> openStreamInPlayer("chooser", streamUrl, title, resumeMs, mediaId)
                 }
             }
             .show()
     }
 
-    private fun openStreamInPlayer(playerType: String, streamUrl: String, title: String, resumeMs: Long) {
+    private fun openStreamInPlayer(playerType: String, streamUrl: String, title: String, resumeMs: Long, mediaId: String = "") {
         val baseIntent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(Uri.parse(streamUrl), "video/*")
             putExtra("title", title)
@@ -1167,6 +1176,9 @@ class MainActivity : AppCompatActivity() {
             if (resumeMs > 0) {
                 putExtra("position", resumeMs.toInt())
                 putExtra("extra_position", resumeMs)
+                putExtra("resume_position", resumeMs)
+                putExtra("position_ms", resumeMs)
+                putExtra("start_position", resumeMs)
                 putExtra("from_start", false)
             }
         }
@@ -1176,6 +1188,7 @@ class MainActivity : AppCompatActivity() {
                 val mpvIntent = Intent(this, PlayerActivity::class.java).apply {
                     putExtra("url", streamUrl)
                     putExtra("title", title)
+                    putExtra("mediaId", mediaId)
                     putExtra("resumeMs", resumeMs)
                 }
                 startActivity(mpvIntent)

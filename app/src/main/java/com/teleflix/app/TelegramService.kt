@@ -42,17 +42,6 @@ class TelegramService : Service() {
                 val prefs = context.getSharedPreferences("TeleflixConfig", Context.MODE_PRIVATE)
                 prefs.edit().putBoolean("pref_run_in_background", false).apply()
 
-                val stopIntent = Intent(context, TelegramService::class.java).apply {
-                    action = "ACTION_STOP_SERVICE"
-                }
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(stopIntent)
-                    } else {
-                        context.startService(stopIntent)
-                    }
-                } catch (_: Exception) {}
-                
                 try {
                     context.stopService(Intent(context, TelegramService::class.java))
                 } catch (_: Exception) {}
@@ -69,14 +58,18 @@ class TelegramService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        try {
+            createNotificationChannel()
+            startForeground(NOTIFICATION_ID, buildNotification("TDLib streaming & search engine active in background"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed startForeground in onCreate: ${e.message}")
+        }
         val prefs = getSharedPreferences("TeleflixConfig", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("pref_run_in_background", true)) {
             Log.d(TAG, "onCreate: run in background disabled, terminating immediately")
             stopSelf()
             return
         }
-        createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("TDLib streaming & search engine active in background"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -89,6 +82,8 @@ class TelegramService : Service() {
                 prefs.edit().putBoolean("pref_run_in_background", false).apply()
             }
             try {
+                createNotificationChannel()
+                startForeground(NOTIFICATION_ID, buildNotification("Stopping service..."))
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                 } else {

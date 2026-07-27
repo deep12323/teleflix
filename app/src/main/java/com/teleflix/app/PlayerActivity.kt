@@ -45,6 +45,8 @@ class PlayerActivity : AppCompatActivity() {
     private var streamUrl: String = ""
     private var videoTitle: String = ""
     private var resumeMs: Long = 0L
+    private var mediaId: String = ""
+    private var hasAppliedResume = false
     private var currentScalingMode: Int = 0 // 0=Fit, 1=Zoom, 2=Stretched
 
     private val updateRunnable = object : Runnable {
@@ -54,6 +56,17 @@ class PlayerActivity : AppCompatActivity() {
                 val totalSec = (mpvView.mpv.getPropertyDouble("duration") ?: 0.0).toDouble()
                 val isPaused = (mpvView.mpv.getPropertyBoolean("pause") ?: false)
                 playPauseButton.text = if (isPaused) "►  PLAY" else "❚❚  PAUSE"
+
+                if (!hasAppliedResume && resumeMs > 0L && (totalSec > 0.0 || currentSec > 0.0)) {
+                    hasAppliedResume = true
+                    val targetSec = resumeMs / 1000.0
+                    try {
+                        mpvView.mpv.setPropertyDouble("time-pos", targetSec)
+                        mpvView.mpv.command(arrayOf("seek", targetSec.toString(), "absolute"))
+                    } catch (_: Exception) {}
+                    handler.postDelayed(this, 1000)
+                    return
+                }
 
                 if (totalSec > 0.0) {
                     seekBar.max = 1000
@@ -86,6 +99,7 @@ class PlayerActivity : AppCompatActivity() {
 
         streamUrl = intent.getStringExtra("url") ?: ""
         videoTitle = intent.getStringExtra("title") ?: "Video Stream"
+        mediaId = intent.getStringExtra("mediaId") ?: ""
         resumeMs = intent.getLongExtra("resumeMs", 0L)
         if (streamUrl.isBlank()) {
             Toast.makeText(this, "Error: Empty video URL", Toast.LENGTH_SHORT).show()
@@ -627,24 +641,36 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun saveResumePosition(ms: Long) {
+        val prefs = getSharedPreferences("teleflix_resume_points", Context.MODE_PRIVATE)
+        val editor = prefs.edit()
         if (streamUrl.isNotBlank()) {
-            val prefs = getSharedPreferences("teleflix_resume_points", Context.MODE_PRIVATE)
-            prefs.edit().putLong(streamUrl, ms).apply()
+            editor.putLong(streamUrl, ms)
         }
-        if (title.isNotBlank()) {
+        if (mediaId.isNotBlank()) {
+            editor.putLong("id_$mediaId", ms)
+            editor.putLong(mediaId, ms)
+        }
+        editor.apply()
+        if (videoTitle.isNotBlank()) {
             val prefsTitle = getSharedPreferences("TeleflixResume", Context.MODE_PRIVATE)
-            prefsTitle.edit().putLong("resume_$title", ms).apply()
+            prefsTitle.edit().putLong("resume_$videoTitle", ms).apply()
         }
     }
 
     private fun clearResumePosition() {
+        val prefs = getSharedPreferences("teleflix_resume_points", Context.MODE_PRIVATE)
+        val editor = prefs.edit()
         if (streamUrl.isNotBlank()) {
-            val prefs = getSharedPreferences("teleflix_resume_points", Context.MODE_PRIVATE)
-            prefs.edit().remove(streamUrl).apply()
+            editor.remove(streamUrl)
         }
-        if (title.isNotBlank()) {
+        if (mediaId.isNotBlank()) {
+            editor.remove("id_$mediaId")
+            editor.remove(mediaId)
+        }
+        editor.apply()
+        if (videoTitle.isNotBlank()) {
             val prefsTitle = getSharedPreferences("TeleflixResume", Context.MODE_PRIVATE)
-            prefsTitle.edit().remove("resume_$title").apply()
+            prefsTitle.edit().remove("resume_$videoTitle").apply()
         }
     }
 
