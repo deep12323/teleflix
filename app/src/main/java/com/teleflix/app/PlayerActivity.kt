@@ -254,12 +254,10 @@ class PlayerActivity : AppCompatActivity() {
         topBar.addView(audioButton)
         topBar.addView(aspectButton)
 
-        // CENTER CONTROLS (REWIND, PLAY/PAUSE, FAST FORWARD)
-        val centerControls = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+        // CENTER & EDGE CONTROLS (FAR-LEFT REWIND, DEAD-CENTER PLAY/PAUSE, FAR-RIGHT FORWARD)
+        val centerControls = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER
             )
@@ -276,9 +274,9 @@ class PlayerActivity : AppCompatActivity() {
                 cornerRadius = dpToPx(24).toFloat()
             }
             background = bg
-            setPadding(dpToPx(20), dpToPx(14), dpToPx(20), dpToPx(14))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = dpToPx(32)
+            setPadding(dpToPx(24), dpToPx(14), dpToPx(24), dpToPx(14))
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL or Gravity.START).apply {
+                leftMargin = dpToPx(40)
             }
             setOnClickListener {
                 try {
@@ -300,7 +298,8 @@ class PlayerActivity : AppCompatActivity() {
                 cornerRadius = dpToPx(24).toFloat()
             }
             background = bg
-            setPadding(dpToPx(28), dpToPx(16), dpToPx(28), dpToPx(16))
+            setPadding(dpToPx(32), dpToPx(16), dpToPx(32), dpToPx(16))
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
             setOnClickListener {
                 try {
                     val isPaused = (mpvView.mpv.getPropertyBoolean("pause") ?: false)
@@ -322,9 +321,9 @@ class PlayerActivity : AppCompatActivity() {
                 cornerRadius = dpToPx(24).toFloat()
             }
             background = bg
-            setPadding(dpToPx(20), dpToPx(14), dpToPx(20), dpToPx(14))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                leftMargin = dpToPx(32)
+            setPadding(dpToPx(24), dpToPx(14), dpToPx(24), dpToPx(14))
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL or Gravity.END).apply {
+                rightMargin = dpToPx(40)
             }
             setOnClickListener {
                 try {
