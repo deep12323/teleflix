@@ -64,15 +64,66 @@ class SettingsActivity : AppCompatActivity() {
         }
         root.addView(header)
 
+        // Teleflix Login Section (Collapsible Header & Container)
+        val loginHeaderCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.parseColor("#1F2937"))
+            setPadding(32, 28, 32, 28)
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, 16)
+            }
+        }
+
+        val loginTitle = TextView(this).apply {
+            text = "🔐 Teleflix Login"
+            textSize = 17f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        loginHeaderCard.addView(loginTitle)
+
+        val arrowText = TextView(this).apply {
+            text = "▼"
+            textSize = 16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor("#9CA3AF"))
+        }
+        loginHeaderCard.addView(arrowText)
+        root.addView(loginHeaderCard)
+
+        val loginSettingsContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = android.view.View.GONE
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, 24)
+            }
+        }
+
+        loginHeaderCard.setOnClickListener {
+            if (loginSettingsContainer.visibility == android.view.View.VISIBLE) {
+                loginSettingsContainer.visibility = android.view.View.GONE
+                arrowText.text = "▼"
+            } else {
+                loginSettingsContainer.visibility = android.view.View.VISIBLE
+                arrowText.text = "▲"
+            }
+        }
+
         // Session Status Box
         val sessionBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#161B28"))
             setPadding(24, 24, 24, 24)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, 16)
+            }
         }
 
         val sessionTitle = TextView(this).apply {
-            text = "Telegram Account Session (Native TDLib)"
+            text = "Telegram Account Session"
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.WHITE)
@@ -95,62 +146,14 @@ class SettingsActivity : AppCompatActivity() {
         }
         sessionBox.addView(authBtn)
 
-        root.addView(sessionBox)
-
-        // Channels Section
-        val channelTitle = TextView(this).apply {
-            text = "Monitored Telegram Channels"
-            textSize = 16f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            setPadding(0, 24, 0, 12)
-        }
-        root.addView(channelTitle)
-
-        val addLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 16)
-        }
-
-        val channelInput = EditText(this).apply {
-            hint = "Enter @channel_name..."
-            setHintTextColor(Color.parseColor("#6B7280"))
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#161B28"))
-            setPadding(20, 16, 20, 16)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        val addBtn = Button(this).apply {
-            text = "Add"
-            setBackgroundColor(Color.parseColor("#E50914"))
-            setTextColor(Color.WHITE)
-            setOnClickListener {
-                if (channelInput.text.isNotBlank()) {
-                    TdlibManager.addChannel(this@SettingsActivity, channelInput.text.toString())
-                    channelInput.setText("")
-                    loadChannels()
-                }
-            }
-        }
-
-        addLayout.addView(channelInput)
-        addLayout.addView(addBtn)
-        root.addView(addLayout)
-
-        channelContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        root.addView(channelContainer)
+        loginSettingsContainer.addView(sessionBox)
 
         // API Credentials Box
         val apiBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#161B28"))
             setPadding(24, 24, 24, 24)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 24, 0, 0)
-            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
 
         val apiTitle = TextView(this).apply {
@@ -195,7 +198,54 @@ class SettingsActivity : AppCompatActivity() {
         }
         apiBox.addView(saveApiBtn)
 
-        root.addView(apiBox)
+        loginSettingsContainer.addView(apiBox)
+        root.addView(loginSettingsContainer)
+
+        // Channels Section
+        val channelTitle = TextView(this).apply {
+            text = "Monitored Telegram Channels"
+            textSize = 16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(0, 16, 0, 12)
+        }
+        root.addView(channelTitle)
+
+        val addLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, 16)
+        }
+
+        val channelInput = EditText(this).apply {
+            hint = "Enter @channel_name..."
+            setHintTextColor(Color.parseColor("#6B7280"))
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#161B28"))
+            setPadding(20, 16, 20, 16)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val addBtn = Button(this).apply {
+            text = "Add"
+            setBackgroundColor(Color.parseColor("#E50914"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                if (channelInput.text.isNotBlank()) {
+                    TdlibManager.addChannel(this@SettingsActivity, channelInput.text.toString())
+                    channelInput.setText("")
+                    loadChannels()
+                }
+            }
+        }
+
+        addLayout.addView(channelInput)
+        addLayout.addView(addBtn)
+        root.addView(addLayout)
+
+        channelContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        root.addView(channelContainer)
 
         // Streaming Buffer & Cache Box
         val storageBox = LinearLayout(this).apply {

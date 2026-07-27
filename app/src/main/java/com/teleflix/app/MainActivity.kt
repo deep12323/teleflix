@@ -48,7 +48,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var searchInput: EditText
     private lateinit var searchButton: Button
-    private lateinit var statusButton: Button
+    private lateinit var statusButton: TextView
     private lateinit var categoryLabel: TextView
     private lateinit var loadingText: TextView
 
@@ -107,11 +107,13 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        statusButton = Button(this).apply {
+        statusButton = TextView(this).apply {
             text = "⚙️"
-            textSize = 14f
-            setBackgroundColor(android.graphics.Color.parseColor("#1E293B"))
-            setTextColor(android.graphics.Color.WHITE)
+            textSize = 24f
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setPadding(16, 8, 8, 8)
+            isClickable = true
+            isFocusable = true
             setOnClickListener {
                 startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
             }
