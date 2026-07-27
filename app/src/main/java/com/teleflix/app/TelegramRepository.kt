@@ -710,11 +710,32 @@ object TelegramRepository {
         return results
     }
 
+    private fun resolveDisplayName(rawFileName: String?, caption: String?, defaultExt: String): String {
+        val cleanName = rawFileName?.trim() ?: ""
+        val isGeneric = cleanName.isEmpty() || cleanName.lowercase() in listOf(
+            "default_name.mkv", "default_name.mp4", "video.mp4", "video.mkv", "file.mp4", "file.mkv", "audio.mp3"
+        ) || cleanName.lowercase().startsWith("video_") || cleanName.lowercase().startsWith("file_")
+
+        if (isGeneric && !caption.isNullOrBlank()) {
+            val captionTitle = caption.lines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("http") }
+                .take(2)
+                .joinToString(" - ") { it.replace(Regex("""\s+"""), " ") }
+                .take(80)
+            if (captionTitle.isNotBlank()) {
+                val ext = if (cleanName.contains('.')) cleanName.substringAfterLast('.') else defaultExt
+                return "$captionTitle.$ext"
+            }
+        }
+        return if (cleanName.isNotBlank()) cleanName else "Unnamed_Media.$defaultExt"
+    }
+
     private fun extractMediaMessage(msg: TdApi.Message, seen: MutableSet<Pair<String, Long>>, results: MutableList<TelegramVideoMessage>) {
         when (val content = msg.content) {
             is TdApi.MessageDocument -> {
                 val mime = content.document.mimeType?.lowercase() ?: ""
-                val filename = content.document.fileName ?: "Default_Name.mkv"
+                val filename = resolveDisplayName(content.document.fileName, content.caption?.text, "mkv")
                 val ext = filename.substringAfterLast('.', "").lowercase().trim()
                 val filenameLower = filename.lowercase()
                 
@@ -760,7 +781,7 @@ object TelegramRepository {
                 }
             }
             is TdApi.MessageVideo -> {
-                val filename = content.video.fileName ?: "Default_Name.mp4"
+                val filename = resolveDisplayName(content.video.fileName, content.caption?.text, "mp4")
                 val key = filename to content.video.video.size
                 if (seen.add(key)) {
                     results.add(TelegramVideoMessage(
@@ -896,7 +917,6 @@ object TelegramRepository {
         val zPattern = Regex("""^(.+?)\.z(\d{2,3})$""", RegexOption.IGNORE_CASE) // matches file.z01, file.z02
         
         val groups = mutableMapOf<String, MutableList<Pair<Int, TelegramVideoMessage>>>()
-        val sameNameGroups = mutableMapOf<String, MutableList<TelegramVideoMessage>>()
         val singles = mutableListOf<TelegramVideoMessage>()
         
         for (msg in messages) {
@@ -922,8 +942,7 @@ object TelegramRepository {
                     groups.getOrPut(baseName) { mutableListOf() }.add(partNum to msg)
                 }
                 else -> {
-                    val key = "${msg.chatId}_${msg.fileName}"
-                    sameNameGroups.getOrPut(key) { mutableListOf() }.add(msg)
+                    singles.add(msg)
                 }
             }
         }
@@ -941,20 +960,6 @@ object TelegramRepository {
                 parts = sorted,
                 totalSize = sorted.sumOf { it.fileSize }
             ))
-        }
-
-        for ((_, parts) in sameNameGroups) {
-            if (parts.size >= 2) {
-                val sorted = parts.sortedBy { it.messageId }
-                val baseName = parts.first().fileName
-                splitGroups.add(SplitFileGroup(
-                    baseName = baseName,
-                    parts = sorted,
-                    totalSize = sorted.sumOf { it.fileSize }
-                ))
-            } else {
-                singles.addAll(parts)
-            }
         }
         
         return splitGroups to singles
