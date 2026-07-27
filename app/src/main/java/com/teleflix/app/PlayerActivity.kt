@@ -162,17 +162,19 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun showExternalPlayerPicker() {
         val options = arrayOf(
-            "📱 Choose From All Installed Video Players...",
+            "🟢 Open in MPVEX Player",
+            "🟣 Open in MPV Player",
             "🧡 Open in VLC Player",
-            "🟣 Open in MPV Player"
+            "📱 Choose From All Installed Video Players..."
         )
         AlertDialog.Builder(this)
             .setTitle("Switch to External Player")
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> openExternalPlayer("")
-                    1 -> openExternalPlayer("org.videolan.vlc")
-                    2 -> openExternalPlayer("is.xyz.mpv")
+                    0 -> openExternalPlayer("id.nzxm.mpvex")
+                    1 -> openExternalPlayer("is.xyz.mpv")
+                    2 -> openExternalPlayer("org.videolan.vlc")
+                    3 -> openExternalPlayer("")
                 }
             }
             .show()
@@ -193,13 +195,22 @@ class PlayerActivity : AppCompatActivity() {
     private fun openExternalPlayer(packageName: String) {
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(Uri.parse(videoUrl), "video/*")
+            putExtra("title", videoTitle)
+            putExtra("filename", videoTitle)
             if (packageName.isNotEmpty()) setPackage(packageName)
         }
         try {
             val finalIntent = if (packageName.isEmpty()) Intent.createChooser(intent, "Select Video Player") else intent
             startActivity(finalIntent)
         } catch (e: Exception) {
-            Toast.makeText(this, "External video player not installed or found", Toast.LENGTH_SHORT).show()
+            if (packageName == "id.nzxm.mpvex") {
+                try {
+                    intent.setPackage("id.nzxm.mpvex.debug")
+                    startActivity(intent)
+                    return
+                } catch (_: Exception) {}
+            }
+            Toast.makeText(this, "Selected video player not installed or found on phone", Toast.LENGTH_SHORT).show()
         }
     }
 

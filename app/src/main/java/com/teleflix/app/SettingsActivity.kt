@@ -336,6 +336,71 @@ class SettingsActivity : AppCompatActivity() {
 
         root.addView(storageBox)
 
+        // Default Player Box
+        val playerBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#161B28"))
+            setPadding(24, 24, 24, 24)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, 24)
+            }
+        }
+
+        val playerTitle = TextView(this).apply {
+            text = "Video Playback & Preferred Player"
+            textSize = 16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+        }
+        playerBox.addView(playerTitle)
+
+        val prefs = getSharedPreferences("teleflix_preferences", android.content.Context.MODE_PRIVATE)
+        val currentDefault = prefs.getString("default_player", "ask") ?: "ask"
+        val playerMap = mapOf(
+            "ask" to "Always Ask (Select Player on Tap)",
+            "mpvex" to "🟢 MPVEX Player (Direct Launch)",
+            "exo" to "🎬 Internal Player (ExoPlayer)",
+            "mpv" to "🟣 MPV Player",
+            "vlc" to "🧡 VLC Player",
+            "chooser" to "📱 Android System Player Chooser"
+        )
+        val playerDesc = TextView(this).apply {
+            text = "Current Preferred Player:\n${playerMap[currentDefault] ?: "Always Ask"}"
+            textSize = 14f
+            setTextColor(Color.parseColor("#93C5FD"))
+            setPadding(0, 12, 0, 12)
+        }
+        playerBox.addView(playerDesc)
+
+        val changePlayerBtn = Button(this).apply {
+            text = "Select Default Player (MPVEX / ExoPlayer / VLC)"
+            setBackgroundColor(Color.parseColor("#3B82F6"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                val labels = arrayOf(
+                    "Always Ask (Select Player on Tap)",
+                    "🟢 MPVEX Player (Direct Launch)",
+                    "🎬 Internal Player (ExoPlayer)",
+                    "🟣 MPV Player",
+                    "🧡 VLC Player",
+                    "📱 Android System Player Chooser"
+                )
+                val keys = arrayOf("ask", "mpvex", "exo", "mpv", "vlc", "chooser")
+                AlertDialog.Builder(this@SettingsActivity)
+                    .setTitle("Select Preferred Video Player")
+                    .setItems(labels) { _, which ->
+                        val selectedKey = keys[which]
+                        val selectedLabel = labels[which]
+                        prefs.edit().putString("default_player", selectedKey).apply()
+                        playerDesc.text = "Current Preferred Player:\n$selectedLabel"
+                        Toast.makeText(this@SettingsActivity, "Default player set to: $selectedLabel", Toast.LENGTH_SHORT).show()
+                    }
+                    .show()
+            }
+        }
+        playerBox.addView(changePlayerBtn)
+        root.addView(playerBox)
+
         setContentView(scrollView)
 
         CoroutineScope(Dispatchers.IO).launch {
