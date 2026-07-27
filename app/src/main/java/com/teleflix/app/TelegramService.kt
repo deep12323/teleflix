@@ -20,7 +20,7 @@ class TelegramService : Service() {
 
         fun start(context: Context) {
             try {
-                val prefs = context.getSharedPreferences("TeleflixConfig", Context.MODE_PRIVATE)
+                val prefs = context.getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
                 if (!prefs.getBoolean("pref_run_in_background", true)) {
                     Log.d(TAG, "TelegramService start ignored: disabled by user in settings")
                     return
@@ -39,7 +39,7 @@ class TelegramService : Service() {
 
         fun stop(context: Context) {
             try {
-                val prefs = context.getSharedPreferences("TeleflixConfig", Context.MODE_PRIVATE)
+                val prefs = context.getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
                 prefs.edit().putBoolean("pref_run_in_background", false).apply()
 
                 try {
@@ -64,26 +64,18 @@ class TelegramService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed startForeground in onCreate: ${e.message}")
         }
-        val prefs = getSharedPreferences("TeleflixConfig", Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("pref_run_in_background", true)) {
-            Log.d(TAG, "onCreate: run in background disabled, terminating immediately")
-            stopSelf()
-            return
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val prefs = getSharedPreferences("TeleflixConfig", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
         val isEnabled = prefs.getBoolean("pref_run_in_background", true)
 
-        if (!isEnabled || intent?.action == "ACTION_STOP_SERVICE") {
+        if (intent?.action == "ACTION_STOP_SERVICE" || !isEnabled) {
             Log.d(TAG, "Stopping service: enabled=$isEnabled, action=${intent?.action}")
             if (intent?.action == "ACTION_STOP_SERVICE") {
                 prefs.edit().putBoolean("pref_run_in_background", false).apply()
             }
             try {
-                createNotificationChannel()
-                startForeground(NOTIFICATION_ID, buildNotification("Stopping service..."))
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                 } else {
