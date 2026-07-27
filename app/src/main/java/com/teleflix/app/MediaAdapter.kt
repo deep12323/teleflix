@@ -264,21 +264,17 @@ class MediaAdapter(
         holder.overviewText?.text = item.overview
 
         if (holder.posterView != null) {
-            if (item.type == "telegram_media" && item.posterUrl.isNotBlank()) {
+            val refreshedPoster = TelegramStreamingProxy.refreshUrl(item.posterUrl)
+            if (refreshedPoster.isNotBlank()) {
+                val defaultPlaceholder = if (item.type == "telegram_media") android.R.drawable.ic_media_play else android.R.drawable.ic_menu_gallery
                 Glide.with(holder.itemView.context)
-                    .load(item.posterUrl)
+                    .load(refreshedPoster)
                     .transform(RoundedCorners(12))
-                    .placeholder(android.R.drawable.ic_media_play)
-                    .error(android.R.drawable.ic_media_play)
-                    .into(holder.posterView)
-            } else if (item.posterUrl.isNotBlank() && !item.posterUrl.startsWith("http://127.0.0.1")) {
-                Glide.with(holder.itemView.context)
-                    .load(item.posterUrl)
-                    .transform(RoundedCorners(16))
-                    .error(android.R.drawable.ic_dialog_alert)
+                    .placeholder(defaultPlaceholder)
+                    .error(defaultPlaceholder)
                     .into(holder.posterView)
             } else {
-                holder.posterView.setImageResource(android.R.drawable.ic_menu_gallery)
+                holder.posterView.setImageResource(if (item.type == "telegram_media") android.R.drawable.ic_media_play else android.R.drawable.ic_menu_gallery)
             }
         }
 

@@ -263,7 +263,8 @@ class MainActivity : AppCompatActivity() {
                 "channel" -> loadTelegramChannelMedia(item.id, item.title)
                 "telegram_media" -> {
                     val streamInfo = telegramStreamCache[item.id]
-                    val urlToPlay = streamInfo?.first ?: item.streamUrl
+                    val rawUrl = streamInfo?.first ?: item.streamUrl
+                    val urlToPlay = TelegramStreamingProxy.refreshUrl(rawUrl)
                     val titleToPlay = streamInfo?.second ?: item.title
                     if (urlToPlay.isNotBlank()) {
                         checkResumeAndSelectPlayer(urlToPlay, titleToPlay)
@@ -1178,12 +1179,12 @@ class MainActivity : AppCompatActivity() {
                     MediaItem(
                         id = obj.optString("id", ""),
                         title = obj.optString("title", "Unknown"),
-                        posterUrl = obj.optString("posterUrl", ""),
+                        posterUrl = TelegramStreamingProxy.refreshUrl(obj.optString("posterUrl", "")),
                         year = obj.optString("year", ""),
                         rating = obj.optString("rating", ""),
                         overview = obj.optString("overview", ""),
                         type = itemType,
-                        streamUrl = obj.optString("streamUrl", "")
+                        streamUrl = TelegramStreamingProxy.refreshUrl(obj.optString("streamUrl", ""))
                     )
                 )
             }

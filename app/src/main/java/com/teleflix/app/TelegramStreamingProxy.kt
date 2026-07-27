@@ -699,6 +699,22 @@ object TelegramStreamingProxy {
         }
     }
 
+    fun refreshUrl(url: String?): String {
+        if (url.isNullOrBlank()) return ""
+        if (!url.startsWith("http://127.0.0.1:") && !url.startsWith("http://localhost:")) {
+            return url
+        }
+        ensureRunning()
+        var refreshed = url.replace(Regex("http://(127\\.0\\.0\\.1|localhost):[0-9]+"), "http://127.0.0.1:$port")
+        if (refreshed.contains("token=")) {
+            refreshed = refreshed.replace(Regex("token=[^&]+"), "token=$authToken")
+        } else {
+            val separator = if (refreshed.contains("?")) "&" else "?"
+            refreshed += "${separator}token=$authToken"
+        }
+        return refreshed
+    }
+
     fun getUrl(fileId: Int, fileName: String, expectedSize: Long = 0L): String {
         ensureRunning()
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
