@@ -852,7 +852,7 @@ object TelegramRepository {
                 Log.e(TAG, "fetchChannelMedia error for $channelUsernameOrId: ${e.message}")
             }
         }
-        return results.sortedByDescending { it.date }
+        return results.sortedByDescending { it.messageId }
     }
 
     fun getStreamUrl(fileId: Int, fileName: String, expectedSize: Long = 0L): String = TelegramStreamingProxy.getUrl(fileId, fileName, expectedSize)

@@ -262,7 +262,7 @@ class MainActivity : AppCompatActivity() {
                     val msg = telegramMediaCache[item.id]
                     if (msg != null) {
                         val url = TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
-                        checkResumeAndSelectPlayer(url, msg.title.ifBlank { msg.fileName })
+                        checkResumeAndSelectPlayer(url, msg.fileName.ifBlank { "Telegram Video" })
                     } else {
                         Toast.makeText(this@MainActivity, "Media file expired or unavailable", Toast.LENGTH_SHORT).show()
                     }
@@ -572,7 +572,7 @@ class MainActivity : AppCompatActivity() {
                         mediaList.add(
                             MediaItem(
                                 id = key,
-                                title = msg.title.ifBlank { msg.fileName },
+                                title = msg.fileName.ifBlank { "Unnamed Media" },
                                 posterUrl = "https://cdn-icons-png.flaticon.com/512/3849/3849176.png",
                                 year = "${sizeMb} MB",
                                 rating = badge,
@@ -618,7 +618,7 @@ class MainActivity : AppCompatActivity() {
                         mediaList.add(
                             MediaItem(
                                 id = key,
-                                title = msg.title.ifBlank { msg.fileName },
+                                title = msg.fileName.ifBlank { "Unnamed Media" },
                                 posterUrl = "https://cdn-icons-png.flaticon.com/512/3849/3849176.png",
                                 year = "${sizeMb} MB",
                                 rating = badge,
