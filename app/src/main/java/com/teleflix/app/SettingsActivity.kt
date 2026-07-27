@@ -372,6 +372,9 @@ class SettingsActivity : AppCompatActivity() {
                 isBackgroundEnabled = !isBackgroundEnabled
                 prefs.edit().putBoolean("pref_run_in_background", isBackgroundEnabled).apply()
                 if (isBackgroundEnabled) {
+                    if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+                    }
                     TelegramService.start(this@SettingsActivity)
                     text = "❌ TURN OFF RUN IN BACKGROUND"
                     setBackgroundColor(Color.parseColor("#DC2626"))

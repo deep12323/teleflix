@@ -627,15 +627,25 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun saveResumePosition(ms: Long) {
-        if (streamUrl.isBlank()) return
-        val prefs = getSharedPreferences("teleflix_resume_points", Context.MODE_PRIVATE)
-        prefs.edit().putLong(streamUrl, ms).apply()
+        if (streamUrl.isNotBlank()) {
+            val prefs = getSharedPreferences("teleflix_resume_points", Context.MODE_PRIVATE)
+            prefs.edit().putLong(streamUrl, ms).apply()
+        }
+        if (title.isNotBlank()) {
+            val prefsTitle = getSharedPreferences("TeleflixResume", Context.MODE_PRIVATE)
+            prefsTitle.edit().putLong("resume_$title", ms).apply()
+        }
     }
 
     private fun clearResumePosition() {
-        if (streamUrl.isBlank()) return
-        val prefs = getSharedPreferences("teleflix_resume_points", Context.MODE_PRIVATE)
-        prefs.edit().remove(streamUrl).apply()
+        if (streamUrl.isNotBlank()) {
+            val prefs = getSharedPreferences("teleflix_resume_points", Context.MODE_PRIVATE)
+            prefs.edit().remove(streamUrl).apply()
+        }
+        if (title.isNotBlank()) {
+            val prefsTitle = getSharedPreferences("TeleflixResume", Context.MODE_PRIVATE)
+            prefsTitle.edit().remove("resume_$title").apply()
+        }
     }
 
     override fun onDestroy() {

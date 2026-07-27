@@ -2,5 +2,9 @@
     {
         "merged": "com.teleflix.app-debug-34:/drawable_ic_launcher.xml.flat",
         "source": "com.teleflix.app-main-36:/drawable/ic_launcher.xml"
+    },
+    {
+        "merged": "/data/data/com.termux/files/home/.gradle/daemon/8.12/com.teleflix.app-debug-34:/drawable_ic_launcher.xml.flat",
+        "source": "/data/data/com.termux/files/home/.gradle/daemon/8.12/com.teleflix.app-main-36:/drawable/ic_launcher.xml"
     }
 ]

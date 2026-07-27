@@ -262,7 +262,8 @@ class MainActivity : AppCompatActivity() {
                 "telegram_media" -> {
                     val streamInfo = telegramStreamCache[item.id]
                     val titleToPlay = streamInfo?.second ?: item.title
-                    val parts = item.id.split("_")
+                    val cleanId = item.id.removePrefix("single_").removePrefix("stream_")
+                    val parts = cleanId.split("_")
                     val chatId = parts.getOrNull(0)?.toLongOrNull()
                     val messageId = parts.getOrNull(1)?.toLongOrNull()
 
@@ -341,9 +342,10 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         TelegramRepository.initialize(this)
-        if (TdlibManager.isSessionActive(this)) {
-            try { TelegramService.start(this) } catch (_: Exception) {}
+        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
         }
+        try { TelegramService.start(this) } catch (_: Exception) {}
         updateStatusButton()
     }
 
@@ -1009,7 +1011,7 @@ class MainActivity : AppCompatActivity() {
                         isFocusable = true
                         setOnClickListener {
                             streamDialog.dismiss()
-                            checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, "stream_${stream.url.hashCode()}")
+                            checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, stream.id)
                         }
                     }
 

@@ -194,7 +194,7 @@ object TdlibManager {
                     val qualityTag = extractQualityTag(msg.fileName)
                     val prefix = if (ext == "zip") "🗄️ " else "📺 "
                     StreamSource(
-                        id = "single_${msg.chatId}_${msg.messageId}",
+                        id = "${msg.chatId}_${msg.messageId}",
                         quality = if (qualityTag.isNotBlank()) qualityTag else ext.uppercase().ifBlank { "VIDEO" },
                         fileName = prefix + msg.fileName.ifBlank { "telegram_video.$ext" },
                         size = sizeStr,

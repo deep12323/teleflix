@@ -110,7 +110,7 @@ class TelegramService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing repository in service: ${e.message}")
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? {
