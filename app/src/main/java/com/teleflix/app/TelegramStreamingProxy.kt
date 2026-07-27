@@ -862,9 +862,9 @@ object TelegramStreamingProxy {
                     return@withTimeoutOrNull finalData?.data
                 }
 
-                // If chunk is taking more than ~250ms (5 attempts), re-trigger DownloadFile for this offset range
-                // so concurrent range requests (e.g. MKV end-of-file Cues) don't starve the main playback stream
-                if (attempts % 5 == 4) {
+                // Immediately trigger DownloadFile on attempt 0 and re-assert every 250ms (every 5 attempts)
+                // so concurrent range requests (e.g. MKV end-of-file Cues) never stall or starve the playback stream
+                if (attempts % 5 == 0) {
                     val tdlibPrefetch = when {
                         prefetchSizeMb >= 102400L || prefetchSizeMb == -1L -> 0L
                         prefetchSizeMb <= 0L -> limit.toLong()

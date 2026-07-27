@@ -1170,8 +1170,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openStreamInPlayer(playerType: String, streamUrl: String, title: String, resumeMs: Long, mediaId: String = "") {
+        // Immediately pre-warm TDLib download for offset 0 so first chunk is available in 0ms to external players
+        val fileId = streamUrl.substringAfter("/file/", "").substringBefore("/").substringBefore("?").toIntOrNull()
+        if (fileId != null) {
+            runCatching {
+                TelegramClient.sendRequest(org.drinkless.tdlib.TdApi.DownloadFile().also { req ->
+                    req.fileId = fileId
+                    req.priority = 32
+                    req.offset = 0
+                    req.limit = 1048576
+                    req.synchronous = false
+                })
+            }
+        }
+
+        val isMkv = title.endsWith(".mkv", ignoreCase = true) || streamUrl.lowercase().contains(".mkv")
+        val mimeType = if (isMkv) "video/x-matroska" else "video/*"
+
         val baseIntent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(Uri.parse(streamUrl), "video/*")
+            setDataAndType(Uri.parse(streamUrl), mimeType)
             putExtra("title", title)
             putExtra("filename", title)
             if (resumeMs > 0) {
