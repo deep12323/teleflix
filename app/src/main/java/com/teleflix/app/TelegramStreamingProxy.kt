@@ -843,13 +843,7 @@ object TelegramStreamingProxy {
     }
 
     private fun isCacheEnabled(): Boolean {
-        return try {
-            val context = TelegramRepository.getContext()
-            val cacheLimit = TelegramRepository.getCacheLimitMb(context)
-            cacheLimit > 1L || cacheLimit == -1L
-        } catch (e: Exception) {
-            false
-        }
+        return false // Video and audio streaming cache is disabled by design; files are purged automatically
     }
 
     private fun getMimeType(ext: String): String = when (ext) {

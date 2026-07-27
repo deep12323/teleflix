@@ -269,6 +269,7 @@ class MediaAdapter(
                 val defaultPlaceholder = if (item.type == "telegram_media") android.R.drawable.ic_media_play else android.R.drawable.ic_menu_gallery
                 Glide.with(holder.itemView.context)
                     .load(refreshedPoster)
+                    .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.ALL)
                     .transform(RoundedCorners(12))
                     .placeholder(defaultPlaceholder)
                     .error(defaultPlaceholder)

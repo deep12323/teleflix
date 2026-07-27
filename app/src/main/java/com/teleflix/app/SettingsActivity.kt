@@ -392,7 +392,7 @@ class SettingsActivity : AppCompatActivity() {
         bgSectionContainer.addView(bgBox)
 
         // 5. Storage, Cache & History Section (Collapsible)
-        val storageSectionContainer = createCollapsibleSection("💾 Storage, Video Cache & Watch History")
+        val storageSectionContainer = createCollapsibleSection("💾 App Cache, Storage & Watch History")
 
         val storageBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -402,7 +402,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         val storageTitle = TextView(this).apply {
-            text = "Streaming Buffer & Storage Management"
+            text = "App Cache & Storage Management"
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.WHITE)
@@ -410,7 +410,7 @@ class SettingsActivity : AppCompatActivity() {
         storageBox.addView(storageTitle)
 
         val bufferDesc = TextView(this).apply {
-            text = "Video Pre-fetch Buffer Size (Current: ${TelegramRepository.getBufferSizeMb(this@SettingsActivity)} MB)"
+            text = "Video Pre-fetch RAM Buffer Size (Current: ${TelegramRepository.getBufferSizeMb(this@SettingsActivity)} MB)\n\n⚡ Video & Audio file caching is permanently disabled. Streamed video/audio buffers are cleaned up immediately after watching to save device storage!"
             textSize = 14f
             setTextColor(Color.parseColor("#93C5FD"))
             setPadding(0, 12, 0, 8)
@@ -418,19 +418,19 @@ class SettingsActivity : AppCompatActivity() {
         storageBox.addView(bufferDesc)
 
         val bufferBtn = Button(this).apply {
-            text = "Change Buffer Size (5MB - 100MB)"
+            text = "Change Pre-fetch RAM Buffer (5MB - 100MB)"
             setBackgroundColor(Color.parseColor("#1E3A8A"))
             setTextColor(Color.WHITE)
             setOnClickListener {
                 val sizes = arrayOf("5 MB (Low RAM)", "10 MB", "20 MB (Default)", "50 MB (Smooth 4K)", "100 MB (Ultra Smooth)")
                 val values = arrayOf(5L, 10L, 20L, 50L, 100L)
                 AlertDialog.Builder(this@SettingsActivity)
-                    .setTitle("Select Video Buffer Size")
+                    .setTitle("Select Video Pre-fetch Buffer Size")
                     .setItems(sizes) { _, which ->
                         val selected = values[which]
                         TelegramRepository.saveBufferSizeMb(this@SettingsActivity, selected)
                         TelegramStreamingProxy.prefetchSizeMb = selected
-                        bufferDesc.text = "Video Pre-fetch Buffer Size (Current: $selected MB)"
+                        bufferDesc.text = "Video Pre-fetch RAM Buffer Size (Current: $selected MB)\n\n⚡ Video & Audio file caching is permanently disabled. Streamed video/audio buffers are cleaned up immediately after watching to save device storage!"
                         Toast.makeText(this@SettingsActivity, "Buffer set to $selected MB", Toast.LENGTH_SHORT).show()
                     }
                     .show()
@@ -439,7 +439,7 @@ class SettingsActivity : AppCompatActivity() {
         storageBox.addView(bufferBtn)
 
         val cacheDesc = TextView(this).apply {
-            text = "Calculating video cache size..."
+            text = "Calculating total app cache size..."
             textSize = 14f
             setTextColor(Color.parseColor("#9CA3AF"))
             setPadding(0, 16, 0, 8)
@@ -447,13 +447,19 @@ class SettingsActivity : AppCompatActivity() {
         storageBox.addView(cacheDesc)
 
         val clearCacheBtn = Button(this).apply {
-            text = "Clear Streamed Video Cache"
+            text = "Clear App Cache (Posters & Thumbnails)"
             setBackgroundColor(Color.parseColor("#EF4444"))
             setTextColor(Color.WHITE)
             setOnClickListener {
                 TelegramRepository.clearCache(this@SettingsActivity)
-                cacheDesc.text = "Video Cache Size: 0.0 MB (Cleared)"
-                Toast.makeText(this@SettingsActivity, "Video cache cleared successfully!", Toast.LENGTH_SHORT).show()
+                CoroutineScope(Dispatchers.IO).launch {
+                    try { com.bumptech.glide.Glide.get(this@SettingsActivity).clearDiskCache() } catch (_: Exception) {}
+                    withContext(Dispatchers.Main) {
+                        try { com.bumptech.glide.Glide.get(this@SettingsActivity).clearMemory() } catch (_: Exception) {}
+                    }
+                }
+                cacheDesc.text = "Total App Cache: 0.0 MB (Cleared)"
+                Toast.makeText(this@SettingsActivity, "All poster & thumbnail cache cleared successfully!", Toast.LENGTH_SHORT).show()
             }
         }
         storageBox.addView(clearCacheBtn)
@@ -484,7 +490,7 @@ class SettingsActivity : AppCompatActivity() {
             val sizeBytes = try { TelegramRepository.getCacheSize(this@SettingsActivity) } catch (_: Exception) { 0L }
             val sizeMb = sizeBytes / (1024.0 * 1024.0)
             withContext(Dispatchers.Main) {
-                try { cacheDesc.text = String.format("Video Cache Size: %.1f MB", sizeMb) } catch (_: Exception) {}
+                try { cacheDesc.text = String.format("Total App Cache (Posters & Thumbnails): %.1f MB", sizeMb) } catch (_: Exception) {}
             }
         }
 
