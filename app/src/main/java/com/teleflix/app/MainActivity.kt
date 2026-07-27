@@ -272,7 +272,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val gridLayoutManager = GridLayoutManager(this, 2)
+        val gridLayoutManager = GridLayoutManager(this, 2).apply {
+            spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+                override fun getSpanSize(position: Int): Int {
+                    val item = mediaList.getOrNull(position)
+                    return if (item?.type == "channel") 2 else 1
+                }
+            }
+        }
         recyclerView = RecyclerView(this).apply {
             layoutManager = gridLayoutManager
             adapter = mediaAdapter
@@ -573,7 +580,7 @@ class MainActivity : AppCompatActivity() {
                             MediaItem(
                                 id = key,
                                 title = msg.fileName.ifBlank { "Unnamed Media" },
-                                posterUrl = "https://cdn-icons-png.flaticon.com/512/3849/3849176.png",
+                                posterUrl = if (msg.thumbnailFileId != null || msg.chatId != 0L) TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) else "",
                                 year = "${sizeMb} MB",
                                 rating = badge,
                                 overview = msg.caption.ifBlank { "Telegram File: ${msg.fileName}\nSize: $sizeMb MB" },
@@ -619,7 +626,7 @@ class MainActivity : AppCompatActivity() {
                             MediaItem(
                                 id = key,
                                 title = msg.fileName.ifBlank { "Unnamed Media" },
-                                posterUrl = "https://cdn-icons-png.flaticon.com/512/3849/3849176.png",
+                                posterUrl = if (msg.thumbnailFileId != null || msg.chatId != 0L) TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) else "",
                                 year = "${sizeMb} MB",
                                 rating = badge,
                                 overview = msg.caption.ifBlank { "Telegram Search Match: ${msg.fileName}\nSize: $sizeMb MB" },
