@@ -638,7 +638,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     infoRow.addView(sizeBadge)
 
-                    val spacer = View(this@MainActivity).apply {
+                    val spacer = android.view.View(this@MainActivity).apply {
                         layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
                     }
                     infoRow.addView(spacer)
