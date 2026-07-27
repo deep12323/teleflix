@@ -51,6 +51,7 @@ android {
 }
 
 dependencies {
+    implementation("io.github.abdallahmehiz:mpv-android-lib:0.1.12")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")

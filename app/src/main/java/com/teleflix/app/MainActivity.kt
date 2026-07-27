@@ -1036,8 +1036,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPlayerActionDialog(streamUrl: String, title: String, resumeMs: Long = 0L) {
         val options = arrayOf(
-            "🟢 Internal Player (MPVEX)",
-            "🟣 MPV Player",
+            "🟣 Internal Player (Built-in MPV Engine)",
+            "🟢 MPVEX Player (External App)",
+            "🔵 MPV Player (External App)",
             "🧡 VLC Player",
             "📱 Choose From All Installed Players..."
         )
@@ -1045,10 +1046,11 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Select Video Player")
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> openStreamInPlayer("mpvex", streamUrl, title, resumeMs)
-                    1 -> openStreamInPlayer("mpv", streamUrl, title, resumeMs)
-                    2 -> openStreamInPlayer("vlc", streamUrl, title, resumeMs)
-                    3 -> openStreamInPlayer("chooser", streamUrl, title, resumeMs)
+                    0 -> openStreamInPlayer("internal_mpv", streamUrl, title, resumeMs)
+                    1 -> openStreamInPlayer("mpvex", streamUrl, title, resumeMs)
+                    2 -> openStreamInPlayer("mpv", streamUrl, title, resumeMs)
+                    3 -> openStreamInPlayer("vlc", streamUrl, title, resumeMs)
+                    4 -> openStreamInPlayer("chooser", streamUrl, title, resumeMs)
                 }
             }
             .show()
@@ -1067,7 +1069,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         when (playerType) {
-            "mpvex", "exo", "mpv" -> {
+            "internal_mpv", "exo", "internal" -> {
+                val mpvIntent = Intent(this, PlayerActivity::class.java).apply {
+                    putExtra("url", streamUrl)
+                    putExtra("title", title)
+                    putExtra("resumeMs", resumeMs)
+                }
+                startActivity(mpvIntent)
+            }
+            "mpvex", "mpv" -> {
                 val packagesToTry = if (playerType == "mpv") {
                     listOf("is.xyz.mpv", "id.nzxm.mpvex", "id.nzxm.mpvex.debug", "dev.anilbeesetti.nextplayer")
                 } else {
