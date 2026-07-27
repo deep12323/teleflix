@@ -267,8 +267,8 @@ class MediaAdapter(
                 Glide.with(holder.itemView.context)
                     .load(item.posterUrl)
                     .transform(RoundedCorners(12))
-                    .placeholder(android.R.drawable.ic_media_video_poster)
-                    .error(android.R.drawable.ic_media_video_poster)
+                    .placeholder(android.R.drawable.ic_media_play)
+                    .error(android.R.drawable.ic_media_play)
                     .into(holder.posterView)
             } else if (item.posterUrl.isNotBlank() && !item.posterUrl.startsWith("http://127.0.0.1")) {
                 Glide.with(holder.itemView.context)
