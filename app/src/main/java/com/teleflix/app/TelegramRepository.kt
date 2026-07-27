@@ -181,6 +181,16 @@ object TelegramRepository {
         return null
     }
 
+    suspend fun getChannelTitle(identifier: String): String {
+        val chatId = getChatId(identifier) ?: return identifier
+        return try {
+            val chat = TelegramClient.sendRequest(TdApi.GetChat(chatId)) as? TdApi.Chat
+            if (chat != null && chat.title.isNotBlank()) chat.title else identifier
+        } catch (_: Exception) {
+            identifier
+        }
+    }
+
     suspend fun getChannelVideos(identifier: String, page: Int, limit: Int = 50): Pair<String, List<TelegramVideoMessage>>? {
         val chatId = getChatId(identifier) ?: return null
 

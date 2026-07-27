@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var modeToggleButton: TextView
     private lateinit var tabScroll: HorizontalScrollView
     private var isTelegramCatalogMode = false
+    private var currentOpenChannelId: String? = null
     private val telegramMediaCache = mutableMapOf<String, TelegramVideoMessage>()
 
     private val mediaList = mutableListOf<MediaItem>()
@@ -495,10 +496,12 @@ class MainActivity : AppCompatActivity() {
             tabScroll.visibility = android.view.View.GONE
             modeToggleButton.text = "💬 Telegram Channels"
             modeToggleButton.setTextColor(android.graphics.Color.parseColor("#10B981"))
-            categoryLabel.text = "Select Monitored Channel"
+            categoryLabel.text = "Monitored Telegram Channels"
+            categoryLabel.isClickable = false
             searchInput.hint = "Default Telegram search (all chats & channels)..."
             loadTelegramChannelsCatalog()
         } else {
+            currentOpenChannelId = null
             tabScroll.visibility = android.view.View.VISIBLE
             modeToggleButton.text = "🎬 Cinemeta"
             modeToggleButton.setTextColor(android.graphics.Color.parseColor("#3B82F6"))
@@ -506,42 +509,46 @@ class MainActivity : AppCompatActivity() {
             selectedCategory = "movie/top"
             selectedLabel = "Top Movies"
             categoryLabel.text = selectedLabel
+            categoryLabel.isClickable = false
             loadInitialCinemeta(selectedCategory, selectedLabel)
         }
     }
 
     private fun loadTelegramChannelsCatalog() {
         isInSearchMode = false
+        currentOpenChannelId = null
         mediaList.clear()
         mediaAdapter?.notifyDataSetChanged()
         loadingText.visibility = android.view.View.VISIBLE
-        loadingText.text = "Loading monitored Telegram channels..."
+        loadingText.text = "Loading monitored Telegram channels & names..."
+        categoryLabel.text = "Monitored Telegram Channels"
+        categoryLabel.isClickable = false
         CoroutineScope(Dispatchers.IO).launch {
             val channels = try {
                 TelegramRepository.getCustomChannels(this@MainActivity)
             } catch (e: Exception) {
                 emptyList()
             }
+            val channelItems = channels.map { ch ->
+                val realTitle = TelegramRepository.getChannelTitle(ch)
+                MediaItem(
+                    id = ch,
+                    title = realTitle,
+                    posterUrl = "https://cdn-icons-png.flaticon.com/512/2111/2111646.png",
+                    year = "Channel",
+                    rating = "💬 Telegram",
+                    overview = "Tap to view video and audio content in $realTitle.",
+                    type = "channel"
+                )
+            }
             withContext(Dispatchers.Main) {
                 loadingText.visibility = android.view.View.GONE
                 mediaList.clear()
-                if (channels.isEmpty()) {
+                if (channelItems.isEmpty()) {
                     loadingText.visibility = android.view.View.VISIBLE
                     loadingText.text = "No Monitored Channels set! Add channels in ⚙️ Settings."
                 } else {
-                    channels.forEach { ch ->
-                        mediaList.add(
-                            MediaItem(
-                                id = ch,
-                                title = ch,
-                                posterUrl = "https://cdn-icons-png.flaticon.com/512/2111/2111646.png",
-                                year = "Channel",
-                                rating = "💬 Telegram",
-                                overview = "Tap to view all video and audio files inside $ch.",
-                                type = "channel"
-                            )
-                        )
-                    }
+                    mediaList.addAll(channelItems)
                     mediaAdapter?.notifyDataSetChanged()
                 }
             }
@@ -550,11 +557,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadTelegramChannelMedia(channelUsername: String, title: String) {
         isInSearchMode = false
+        currentOpenChannelId = channelUsername
         mediaList.clear()
         mediaAdapter?.notifyDataSetChanged()
         loadingText.visibility = android.view.View.VISIBLE
-        loadingText.text = "Loading all media files from $channelUsername..."
-        categoryLabel.text = "Channel: $channelUsername"
+        loadingText.text = "Loading all media files from $title..."
+        categoryLabel.text = "⬅ Back to Channels  •  Browsing: $title"
+        categoryLabel.isClickable = true
+        categoryLabel.isFocusable = true
+        categoryLabel.setOnClickListener {
+            loadTelegramChannelsCatalog()
+        }
 
         CoroutineScope(Dispatchers.IO).launch {
             val mediaMessages = try {
@@ -1008,5 +1021,25 @@ class MainActivity : AppCompatActivity() {
             android.util.Log.e("MainActivity", "Error loading watch history: ${e.message}")
         }
         return list
+    }
+
+    override fun onBackPressed() {
+        if (currentOpenChannelId != null) {
+            loadTelegramChannelsCatalog()
+            return
+        }
+        if (isInSearchMode) {
+            isInSearchMode = false
+            searchInput.setText("")
+            if (isTelegramCatalogMode) {
+                loadTelegramChannelsCatalog()
+            } else {
+                categoryLabel.text = selectedLabel
+                categoryLabel.isClickable = false
+                loadInitialCinemeta(selectedCategory, selectedLabel)
+            }
+            return
+        }
+        super.onBackPressed()
     }
 }
