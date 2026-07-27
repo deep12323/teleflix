@@ -190,10 +190,12 @@ class PlayerActivity : AppCompatActivity() {
             if (resumeMs > 0) {
                 mpvView.mpv.setPropertyDouble("start", resumeMs / 1000.0)
             }
+            TeleflixLogger.log("PlayerActivity", "Launching MPV playback | Title: \"$videoTitle\" | URL: $streamUrl | Resume: ${resumeMs}ms")
             mpvView.playFile(streamUrl)
             handler.post(updateRunnable)
             scheduleHideControls()
         } catch (e: Exception) {
+            TeleflixLogger.log("PlayerActivity", "Failed to launch video in MPV: ${e.message}", isError = true)
             Toast.makeText(this, "Failed to launch video in MPV: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
