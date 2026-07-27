@@ -1173,14 +1173,16 @@ class MainActivity : AppCompatActivity() {
         // Immediately pre-warm TDLib download for offset 0 so first chunk is available in 0ms to external players
         val fileId = streamUrl.substringAfter("/file/", "").substringBefore("/").substringBefore("?").toIntOrNull()
         if (fileId != null) {
-            runCatching {
-                TelegramClient.sendRequest(org.drinkless.tdlib.TdApi.DownloadFile().also { req ->
-                    req.fileId = fileId
-                    req.priority = 32
-                    req.offset = 0
-                    req.limit = 1048576
-                    req.synchronous = false
-                })
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        req.fileId = fileId
+                        req.priority = 32
+                        req.offset = 0
+                        req.limit = 1048576
+                        req.synchronous = false
+                    })
+                }
             }
         }
 
