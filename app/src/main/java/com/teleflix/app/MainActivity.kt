@@ -709,7 +709,7 @@ class MainActivity : AppCompatActivity() {
                                 val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
                                 telegramStreamCache[key] = Pair(url, group.baseName)
                                 val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
-                                    TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId)
+                                    TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
                                 } else ""
                                 mediaList.add(
                                     MediaItem(
@@ -742,7 +742,7 @@ class MainActivity : AppCompatActivity() {
                                     else -> "🎬 Video"
                                 }
                                 val thumbUrl = if (msg.thumbnailFileId != null || msg.chatId != 0L) {
-                                    TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId)
+                                    TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId, msg.thumbnailFileId)
                                 } else ""
                                 mediaList.add(
                                     MediaItem(
@@ -801,7 +801,7 @@ class MainActivity : AppCompatActivity() {
                                 val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
                                 telegramStreamCache[key] = Pair(url, group.baseName)
                                 val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
-                                    TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId)
+                                    TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
                                 } else ""
                                 mediaList.add(
                                     MediaItem(
@@ -834,7 +834,7 @@ class MainActivity : AppCompatActivity() {
                                     else -> "🎬 Video"
                                 }
                                 val thumbUrl = if (msg.thumbnailFileId != null || msg.chatId != 0L) {
-                                    TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId)
+                                    TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId, msg.thumbnailFileId)
                                 } else ""
                                 mediaList.add(
                                     MediaItem(
