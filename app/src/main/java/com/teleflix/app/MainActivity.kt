@@ -32,7 +32,8 @@ data class MediaItem(
     val year: String,
     val rating: String,
     val overview: String,
-    val type: String = "movie"  // "movie" or "series"
+    val type: String = "movie",  // "movie" or "series" or "telegram_media"
+    val streamUrl: String = ""
 )
 
 data class EpisodeItem(
@@ -261,10 +262,12 @@ class MainActivity : AppCompatActivity() {
                 "channel" -> loadTelegramChannelMedia(item.id, item.title)
                 "telegram_media" -> {
                     val streamInfo = telegramStreamCache[item.id]
-                    if (streamInfo != null) {
-                        checkResumeAndSelectPlayer(streamInfo.first, streamInfo.second)
+                    val urlToPlay = streamInfo?.first ?: item.streamUrl
+                    val titleToPlay = streamInfo?.second ?: item.title
+                    if (urlToPlay.isNotBlank()) {
+                        checkResumeAndSelectPlayer(urlToPlay, titleToPlay)
                     } else {
-                        Toast.makeText(this@MainActivity, "Media file expired or unavailable", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
                     }
                 }
                 "series" -> fetchSeriesEpisodes(item)
@@ -606,7 +609,8 @@ class MainActivity : AppCompatActivity() {
                                         year = "${totalSizeMb} MB",
                                         rating = "📦 Split Pack (${group.parts.size} parts)",
                                         overview = "Merged Telegram Split/ZIP Archive (${group.parts.size} split files combined into a single continuous stream).",
-                                        type = "telegram_media"
+                                        type = "telegram_media",
+                                        streamUrl = url
                                     )
                                 )
                             }
@@ -638,7 +642,8 @@ class MainActivity : AppCompatActivity() {
                                         year = "${sizeMb} MB",
                                         rating = badge,
                                         overview = msg.caption.ifBlank { "Telegram File: ${msg.fileName}\nSize: $sizeMb MB" },
-                                        type = "telegram_media"
+                                        type = "telegram_media",
+                                        streamUrl = url
                                     )
                                 )
                             }
@@ -696,7 +701,8 @@ class MainActivity : AppCompatActivity() {
                                         year = "${totalSizeMb} MB",
                                         rating = "📦 Split Pack (${group.parts.size} parts)",
                                         overview = "Merged Telegram Split/ZIP Archive (${group.parts.size} split files combined into a single continuous stream).",
-                                        type = "telegram_media"
+                                        type = "telegram_media",
+                                        streamUrl = url
                                     )
                                 )
                             }
@@ -728,7 +734,8 @@ class MainActivity : AppCompatActivity() {
                                         year = "${sizeMb} MB",
                                         rating = badge,
                                         overview = msg.caption.ifBlank { "Telegram Search Match: ${msg.fileName}\nSize: $sizeMb MB" },
-                                        type = "telegram_media"
+                                        type = "telegram_media",
+                                        streamUrl = url
                                     )
                                 )
                             }
@@ -1059,10 +1066,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveToHistory(item: MediaItem) {
+        if (item.type == "channel" || item.id == "watch_history") return
         try {
             val prefs = getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE)
             val currentList = loadWatchHistory().toMutableList()
-            currentList.removeAll { it.id == item.id || it.title == item.title }
+            currentList.removeAll { it.id == item.id || it.title == item.title || it.type == "channel" }
             currentList.add(0, item)
             val trimmed = if (currentList.size > 60) currentList.subList(0, 60) else currentList
             val jsonArray = JSONArray()
@@ -1075,6 +1083,7 @@ class MainActivity : AppCompatActivity() {
                     put("rating", m.rating)
                     put("overview", m.overview)
                     put("type", m.type)
+                    put("streamUrl", m.streamUrl)
                 }
                 jsonArray.put(obj)
             }
@@ -1092,6 +1101,8 @@ class MainActivity : AppCompatActivity() {
             val array = JSONArray(jsonStr)
             for (i in 0 until array.length()) {
                 val obj = array.optJSONObject(i) ?: continue
+                val itemType = obj.optString("type", "movie")
+                if (itemType == "channel") continue
                 list.add(
                     MediaItem(
                         id = obj.optString("id", ""),
@@ -1100,7 +1111,8 @@ class MainActivity : AppCompatActivity() {
                         year = obj.optString("year", ""),
                         rating = obj.optString("rating", ""),
                         overview = obj.optString("overview", ""),
-                        type = obj.optString("type", "movie")
+                        type = itemType,
+                        streamUrl = obj.optString("streamUrl", "")
                     )
                 )
             }

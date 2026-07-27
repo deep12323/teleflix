@@ -114,6 +114,10 @@ class PlayerActivity : AppCompatActivity() {
         topBar.addView(vlcButton)
         rootView.addView(topBar)
 
+        playerView.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
+            topBar.visibility = visibility
+        })
+
         setContentView(rootView)
 
         hideSystemUI()
