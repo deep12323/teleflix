@@ -8,16 +8,15 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
-import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import `is`.xyz.mpv.BaseMPVView
-import `is`.xyz.mpv.MPV
 
 class TeleflixMpvView(context: Context, attrs: AttributeSet? = null) : BaseMPVView(context, attrs) {
     override fun initOptions() {
@@ -38,6 +37,7 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var currentTimeText: TextView
     private lateinit var totalTimeText: TextView
     private lateinit var seekBar: SeekBar
+    private lateinit var aspectButton: TextView
 
     private val handler = Handler(Looper.getMainLooper())
     private var isUserSeeking = false
@@ -52,7 +52,7 @@ class PlayerActivity : AppCompatActivity() {
                 val currentSec = (mpvView.mpv.getPropertyDouble("time-pos") ?: 0.0).toDouble()
                 val totalSec = (mpvView.mpv.getPropertyDouble("duration") ?: 0.0).toDouble()
                 val isPaused = (mpvView.mpv.getPropertyBoolean("pause") ?: false)
-                playPauseButton.text = if (isPaused) "▶️" else "⏸️"
+                playPauseButton.text = if (isPaused) "►  PLAY" else "❚❚  PAUSE"
 
                 if (totalSec > 0.0) {
                     seekBar.max = 1000
@@ -151,7 +151,7 @@ class PlayerActivity : AppCompatActivity() {
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.parseColor("#B3000000"))
+            setBackgroundColor(Color.parseColor("#D9000000"))
             setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -179,7 +179,7 @@ class PlayerActivity : AppCompatActivity() {
         }
 
         val subButton = TextView(this).apply {
-            text = "💬 Sub"
+            text = "💬 Subtitles"
             textSize = 14f
             setTextColor(Color.WHITE)
             val bg = GradientDrawable().apply {
@@ -189,12 +189,7 @@ class PlayerActivity : AppCompatActivity() {
             }
             background = bg
             setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6))
-            setOnClickListener {
-                try {
-                    mpvView.mpv.command("cycle", "sub")
-                    Toast.makeText(context, "Cycled Subtitle Track", Toast.LENGTH_SHORT).show()
-                } catch (_: Exception) {}
-            }
+            setOnClickListener { showSubtitlesDialog() }
         }
 
         val audioButton = TextView(this).apply {
@@ -209,54 +204,70 @@ class PlayerActivity : AppCompatActivity() {
             background = bg
             setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                leftMargin = dpToPx(12)
+                leftMargin = dpToPx(8)
             }
-            setOnClickListener {
-                try {
-                    mpvView.mpv.command("cycle", "audio")
-                    Toast.makeText(context, "Cycled Audio Track", Toast.LENGTH_SHORT).show()
-                } catch (_: Exception) {}
+            setOnClickListener { showAudioDialog() }
+        }
+
+        aspectButton = TextView(this).apply {
+            text = "🖼️ Fit"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(Color.parseColor("#2563EB"))
+                cornerRadius = dpToPx(6).toFloat()
             }
+            background = bg
+            setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                leftMargin = dpToPx(8)
+            }
+            setOnClickListener { showAspectRatioDialog(this) }
         }
 
         topBar.addView(backButton)
         topBar.addView(titleText)
         topBar.addView(subButton)
         topBar.addView(audioButton)
+        topBar.addView(aspectButton)
 
-        // CENTER PLAY/PAUSE BUTTON
-        playPauseButton = TextView(this).apply {
-            text = "⏸️"
-            textSize = 48f
-            gravity = Gravity.CENTER
-            val bg = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#80000000"))
-            }
-            background = bg
-            setPadding(dpToPx(16), dpToPx(16), dpToPx(16), dpToPx(16))
-            layoutParams = FrameLayout.LayoutParams(dpToPx(80), dpToPx(80), Gravity.CENTER)
-            setOnClickListener {
-                try {
-                    val isPaused = (mpvView.mpv.getPropertyBoolean("pause") ?: false)
-                    mpvView.mpv.setPropertyBoolean("pause", !isPaused)
-                    text = if (!isPaused) "▶️" else "⏸️"
-                    scheduleHideControls()
-                } catch (_: Exception) {}
-            }
-        }
-
-        // BOTTOM BAR
+        // BOTTOM BAR WITH CLEAN PLAY/PAUSE BUTTON
         val bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.parseColor("#B3000000"))
+            setBackgroundColor(Color.parseColor("#D9000000"))
             setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
             )
+        }
+
+        playPauseButton = TextView(this).apply {
+            text = "❚❚  PAUSE"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(Color.parseColor("#334155"))
+                cornerRadius = dpToPx(6).toFloat()
+            }
+            background = bg
+            setPadding(dpToPx(14), dpToPx(8), dpToPx(14), dpToPx(8))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                rightMargin = dpToPx(12)
+            }
+            setOnClickListener {
+                try {
+                    val isPaused = (mpvView.mpv.getPropertyBoolean("pause") ?: false)
+                    mpvView.mpv.setPropertyBoolean("pause", !isPaused)
+                    text = if (!isPaused) "►  PLAY" else "❚❚  PAUSE"
+                    scheduleHideControls()
+                } catch (_: Exception) {}
+            }
         }
 
         currentTimeText = TextView(this).apply {
@@ -297,14 +308,133 @@ class PlayerActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
         }
 
+        bottomBar.addView(playPauseButton)
         bottomBar.addView(currentTimeText)
         bottomBar.addView(seekBar)
         bottomBar.addView(totalTimeText)
 
         overlay.addView(topBar)
-        overlay.addView(playPauseButton)
         overlay.addView(bottomBar)
         return overlay
+    }
+
+    private fun showSubtitlesDialog() {
+        try {
+            val count = (mpvView.mpv.getPropertyInt("track-list/count") ?: 0).toInt()
+            val subTracks = mutableListOf<Pair<Int, String>>()
+            for (i in 0 until count) {
+                val type = mpvView.mpv.getPropertyString("track-list/$i/type")
+                if (type == "sub") {
+                    val id = (mpvView.mpv.getPropertyInt("track-list/$i/id") ?: 0).toInt()
+                    val lang = mpvView.mpv.getPropertyString("track-list/$i/lang") ?: ""
+                    val title = mpvView.mpv.getPropertyString("track-list/$i/title") ?: ""
+                    val label = buildString {
+                        append("Subtitle #$id")
+                        if (lang.isNotBlank()) append(" [$lang]")
+                        if (title.isNotBlank() && title != lang) append(" - $title")
+                    }
+                    subTracks.add(Pair(id, label))
+                }
+            }
+
+            val labels = mutableListOf<String>()
+            labels.add("❌ Disable Subtitles (Off)")
+            labels.addAll(subTracks.map { it.second })
+
+            AlertDialog.Builder(this)
+                .setTitle("Select Subtitle Track")
+                .setItems(labels.toTypedArray()) { _, which ->
+                    if (which == 0) {
+                        mpvView.mpv.setPropertyString("sid", "no")
+                        Toast.makeText(this, "Subtitles Disabled", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val selectedId = subTracks[which - 1].first
+                        mpvView.mpv.setPropertyInt("sid", selectedId)
+                        Toast.makeText(this, "Selected: ${subTracks[which - 1].second}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Could not load subtitles: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showAudioDialog() {
+        try {
+            val count = (mpvView.mpv.getPropertyInt("track-list/count") ?: 0).toInt()
+            val audioTracks = mutableListOf<Pair<Int, String>>()
+            for (i in 0 until count) {
+                val type = mpvView.mpv.getPropertyString("track-list/$i/type")
+                if (type == "audio") {
+                    val id = (mpvView.mpv.getPropertyInt("track-list/$i/id") ?: 0).toInt()
+                    val lang = mpvView.mpv.getPropertyString("track-list/$i/lang") ?: ""
+                    val title = mpvView.mpv.getPropertyString("track-list/$i/title") ?: ""
+                    val label = buildString {
+                        append("Audio #$id")
+                        if (lang.isNotBlank()) append(" [$lang]")
+                        if (title.isNotBlank() && title != lang) append(" - $title")
+                    }
+                    audioTracks.add(Pair(id, label))
+                }
+            }
+
+            if (audioTracks.isEmpty()) {
+                Toast.makeText(this, "No audio tracks detected", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val labels = audioTracks.map { it.second }.toTypedArray()
+            AlertDialog.Builder(this)
+                .setTitle("Select Audio Track")
+                .setItems(labels) { _, which ->
+                    val selectedId = audioTracks[which].first
+                    mpvView.mpv.setPropertyInt("aid", selectedId)
+                    Toast.makeText(this, "Selected: ${audioTracks[which].second}", Toast.LENGTH_SHORT).show()
+                }
+                .show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Could not load audio tracks: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showAspectRatioDialog(button: TextView) {
+        val options = arrayOf(
+            "Fit (Proportional Default)",
+            "Zoom (Crop & Fill Screen)",
+            "Stretched (Stretch to Screen Dimensions)"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Select Aspect Ratio & Scaling")
+            .setItems(options) { _, which ->
+                try {
+                    when (which) {
+                        0 -> {
+                            mpvView.mpv.setPropertyDouble("panscan", 0.0)
+                            mpvView.mpv.setPropertyString("video-aspect-override", "-1")
+                            button.text = "🖼️ Fit"
+                            Toast.makeText(this, "Aspect Ratio: Fit (Proportional)", Toast.LENGTH_SHORT).show()
+                        }
+                        1 -> {
+                            mpvView.mpv.setPropertyDouble("panscan", 1.0)
+                            mpvView.mpv.setPropertyString("video-aspect-override", "-1")
+                            button.text = "🖼️ Zoom"
+                            Toast.makeText(this, "Aspect Ratio: Zoomed (Fill Screen)", Toast.LENGTH_SHORT).show()
+                        }
+                        2 -> {
+                            mpvView.mpv.setPropertyDouble("panscan", 0.0)
+                            val w = mpvView.width.toDouble()
+                            val h = mpvView.height.toDouble()
+                            val ratio = if (h > 0) w / h else 1.7778
+                            mpvView.mpv.setPropertyDouble("video-aspect-override", ratio)
+                            button.text = "🖼️ Stretched"
+                            Toast.makeText(this, "Aspect Ratio: Stretched to Screen", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(this, "Failed to update scaling: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .show()
     }
 
     private fun toggleControls() {
