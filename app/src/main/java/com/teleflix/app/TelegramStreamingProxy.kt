@@ -28,6 +28,7 @@ object TelegramStreamingProxy {
     @Volatile private var running = false
     private val activeStreams = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     private val activeFileJobs = java.util.concurrent.ConcurrentHashMap<Int, Job>()
+    private val activeDownloadWindows = java.util.concurrent.ConcurrentHashMap<Int, Pair<Long, Long>>()
     @Volatile private var lastStreamedFileId: Int? = null
     private val authToken = java.util.UUID.randomUUID().toString()
 
@@ -301,7 +302,8 @@ object TelegramStreamingProxy {
                 }
                 append("Content-Type: $mimeType\r\n")
                 append("Content-Disposition: inline; filename=\"$safeFileName\"\r\n")
-                append("Connection: close\r\n\r\n")
+                append("Connection: keep-alive\r\n")
+                append("Keep-Alive: timeout=60, max=1000\r\n\r\n")
             }.toString()
 
             output.write(headers.toByteArray())
@@ -333,6 +335,7 @@ object TelegramStreamingProxy {
                         })
                     }
                     activeDownloadEnd = if (alignedSafeLimit == 0L) totalSize else alignedOffset + alignedSafeLimit
+                    activeDownloadWindows[fileId] = Pair(alignedOffset, activeDownloadEnd)
                 }
 
                 val bytes = downloadChunk(fileId, offset, chunkSize)
@@ -879,18 +882,25 @@ object TelegramStreamingProxy {
                 // so concurrent range requests (e.g. MKV end-of-file Cues) never stall or starve the playback stream
                 if (attempts % 5 == 0) {
                     val alignedOffset = offset - (offset % (1024 * 1024))
-                    val fileInfo = getFileInfo(fileId)
-                    val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
-                    val safeLimit = calculateSafeTdlibLimit(alignedOffset, totalSize, prefetchSizeMb, limit)
+                    val activeWindow = activeDownloadWindows[fileId]
+                    val isInsideActiveWindow = activeWindow != null && offset >= activeWindow.first && offset < activeWindow.second
 
-                    runCatching {
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = fileId
-                            req.priority = DOWNLOAD_PRIORITY
-                            req.offset = alignedOffset
-                            req.limit = safeLimit
-                            req.synchronous = false
-                        })
+                    if (!isInsideActiveWindow) {
+                        val fileInfo = getFileInfo(fileId)
+                        val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
+                        val safeLimit = calculateSafeTdlibLimit(alignedOffset, totalSize, prefetchSizeMb, limit)
+
+                        runCatching {
+                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = fileId
+                                req.priority = DOWNLOAD_PRIORITY
+                                req.offset = alignedOffset
+                                req.limit = safeLimit
+                                req.synchronous = false
+                            })
+                        }
+                        val winEnd = if (safeLimit == 0L) Long.MAX_VALUE else alignedOffset + safeLimit
+                        activeDownloadWindows[fileId] = Pair(alignedOffset, winEnd)
                     }
                 }
                 
