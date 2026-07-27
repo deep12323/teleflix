@@ -15,7 +15,7 @@ class TelegramService : Service() {
 
     companion object {
         private const val TAG = "TelegramService"
-        private const val CHANNEL_ID = "TELEFLIX_TDLIB_CHANNEL"
+        private const val CHANNEL_ID = "TELEFLIX_SERVICE_CHANNEL_V2"
         private const val NOTIFICATION_ID = 1001
 
         fun start(context: Context) {
@@ -156,12 +156,13 @@ class TelegramService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Teleflix Streaming Engine")
             .setContentText(statusText)
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setSmallIcon(R.drawable.ic_launcher)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_menu_preferences, "Settings", settingsPendingIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
     }
@@ -170,14 +171,15 @@ class TelegramService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Teleflix TDLib Service",
-                NotificationManager.IMPORTANCE_LOW
+                "Teleflix Background Service",
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = "Keeps Telegram streaming engine and local HTTP proxy active in background"
-                setShowBadge(false)
+                setShowBadge(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
             val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            manager?.createNotificationChannel(channel)
         }
     }
 }

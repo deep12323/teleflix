@@ -374,8 +374,9 @@ class SettingsActivity : AppCompatActivity() {
                 if (isBackgroundEnabled) {
                     if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                         requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+                    } else {
+                        TelegramService.start(this@SettingsActivity)
                     }
-                    TelegramService.start(this@SettingsActivity)
                     text = "❌ TURN OFF RUN IN BACKGROUND"
                     setBackgroundColor(Color.parseColor("#DC2626"))
                     bgStatusText.text = "Status: Enabled (Active in background)"
@@ -727,6 +728,13 @@ class SettingsActivity : AppCompatActivity() {
             row.addView(name)
             row.addView(removeBtn)
             channelContainer.addView(row)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 101 && grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            try { TelegramService.start(this) } catch (_: Exception) {}
         }
     }
 }
