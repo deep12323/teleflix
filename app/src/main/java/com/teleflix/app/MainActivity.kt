@@ -55,7 +55,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tabScroll: HorizontalScrollView
     private var isTelegramCatalogMode = false
     private var currentOpenChannelId: String? = null
-    private val telegramMediaCache = mutableMapOf<String, TelegramVideoMessage>()
+    private val telegramStreamCache = mutableMapOf<String, Pair<String, String>>()
 
     private val mediaList = mutableListOf<MediaItem>()
     private var mediaAdapter: MediaAdapter? = null
@@ -260,10 +260,9 @@ class MainActivity : AppCompatActivity() {
             when (item.type) {
                 "channel" -> loadTelegramChannelMedia(item.id, item.title)
                 "telegram_media" -> {
-                    val msg = telegramMediaCache[item.id]
-                    if (msg != null) {
-                        val url = TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
-                        checkResumeAndSelectPlayer(url, msg.fileName.ifBlank { "Telegram Video" })
+                    val streamInfo = telegramStreamCache[item.id]
+                    if (streamInfo != null) {
+                        checkResumeAndSelectPlayer(streamInfo.first, streamInfo.second)
                     } else {
                         Toast.makeText(this@MainActivity, "Media file expired or unavailable", Toast.LENGTH_SHORT).show()
                     }
@@ -576,30 +575,74 @@ class MainActivity : AppCompatActivity() {
                 emptyList()
             }
 
+            val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+
             withContext(Dispatchers.Main) {
                 loadingText.visibility = android.view.View.GONE
                 mediaList.clear()
-                if (mediaMessages.isEmpty()) {
+                if (groupedItems.isEmpty()) {
                     loadingText.visibility = android.view.View.VISIBLE
                     loadingText.text = "No video or audio files found in $channelUsername."
                 } else {
-                    mediaMessages.forEach { msg ->
-                        val key = "${msg.chatId}_${msg.messageId}"
-                        telegramMediaCache[key] = msg
-                        val isAudio = msg.mimeType.startsWith("audio/")
-                        val badge = if (isAudio) "🎵 Audio" else "🎬 Video"
-                        val sizeMb = msg.fileSize / (1024 * 1024)
-                        mediaList.add(
-                            MediaItem(
-                                id = key,
-                                title = msg.fileName.ifBlank { "Unnamed Media" },
-                                posterUrl = if (msg.thumbnailFileId != null || msg.chatId != 0L) TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) else "",
-                                year = "${sizeMb} MB",
-                                rating = badge,
-                                overview = msg.caption.ifBlank { "Telegram File: ${msg.fileName}\nSize: $sizeMb MB" },
-                                type = "telegram_media"
-                            )
-                        )
+                    groupedItems.forEach { dItem ->
+                        when (dItem) {
+                            is DisplayItem.Group -> {
+                                val group = dItem.group
+                                val firstMsg = group.parts.first()
+                                val key = "group_${firstMsg.chatId}_${group.baseName}"
+                                val freshIds = group.parts.map { it.fileId }
+                                val partSizes = group.parts.map { it.fileSize }
+                                val totalSizeMb = group.totalSize / (1024 * 1024)
+                                val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
+                                telegramStreamCache[key] = Pair(url, group.baseName)
+                                val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
+                                    TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId)
+                                } else ""
+                                mediaList.add(
+                                    MediaItem(
+                                        id = key,
+                                        title = "📦 ${group.baseName}",
+                                        posterUrl = thumbUrl,
+                                        year = "${totalSizeMb} MB",
+                                        rating = "📦 Split Pack (${group.parts.size} parts)",
+                                        overview = "Merged Telegram Split/ZIP Archive (${group.parts.size} split files combined into a single continuous stream).",
+                                        type = "telegram_media"
+                                    )
+                                )
+                            }
+                            is DisplayItem.Single -> {
+                                val msg = dItem.message
+                                val key = "${msg.chatId}_${msg.messageId}"
+                                val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+                                val sizeMb = msg.fileSize / (1024 * 1024)
+                                val url = if (ext == "zip" && msg.fileSize > 1_000_000) {
+                                    TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                } else {
+                                    TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                }
+                                telegramStreamCache[key] = Pair(url, msg.fileName.ifBlank { "Telegram Media" })
+                                val isAudio = msg.mimeType.startsWith("audio/")
+                                val badge = when {
+                                    ext == "zip" -> "🗄️ ZIP Stream"
+                                    isAudio -> "🎵 Audio"
+                                    else -> "🎬 Video"
+                                }
+                                val thumbUrl = if (msg.thumbnailFileId != null || msg.chatId != 0L) {
+                                    TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId)
+                                } else ""
+                                mediaList.add(
+                                    MediaItem(
+                                        id = key,
+                                        title = if (ext == "zip") "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
+                                        posterUrl = thumbUrl,
+                                        year = "${sizeMb} MB",
+                                        rating = badge,
+                                        overview = msg.caption.ifBlank { "Telegram File: ${msg.fileName}\nSize: $sizeMb MB" },
+                                        type = "telegram_media"
+                                    )
+                                )
+                            }
+                        }
                     }
                     mediaAdapter?.notifyDataSetChanged()
                 }
@@ -622,30 +665,74 @@ class MainActivity : AppCompatActivity() {
                 emptyList()
             }
 
+            val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+
             withContext(Dispatchers.Main) {
                 loadingText.visibility = android.view.View.GONE
                 mediaList.clear()
-                if (mediaMessages.isEmpty()) {
+                if (groupedItems.isEmpty()) {
                     loadingText.visibility = android.view.View.VISIBLE
                     loadingText.text = "No video or audio files matched \"$query\" across your Telegram account."
                 } else {
-                    mediaMessages.forEach { msg ->
-                        val key = "${msg.chatId}_${msg.messageId}"
-                        telegramMediaCache[key] = msg
-                        val isAudio = msg.mimeType.startsWith("audio/")
-                        val badge = if (isAudio) "🎵 Audio" else "🎬 Video"
-                        val sizeMb = msg.fileSize / (1024 * 1024)
-                        mediaList.add(
-                            MediaItem(
-                                id = key,
-                                title = msg.fileName.ifBlank { "Unnamed Media" },
-                                posterUrl = if (msg.thumbnailFileId != null || msg.chatId != 0L) TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId) else "",
-                                year = "${sizeMb} MB",
-                                rating = badge,
-                                overview = msg.caption.ifBlank { "Telegram Search Match: ${msg.fileName}\nSize: $sizeMb MB" },
-                                type = "telegram_media"
-                            )
-                        )
+                    groupedItems.forEach { dItem ->
+                        when (dItem) {
+                            is DisplayItem.Group -> {
+                                val group = dItem.group
+                                val firstMsg = group.parts.first()
+                                val key = "group_${firstMsg.chatId}_${group.baseName}"
+                                val freshIds = group.parts.map { it.fileId }
+                                val partSizes = group.parts.map { it.fileSize }
+                                val totalSizeMb = group.totalSize / (1024 * 1024)
+                                val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
+                                telegramStreamCache[key] = Pair(url, group.baseName)
+                                val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
+                                    TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId)
+                                } else ""
+                                mediaList.add(
+                                    MediaItem(
+                                        id = key,
+                                        title = "📦 ${group.baseName}",
+                                        posterUrl = thumbUrl,
+                                        year = "${totalSizeMb} MB",
+                                        rating = "📦 Split Pack (${group.parts.size} parts)",
+                                        overview = "Merged Telegram Split/ZIP Archive (${group.parts.size} split files combined into a single continuous stream).",
+                                        type = "telegram_media"
+                                    )
+                                )
+                            }
+                            is DisplayItem.Single -> {
+                                val msg = dItem.message
+                                val key = "${msg.chatId}_${msg.messageId}"
+                                val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+                                val sizeMb = msg.fileSize / (1024 * 1024)
+                                val url = if (ext == "zip" && msg.fileSize > 1_000_000) {
+                                    TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                } else {
+                                    TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                }
+                                telegramStreamCache[key] = Pair(url, msg.fileName.ifBlank { "Telegram Media" })
+                                val isAudio = msg.mimeType.startsWith("audio/")
+                                val badge = when {
+                                    ext == "zip" -> "🗄️ ZIP Stream"
+                                    isAudio -> "🎵 Audio"
+                                    else -> "🎬 Video"
+                                }
+                                val thumbUrl = if (msg.thumbnailFileId != null || msg.chatId != 0L) {
+                                    TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId)
+                                } else ""
+                                mediaList.add(
+                                    MediaItem(
+                                        id = key,
+                                        title = if (ext == "zip") "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
+                                        posterUrl = thumbUrl,
+                                        year = "${sizeMb} MB",
+                                        rating = badge,
+                                        overview = msg.caption.ifBlank { "Telegram Search Match: ${msg.fileName}\nSize: $sizeMb MB" },
+                                        type = "telegram_media"
+                                    )
+                                )
+                            }
+                        }
                     }
                     mediaAdapter?.notifyDataSetChanged()
                 }
