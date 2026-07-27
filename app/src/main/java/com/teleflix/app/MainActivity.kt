@@ -51,6 +51,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusButton: TextView
     private lateinit var categoryLabel: TextView
     private lateinit var loadingText: TextView
+    private lateinit var modeToggleButton: TextView
+    private lateinit var tabScroll: HorizontalScrollView
+    private var isTelegramCatalogMode = false
+    private val telegramMediaCache = mutableMapOf<String, TelegramVideoMessage>()
 
     private val mediaList = mutableListOf<MediaItem>()
     private var mediaAdapter: MediaAdapter? = null
@@ -119,7 +123,26 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        modeToggleButton = TextView(this).apply {
+            text = "🎬 Cinemeta"
+            textSize = 14f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setBackgroundColor(android.graphics.Color.parseColor("#1F2937"))
+            setTextColor(android.graphics.Color.parseColor("#3B82F6"))
+            setPadding(28, 12, 28, 12)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                toggleCatalogMode()
+            }
+        }
+
         headerLayout.addView(titleView)
+        headerLayout.addView(modeToggleButton)
+        val headerGap = android.view.View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(20, 1)
+        }
+        headerLayout.addView(headerGap)
         headerLayout.addView(statusButton)
         rootView.addView(headerLayout)
 
@@ -171,7 +194,11 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 val q = searchInput.text.toString()
                 if (q.isNotBlank()) {
-                    performSearch(q)
+                    if (isTelegramCatalogMode) {
+                        performTelegramSearch(q)
+                    } else {
+                        performSearch(q)
+                    }
                 }
             }
         }
@@ -181,7 +208,7 @@ class MainActivity : AppCompatActivity() {
         rootView.addView(searchLayout)
 
         // Category Tabs (Horizontal Scroll)
-        val tabScroll = HorizontalScrollView(this).apply {
+        tabScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             setPadding(0, 0, 0, 12)
         }
@@ -229,10 +256,19 @@ class MainActivity : AppCompatActivity() {
         // Media Grid
         mediaAdapter = MediaAdapter(mediaList) { item ->
             saveToHistory(item)
-            if (item.type == "series") {
-                fetchSeriesEpisodes(item)
-            } else {
-                showStreamOptions(item.title)
+            when (item.type) {
+                "channel" -> loadTelegramChannelMedia(item.id, item.title)
+                "telegram_media" -> {
+                    val msg = telegramMediaCache[item.id]
+                    if (msg != null) {
+                        val url = TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                        checkResumeAndSelectPlayer(url, msg.title.ifBlank { msg.fileName })
+                    } else {
+                        Toast.makeText(this@MainActivity, "Media file expired or unavailable", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                "series" -> fetchSeriesEpisodes(item)
+                else -> showStreamOptions(item.title)
             }
         }
 
@@ -444,6 +480,157 @@ class MainActivity : AppCompatActivity() {
             ))
         }
         return results
+    }
+
+    private fun toggleCatalogMode() {
+        isTelegramCatalogMode = !isTelegramCatalogMode
+        if (isTelegramCatalogMode) {
+            tabScroll.visibility = android.view.View.GONE
+            modeToggleButton.text = "💬 Telegram Channels"
+            modeToggleButton.setTextColor(android.graphics.Color.parseColor("#10B981"))
+            categoryLabel.text = "Select Monitored Channel"
+            searchInput.hint = "Default Telegram search (all chats & channels)..."
+            loadTelegramChannelsCatalog()
+        } else {
+            tabScroll.visibility = android.view.View.VISIBLE
+            modeToggleButton.text = "🎬 Cinemeta"
+            modeToggleButton.setTextColor(android.graphics.Color.parseColor("#3B82F6"))
+            searchInput.hint = "Search Movies & Series..."
+            selectedCategory = "movie/top"
+            selectedLabel = "Top Movies"
+            categoryLabel.text = selectedLabel
+            loadInitialCinemeta(selectedCategory, selectedLabel)
+        }
+    }
+
+    private fun loadTelegramChannelsCatalog() {
+        isInSearchMode = false
+        mediaList.clear()
+        mediaAdapter?.notifyDataSetChanged()
+        loadingText.visibility = android.view.View.VISIBLE
+        loadingText.text = "Loading monitored Telegram channels..."
+        CoroutineScope(Dispatchers.IO).launch {
+            val channels = try {
+                TelegramRepository.getCustomChannels(this@MainActivity)
+            } catch (e: Exception) {
+                emptyList()
+            }
+            withContext(Dispatchers.Main) {
+                loadingText.visibility = android.view.View.GONE
+                mediaList.clear()
+                if (channels.isEmpty()) {
+                    loadingText.visibility = android.view.View.VISIBLE
+                    loadingText.text = "No Monitored Channels set! Add channels in ⚙️ Settings."
+                } else {
+                    channels.forEach { ch ->
+                        mediaList.add(
+                            MediaItem(
+                                id = ch,
+                                title = ch,
+                                posterUrl = "https://cdn-icons-png.flaticon.com/512/2111/2111646.png",
+                                year = "Channel",
+                                rating = "💬 Telegram",
+                                overview = "Tap to view all video and audio files inside $ch.",
+                                type = "channel"
+                            )
+                        )
+                    }
+                    mediaAdapter?.notifyDataSetChanged()
+                }
+            }
+        }
+    }
+
+    private fun loadTelegramChannelMedia(channelUsername: String, title: String) {
+        isInSearchMode = false
+        mediaList.clear()
+        mediaAdapter?.notifyDataSetChanged()
+        loadingText.visibility = android.view.View.VISIBLE
+        loadingText.text = "Loading all media files from $channelUsername..."
+        categoryLabel.text = "Channel: $channelUsername"
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val mediaMessages = try {
+                TelegramRepository.fetchChannelMedia(channelUsername, limit = 200, includeAudio = true)
+            } catch (e: Exception) {
+                emptyList()
+            }
+
+            withContext(Dispatchers.Main) {
+                loadingText.visibility = android.view.View.GONE
+                mediaList.clear()
+                if (mediaMessages.isEmpty()) {
+                    loadingText.visibility = android.view.View.VISIBLE
+                    loadingText.text = "No video or audio files found in $channelUsername."
+                } else {
+                    mediaMessages.forEach { msg ->
+                        val key = "${msg.chatId}_${msg.messageId}"
+                        telegramMediaCache[key] = msg
+                        val isAudio = msg.mimeType.startsWith("audio/")
+                        val badge = if (isAudio) "🎵 Audio" else "🎬 Video"
+                        val sizeMb = msg.fileSize / (1024 * 1024)
+                        mediaList.add(
+                            MediaItem(
+                                id = key,
+                                title = msg.title.ifBlank { msg.fileName },
+                                posterUrl = "https://cdn-icons-png.flaticon.com/512/3849/3849176.png",
+                                year = "${sizeMb} MB",
+                                rating = badge,
+                                overview = msg.caption.ifBlank { "Telegram File: ${msg.fileName}\nSize: $sizeMb MB" },
+                                type = "telegram_media"
+                            )
+                        )
+                    }
+                    mediaAdapter?.notifyDataSetChanged()
+                }
+            }
+        }
+    }
+
+    private fun performTelegramSearch(query: String) {
+        isInSearchMode = true
+        categoryLabel.text = "Telegram Default Search: \"$query\""
+        loadingText.text = "Searching across all Telegram chats, groups & channels..."
+        loadingText.visibility = android.view.View.VISIBLE
+        mediaList.clear()
+        mediaAdapter?.notifyDataSetChanged()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val mediaMessages = try {
+                TelegramRepository.searchVideoMessages(query, limit = 200, includeAudio = true)
+            } catch (e: Exception) {
+                emptyList()
+            }
+
+            withContext(Dispatchers.Main) {
+                loadingText.visibility = android.view.View.GONE
+                mediaList.clear()
+                if (mediaMessages.isEmpty()) {
+                    loadingText.visibility = android.view.View.VISIBLE
+                    loadingText.text = "No video or audio files matched \"$query\" across your Telegram account."
+                } else {
+                    mediaMessages.forEach { msg ->
+                        val key = "${msg.chatId}_${msg.messageId}"
+                        telegramMediaCache[key] = msg
+                        val isAudio = msg.mimeType.startsWith("audio/")
+                        val badge = if (isAudio) "🎵 Audio" else "🎬 Video"
+                        val sizeMb = msg.fileSize / (1024 * 1024)
+                        mediaList.add(
+                            MediaItem(
+                                id = key,
+                                title = msg.title.ifBlank { msg.fileName },
+                                posterUrl = "https://cdn-icons-png.flaticon.com/512/3849/3849176.png",
+                                year = "${sizeMb} MB",
+                                rating = badge,
+                                overview = msg.caption.ifBlank { "Telegram Search Match: ${msg.fileName}\nSize: $sizeMb MB" },
+                                type = "telegram_media"
+                            )
+                        )
+                    }
+                    mediaAdapter?.notifyDataSetChanged()
+                }
+            }
+        }
     }
 
     private fun loadFallbackCatalog() {

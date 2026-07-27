@@ -801,6 +801,60 @@ object TelegramRepository {
         }
     }
 
+    suspend fun fetchChannelMedia(
+        channelUsernameOrId: String,
+        limit: Int = 300,
+        includeAudio: Boolean = true
+    ): List<TelegramVideoMessage> {
+        val results = mutableListOf<TelegramVideoMessage>()
+        val seen = mutableSetOf<Pair<String, Long>>()
+        val chatId = getChatId(channelUsernameOrId) ?: return emptyList()
+
+        val filters = mutableListOf<TdApi.SearchMessagesFilter>(
+            TdApi.SearchMessagesFilterDocument(),
+            TdApi.SearchMessagesFilterVideo()
+        )
+        if (includeAudio) {
+            filters.add(TdApi.SearchMessagesFilterAudio())
+        }
+
+        for (filter in filters) {
+            try {
+                var currentFromMessageId = 0L
+                var fetched = 0
+                while (fetched < limit) {
+                    val fetchLimit = minOf(100, limit - fetched)
+                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.query = ""
+                        req.senderId = null
+                        req.fromMessageId = currentFromMessageId
+                        req.offset = 0
+                        req.limit = fetchLimit
+                        req.filter = filter
+                        req.topicId = null
+                    })
+                    val found = (historyResult as? TdApi.FoundChatMessages) ?: break
+                    if (found.messages.isEmpty()) break
+
+                    for (msg in found.messages) {
+                        extractMediaMessage(msg, seen, results)
+                    }
+
+                    fetched += found.messages.size
+                    if (found.messages.size < fetchLimit) break
+
+                    val lastId = found.messages.last().id
+                    if (currentFromMessageId == lastId && found.messages.size == 1) break
+                    currentFromMessageId = lastId
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "fetchChannelMedia error for $channelUsernameOrId: ${e.message}")
+            }
+        }
+        return results.sortedByDescending { it.date }
+    }
+
     fun getStreamUrl(fileId: Int, fileName: String, expectedSize: Long = 0L): String = TelegramStreamingProxy.getUrl(fileId, fileName, expectedSize)
 
     fun getThumbnailUrl(chatId: Long, messageId: Long): String = TelegramStreamingProxy.getThumbnailUrl(chatId, messageId)
