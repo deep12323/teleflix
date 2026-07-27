@@ -29,6 +29,7 @@ object TelegramStreamingProxy {
     private val activeStreams = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     private val activeFileJobs = java.util.concurrent.ConcurrentHashMap<Int, Job>()
     @Volatile private var lastStreamedFileId: Int? = null
+    private val authToken = java.util.UUID.randomUUID().toString()
 
     fun start() {
         if (serverSocket != null) return
@@ -75,6 +76,17 @@ object TelegramStreamingProxy {
             val parts = reqLine.split(" ")
             if (parts.size < 2) return
             val path = parts[1] // /file/{fileId} or /thumbnail/{fileId}
+
+            val queryParams = path.substringAfter("?", "")
+            val receivedToken = queryParams.split("&").find { it.startsWith("token=") }?.substringAfter("=")
+            if (receivedToken != authToken) {
+                val output = socket.getOutputStream()
+                output.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nAccess Denied: Missing or Invalid Proxy Token".toByteArray())
+                output.flush()
+                socket.close()
+                return
+            }
+
             var fileId: Int? = null
             var isThumbnail = false
             var urlSize = 0L
@@ -544,6 +556,7 @@ object TelegramStreamingProxy {
             val commentLength = readUInt16(cdData, pos + 32)
             var localHeaderOffset = readUInt32(cdData, pos + 42)
 
+            if (pos + 46 + nameLength > cdData.size) break
             val nameBytes = cdData.copyOfRange(pos + 46, pos + 46 + nameLength)
             val entryName = String(nameBytes, Charsets.UTF_8)
 
@@ -689,12 +702,12 @@ object TelegramStreamingProxy {
     fun getUrl(fileId: Int, fileName: String, expectedSize: Long = 0L): String {
         ensureRunning()
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        return "http://127.0.0.1:$port/file/$fileId/$encodedName?size=$expectedSize"
+        return "http://127.0.0.1:$port/file/$fileId/$encodedName?size=$expectedSize&token=$authToken"
     }
 
     fun getThumbnailUrl(chatId: Long, messageId: Long): String {
         ensureRunning()
-        return "http://127.0.0.1:$port/thumbnail/$chatId/$messageId"
+        return "http://127.0.0.1:$port/thumbnail/$chatId/$messageId?token=$authToken"
     }
 
     fun getMergedUrl(fileIds: List<Int>, fileName: String, sizes: List<Long>): String {
@@ -702,13 +715,13 @@ object TelegramStreamingProxy {
         val ids = fileIds.joinToString(",")
         val szs = sizes.joinToString(",")
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        return "http://127.0.0.1:$port/merged/$ids/$encodedName?sizes=$szs"
+        return "http://127.0.0.1:$port/merged/$ids/$encodedName?sizes=$szs&token=$authToken"
     }
 
     fun getZipStreamUrl(fileId: Int, innerFileName: String, zipSize: Long): String {
         ensureRunning()
         val encodedInner = java.net.URLEncoder.encode(innerFileName, "UTF-8").replace("+", "%20")
-        return "http://127.0.0.1:$port/zip/$fileId/$encodedInner?size=$zipSize"
+        return "http://127.0.0.1:$port/zip/$fileId/$encodedInner?size=$zipSize&token=$authToken"
     }
 
     private suspend fun serveThumbnail(fileId: Int, output: java.io.OutputStream) {

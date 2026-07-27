@@ -20,9 +20,9 @@ android {
     signingConfigs {
         create("teleflix") {
             storeFile = file("teleflix.keystore")
-            storePassword = "teleflix123"
-            keyAlias = "teleflix"
-            keyPassword = "teleflix123"
+            storePassword = System.getenv("TELEFLIX_STORE_PASSWORD") ?: "teleflix123"
+            keyAlias = System.getenv("TELEFLIX_KEY_ALIAS") ?: "teleflix"
+            keyPassword = System.getenv("TELEFLIX_KEY_PASSWORD") ?: "teleflix123"
         }
     }
 
@@ -32,7 +32,7 @@ android {
         }
         release {
             signingConfig = signingConfigs.getByName("teleflix")
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
