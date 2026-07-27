@@ -301,12 +301,14 @@ object TelegramStreamingProxy {
             while (offset <= end && running) {
                 val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
 
-                if (offset >= activeDownloadEnd) {
-                    val tdlibPrefetch = when {
-                        prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
-                        prefetchSizeMb <= 0L -> chunkSize.toLong()
-                        else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
-                    }
+                val tdlibPrefetch = when {
+                    prefetchSizeMb >= 102400L || prefetchSizeMb == -1L -> 0L // 0 in TDLib means unlimited
+                    prefetchSizeMb <= 0L -> chunkSize.toLong()
+                    else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
+                }
+                val triggerThreshold = if (tdlibPrefetch > 0L) tdlibPrefetch / 2 else 0L
+
+                if (offset >= activeDownloadEnd - triggerThreshold) {
                     val alignedOffset = offset - (offset % (1024 * 1024))
                     runCatching {
                         TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
@@ -490,13 +492,19 @@ object TelegramStreamingProxy {
             return
         }
 
+        val zipPrefetch = when {
+            prefetchSizeMb >= 102400L || prefetchSizeMb == -1L -> 0L
+            prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
+            else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
+        }
+
         for (fId in fileIds) {
             runCatching {
                 TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                     req.fileId = fId
                     req.priority = DOWNLOAD_PRIORITY
                     req.offset = 0
-                    req.limit = 0
+                    req.limit = zipPrefetch
                     req.synchronous = false
                 })
             }
@@ -858,7 +866,7 @@ object TelegramStreamingProxy {
                 // so concurrent range requests (e.g. MKV end-of-file Cues) don't starve the main playback stream
                 if (attempts % 5 == 4) {
                     val tdlibPrefetch = when {
-                        prefetchSizeMb == -1L -> 0L
+                        prefetchSizeMb >= 102400L || prefetchSizeMb == -1L -> 0L
                         prefetchSizeMb <= 0L -> limit.toLong()
                         else -> maxOf(limit.toLong(), prefetchSizeMb * 1024L * 1024L)
                     }

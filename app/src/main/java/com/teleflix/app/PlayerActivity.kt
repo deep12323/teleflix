@@ -21,12 +21,14 @@ import `is`.xyz.mpv.BaseMPVView
 class TeleflixMpvView(context: Context, attrs: AttributeSet? = null) : BaseMPVView(context, attrs) {
     override fun initOptions() {
         try {
+            val bufferMb = maxOf(5L, TelegramStreamingProxy.prefetchSizeMb)
+            val demuxerBytes = if (bufferMb >= 1024L) "256MiB" else "${bufferMb}MiB"
             mpv.setPropertyString("vo", "gpu")
             mpv.setPropertyString("hwdec", "auto")
             mpv.setPropertyString("cache", "yes")
-            mpv.setPropertyString("demuxer-max-bytes", "64MiB")
-            mpv.setPropertyString("demuxer-max-back-bytes", "32MiB")
-            mpv.setPropertyString("demuxer-readahead-secs", "20")
+            mpv.setPropertyString("demuxer-max-bytes", demuxerBytes)
+            mpv.setPropertyString("demuxer-max-back-bytes", "${maxOf(2L, bufferMb / 4)}MiB")
+            mpv.setPropertyString("demuxer-readahead-secs", "15")
             mpv.setPropertyString("force-seekable", "yes")
         } catch (_: Exception) {}
     }
