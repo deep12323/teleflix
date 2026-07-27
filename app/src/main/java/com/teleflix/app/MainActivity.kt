@@ -263,13 +263,34 @@ class MainActivity : AppCompatActivity() {
                 "channel" -> loadTelegramChannelMedia(item.id, item.title)
                 "telegram_media" -> {
                     val streamInfo = telegramStreamCache[item.id]
-                    val rawUrl = streamInfo?.first ?: item.streamUrl
-                    val urlToPlay = TelegramStreamingProxy.refreshUrl(rawUrl)
                     val titleToPlay = streamInfo?.second ?: item.title
-                    if (urlToPlay.isNotBlank()) {
-                        checkResumeAndSelectPlayer(urlToPlay, titleToPlay)
+                    val parts = item.id.split("_")
+                    val chatId = parts.getOrNull(0)?.toLongOrNull()
+                    val messageId = parts.getOrNull(1)?.toLongOrNull()
+
+                    if (chatId != null && messageId != null && (streamInfo == null || currentTab == TAB_HISTORY)) {
+                        Toast.makeText(this@MainActivity, "🔄 Reconnecting Telegram stream...", Toast.LENGTH_SHORT).show()
+                        CoroutineScope(Dispatchers.Main).launch {
+                            val freshUrl = TelegramRepository.getFreshMediaUrl(chatId, messageId)
+                            if (freshUrl != null && freshUrl.isNotBlank()) {
+                                checkResumeAndSelectPlayer(freshUrl, titleToPlay)
+                            } else {
+                                val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                                if (backupUrl.isNotBlank()) {
+                                    checkResumeAndSelectPlayer(backupUrl, titleToPlay)
+                                } else {
+                                    Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
                     } else {
-                        Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
+                        val rawUrl = streamInfo?.first ?: item.streamUrl
+                        val urlToPlay = TelegramStreamingProxy.refreshUrl(rawUrl)
+                        if (urlToPlay.isNotBlank()) {
+                            checkResumeAndSelectPlayer(urlToPlay, titleToPlay)
+                        } else {
+                            Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
                 "series" -> fetchSeriesEpisodes(item)

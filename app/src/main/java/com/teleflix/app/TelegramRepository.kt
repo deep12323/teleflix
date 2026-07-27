@@ -1040,6 +1040,38 @@ object TelegramRepository {
 
         return items.sortedBy { it.sortIndex }
     }
+
+    suspend fun getFreshMediaUrl(chatId: Long, messageId: Long): String? = withContext(Dispatchers.IO) {
+        try {
+            val msg = TelegramClient.sendRequest(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message ?: return@withContext null
+            when (val content = msg.content) {
+                is TdApi.MessageDocument -> {
+                    val file = content.document.document
+                    val filename = resolveDisplayName(content.document.fileName, content.caption?.text, "mkv")
+                    val ext = filename.substringAfterLast('.', "").lowercase().trim()
+                    if (ext == "zip" && file.size > 1_000_000) {
+                        getZipStreamUrl(file.id, filename, file.size)
+                    } else {
+                        getStreamUrl(file.id, filename, file.size)
+                    }
+                }
+                is TdApi.MessageVideo -> {
+                    val file = content.video.video
+                    val filename = resolveDisplayName(content.video.fileName, content.caption?.text, "mp4")
+                    getStreamUrl(file.id, filename, file.size)
+                }
+                is TdApi.MessageAudio -> {
+                    val file = content.audio.audio
+                    val filename = content.audio.fileName ?: "Audio_${msg.id}.mp3"
+                    getStreamUrl(file.id, filename, file.size)
+                }
+                else -> null
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("TelegramRepository", "Failed to refresh media URL for $chatId/$messageId: ${e.message}")
+            null
+        }
+    }
 }
 
 sealed class DisplayItem {
