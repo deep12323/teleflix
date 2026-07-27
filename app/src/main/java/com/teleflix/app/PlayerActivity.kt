@@ -17,6 +17,7 @@ import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import `is`.xyz.mpv.BaseMPVView
+import `is`.xyz.mpv.MPVLib
 
 class TeleflixMpvView(context: Context, attrs: AttributeSet? = null) : BaseMPVView(context, attrs) {
     override fun initOptions() {
@@ -31,6 +32,8 @@ class TeleflixMpvView(context: Context, attrs: AttributeSet? = null) : BaseMPVVi
             mpv.setPropertyString("demuxer-readahead-secs", "15")
             mpv.setPropertyString("force-seekable", "yes")
             mpv.setPropertyString("hr-seek", "default")
+            mpv.setPropertyString("terminal", "yes")
+            mpv.setPropertyString("msg-level", "all=v")
         } catch (_: Exception) {}
     }
     override fun postInitOptions() {}
@@ -100,6 +103,17 @@ class PlayerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        try {
+            MPVLib.addLogObserver(object : MPVLib.LogObserver {
+                override fun onMessage(prefix: String, level: Int, text: String) {
+                    val msg = text.trim()
+                    if (msg.isNotBlank()) {
+                        TeleflixLogger.log("MPV Engine", "[$prefix] $msg", isError = (level >= MPVLib.MPV_LOG_LEVEL_WARN))
+                    }
+                }
+            })
+        } catch (_: Exception) {}
+
         // Fullscreen & landscape setup
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

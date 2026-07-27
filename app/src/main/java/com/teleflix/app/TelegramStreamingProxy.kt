@@ -943,7 +943,9 @@ object TelegramStreamingProxy {
                     val activeWindow = activeDownloadWindows[fileId]
                     val isInsideActiveWindow = activeWindow != null && offset >= activeWindow.first && offset < activeWindow.second
 
-                    if (!isInsideActiveWindow) {
+                    if (attempts == 0 && isInsideActiveWindow) {
+                        // Skip redundant DownloadFile on initial attempt if already inside active window
+                    } else {
                         val fileInfo = getFileInfo(fileId)
                         val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
                         val safeLimit = calculateSafeTdlibLimit(alignedOffset, totalSize, prefetchSizeMb, limit)
