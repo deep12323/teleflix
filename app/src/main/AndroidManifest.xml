@@ -33,13 +33,6 @@
         </activity>
 
         <activity
-            android:name="com.teleflix.app.PlayerActivity"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
-            android:screenOrientation="sensorLandscape"
-            android:exported="false"
-            android:theme="@style/Theme.Teleflix.Fullscreen" />
-
-        <activity
             android:name="com.teleflix.app.SettingsActivity"
             android:exported="false"
             android:theme="@style/Theme.Teleflix" />

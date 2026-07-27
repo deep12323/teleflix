@@ -1035,21 +1035,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPlayerActionDialog(streamUrl: String, title: String, resumeMs: Long = 0L) {
         val options = arrayOf(
-            "🎬 Internal Player (ExoPlayer)",
-            "🟢 MPVEX Player",
+            "🟢 Internal Player (MPVEX)",
             "🟣 MPV Player",
             "🧡 VLC Player",
             "📱 Choose From All Installed Players..."
         )
         AlertDialog.Builder(this)
-            .setTitle("Select Player for Stream")
+            .setTitle("Select Video Player")
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> openStreamInPlayer("exo", streamUrl, title, resumeMs)
-                    1 -> openStreamInPlayer("mpvex", streamUrl, title, resumeMs)
-                    2 -> openStreamInPlayer("mpv", streamUrl, title, resumeMs)
-                    3 -> openStreamInPlayer("vlc", streamUrl, title, resumeMs)
-                    4 -> openStreamInPlayer("chooser", streamUrl, title, resumeMs)
+                    0 -> openStreamInPlayer("mpvex", streamUrl, title, resumeMs)
+                    1 -> openStreamInPlayer("mpv", streamUrl, title, resumeMs)
+                    2 -> openStreamInPlayer("vlc", streamUrl, title, resumeMs)
+                    3 -> openStreamInPlayer("chooser", streamUrl, title, resumeMs)
                 }
             }
             .show()
@@ -1057,15 +1055,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openStreamInPlayer(playerType: String, streamUrl: String, title: String, resumeMs: Long) {
         when (playerType) {
-            "exo" -> {
-                val intent = Intent(this, PlayerActivity::class.java).apply {
-                    putExtra("VIDEO_URL", streamUrl)
-                    putExtra("VIDEO_TITLE", title)
-                    putExtra("RESUME_MS", resumeMs)
-                }
-                startActivity(intent)
-            }
-            "mpvex" -> {
+            "mpvex", "exo" -> {
                 val mpvexIntent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(Uri.parse(streamUrl), "video/*")
                     setPackage("id.nzxm.mpvex")
@@ -1083,7 +1073,7 @@ class MainActivity : AppCompatActivity() {
                         mpvexIntent.setPackage("id.nzxm.mpvex.debug")
                         startActivity(mpvexIntent)
                     } catch (_: Exception) {
-                        Toast.makeText(this, "MPVEX Player is not installed on your phone", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Internal MPVEX Player not installed! Please install MPVEX.", Toast.LENGTH_LONG).show()
                     }
                 }
             }
