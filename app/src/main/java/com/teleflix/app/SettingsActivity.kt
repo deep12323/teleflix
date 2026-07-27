@@ -26,6 +26,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var channelContainer: LinearLayout
     private lateinit var apiIdInput: EditText
     private lateinit var apiHashInput: EditText
+    private lateinit var apiBox: LinearLayout
     private var authJob: Job? = null
     private var currentDialog: AlertDialog? = null
 
@@ -149,7 +150,7 @@ class SettingsActivity : AppCompatActivity() {
         loginSettingsContainer.addView(sessionBox)
 
         // API Credentials Box
-        val apiBox = LinearLayout(this).apply {
+        apiBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#161B28"))
             setPadding(24, 24, 24, 24)
@@ -345,6 +346,12 @@ class SettingsActivity : AppCompatActivity() {
         authJob?.cancel()
         authJob = CoroutineScope(Dispatchers.Main).launch {
             TelegramClient.authState.collect { state ->
+                if (::apiBox.isInitialized) {
+                    val hideApiCredentials = state is TelegramAuthState.WaitCode ||
+                            state is TelegramAuthState.WaitPassword ||
+                            state is TelegramAuthState.Ready
+                    apiBox.visibility = if (hideApiCredentials) android.view.View.GONE else android.view.View.VISIBLE
+                }
                 when (state) {
                     is TelegramAuthState.Idle -> {
                         statusText.text = "Idle (Not connected)"
