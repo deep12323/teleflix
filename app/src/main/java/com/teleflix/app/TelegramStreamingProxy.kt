@@ -257,6 +257,7 @@ object TelegramStreamingProxy {
             val mimeType = getMimeType(ext)
 
             val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
+            val safeFileName = fileName?.replace("\"", "\\\"") ?: "video.$ext"
             val headers = StringBuilder().apply {
                 append("HTTP/1.1 $status\r\n")
                 append("Accept-Ranges: bytes\r\n")
@@ -265,6 +266,7 @@ object TelegramStreamingProxy {
                     append("Content-Range: bytes $start-$end/$totalSize\r\n")
                 }
                 append("Content-Type: $mimeType\r\n")
+                append("Content-Disposition: inline; filename=\"$safeFileName\"\r\n")
                 append("Connection: close\r\n\r\n")
             }.toString()
 
@@ -404,6 +406,7 @@ object TelegramStreamingProxy {
         val mimeType = getMimeType(ext)
 
         val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
+        val safeFileName = fileName?.replace("\"", "\\\"") ?: "video.$ext"
         val headers = StringBuilder().apply {
             append("HTTP/1.1 $status\r\n")
             append("Accept-Ranges: bytes\r\n")
@@ -412,6 +415,7 @@ object TelegramStreamingProxy {
                 append("Content-Range: bytes $start-$end/$totalSize\r\n")
             }
             append("Content-Type: $mimeType\r\n")
+            append("Content-Disposition: inline; filename=\"$safeFileName\"\r\n")
             append("Connection: close\r\n\r\n")
         }.toString()
 
@@ -784,7 +788,7 @@ object TelegramStreamingProxy {
     ): ByteArray? {
         val dataBytes = withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
             var attempts = 0
-            while (attempts < 300 && running) {
+            while (attempts < 600 && running) {
                 val data = try {
                     TelegramClient.sendRequest(
                         TdApi.ReadFilePart(fileId, offset, limit.toLong())
@@ -806,8 +810,28 @@ object TelegramStreamingProxy {
                     } catch (e: Exception) { null }
                     return@withTimeoutOrNull finalData?.data
                 }
+
+                // If chunk is taking more than ~250ms (5 attempts), re-trigger DownloadFile for this offset range
+                // so concurrent range requests (e.g. MKV end-of-file Cues) don't starve the main playback stream
+                if (attempts % 5 == 4) {
+                    val tdlibPrefetch = when {
+                        prefetchSizeMb == -1L -> 0L
+                        prefetchSizeMb <= 0L -> limit.toLong()
+                        else -> maxOf(limit.toLong(), prefetchSizeMb * 1024L * 1024L)
+                    }
+                    val alignedOffset = offset - (offset % (1024 * 1024))
+                    runCatching {
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = fileId
+                            req.priority = DOWNLOAD_PRIORITY
+                            req.offset = alignedOffset
+                            req.limit = tdlibPrefetch
+                            req.synchronous = false
+                        })
+                    }
+                }
                 
-                delay(POLL_INTERVAL_MS)
+                delay(50L)
                 attempts++
             }
             null

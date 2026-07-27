@@ -23,6 +23,11 @@ class TeleflixMpvView(context: Context, attrs: AttributeSet? = null) : BaseMPVVi
         try {
             mpv.setPropertyString("vo", "gpu")
             mpv.setPropertyString("hwdec", "auto")
+            mpv.setPropertyString("cache", "yes")
+            mpv.setPropertyString("demuxer-max-bytes", "64MiB")
+            mpv.setPropertyString("demuxer-max-back-bytes", "32MiB")
+            mpv.setPropertyString("demuxer-readahead-secs", "20")
+            mpv.setPropertyString("force-seekable", "yes")
         } catch (_: Exception) {}
     }
     override fun postInitOptions() {}
