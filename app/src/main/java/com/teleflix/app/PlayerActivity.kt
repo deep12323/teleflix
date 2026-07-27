@@ -62,7 +62,7 @@ class PlayerActivity : AppCompatActivity() {
                     val targetSec = resumeMs / 1000.0
                     try {
                         mpvView.mpv.setPropertyDouble("time-pos", targetSec)
-                        mpvView.mpv.command(arrayOf("seek", targetSec.toString(), "absolute"))
+                        mpvView.mpv.command("seek $targetSec absolute")
                     } catch (_: Exception) {}
                     handler.postDelayed(this, 1000)
                     return
