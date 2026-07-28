@@ -27,7 +27,7 @@ object TelegramStreamingProxy {
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
     private val activeStreams = java.util.concurrent.ConcurrentHashMap<Int, Int>()
-    private val activeFileJobs = java.util.concurrent.ConcurrentHashMap<Int, Job>()
+    private val activeFileJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
     private val activeDownloadWindows = java.util.concurrent.ConcurrentHashMap<Int, Pair<Long, Long>>()
     private val lastDownloadRequestOffset = java.util.concurrent.ConcurrentHashMap<Int, Long>()
     private val lastDownloadRequestTime = java.util.concurrent.ConcurrentHashMap<Int, Long>()
@@ -292,9 +292,11 @@ object TelegramStreamingProxy {
     }
 
     private suspend fun streamFile(fileId: Int, fileName: String?, rangeHeader: String?, output: java.io.OutputStream, urlSize: Long, isHead: Boolean = false) {
+        val (rangeStart, rangeEnd) = parseRange(rangeHeader)
+        val jobKey = "${fileId}_${rangeStart ?: 0}"
         val currentJob = kotlin.coroutines.coroutineContext[Job]
         if (currentJob != null) {
-            val oldJob = activeFileJobs.put(fileId, currentJob)
+            val oldJob = activeFileJobs.put(jobKey, currentJob)
             if (oldJob != null && oldJob != currentJob && oldJob.isActive) {
                 oldJob.cancel()
             }
@@ -308,8 +310,6 @@ object TelegramStreamingProxy {
                 }
             }
             lastStreamedFileId = fileId
-
-            val (rangeStart, rangeEnd) = parseRange(rangeHeader)
 
             // Get file info
             val fileInfo = getFileInfo(fileId)
@@ -415,7 +415,7 @@ object TelegramStreamingProxy {
             }
         } finally {
             if (currentJob != null) {
-                activeFileJobs.remove(fileId, currentJob)
+                activeFileJobs.remove(jobKey, currentJob)
             }
         }
     }
@@ -1006,18 +1006,22 @@ object TelegramStreamingProxy {
                 // Use force=true to bypass the anti-spam guard since the data clearly isn't ready yet
                 // Also force-cancel and re-issue if TDLib stopped downloading for this file
                 if (attempts % 5 == 0) {
-                    if (attempts > 0 && (attempts % 200 == 0 || !isDownloading)) {
-                        // TDLib stalled — cancel and reissue to unstick TDLib after 3 seconds of silence
-                        TeleflixLogger.log(TAG, "Download stalled for fileId=$fileId offset=$offset attempt=$attempts, cancelling and re-issuing")
-                        runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
-                    }
+                    val downloadedSize = file?.local?.downloadedSize ?: 0L
                     val fileInfo = getFileInfo(fileId)
                     val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
                     val safeLimit = calculateSafeTdlibLimit(offset, totalSize, prefetchSizeMb, limit)
 
-                    triggerTdlibDownload(fileId, offset, safeLimit, force = true)
-                    val winEnd = if (safeLimit == 0L) Long.MAX_VALUE else offset + safeLimit
-                    activeDownloadWindows[fileId] = Pair(offset, winEnd)
+                    val isBufferFilled = safeLimit > 0L && downloadedSize >= (offset + safeLimit)
+
+                    if (!isBufferFilled) {
+                        if (attempts > 0 && (attempts % 200 == 0 || !isDownloading)) {
+                            TeleflixLogger.log(TAG, "Download stalled for fileId=$fileId offset=$offset attempt=$attempts, cancelling and re-issuing")
+                            runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
+                        }
+                        triggerTdlibDownload(fileId, offset, safeLimit, force = true)
+                        val winEnd = if (safeLimit == 0L) Long.MAX_VALUE else offset + safeLimit
+                        activeDownloadWindows[fileId] = Pair(offset, winEnd)
+                    }
                 }
                 
                 delay(15L)
