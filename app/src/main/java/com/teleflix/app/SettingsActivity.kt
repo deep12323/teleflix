@@ -285,9 +285,6 @@ class SettingsActivity : AppCompatActivity() {
         val currentDefault = prefs.getString("default_player", "ask") ?: "ask"
         val playerMap = mapOf(
             "ask" to "Always Ask (Select Player on Tap)",
-            "internal_mpv" to "🟣 Internal Player (Built-in MPV Engine)",
-            "exo" to "🟣 Internal Player (Built-in MPV Engine)",
-            "internal" to "🟣 Internal Player (Built-in MPV Engine)",
             "mpvex" to "🟢 MPVEX Player (External App)",
             "mpv" to "🔵 MPV Player (External App)",
             "vlc" to "🧡 VLC Player",
@@ -302,19 +299,18 @@ class SettingsActivity : AppCompatActivity() {
         playerBox.addView(playerDesc)
 
         val changePlayerBtn = Button(this).apply {
-            text = "Select Default Player (Internal MPV / MPVEX / VLC)"
+            text = "Select Default Player (MPVEX / MPV / VLC)"
             setBackgroundColor(Color.parseColor("#3B82F6"))
             setTextColor(Color.WHITE)
             setOnClickListener {
                 val labels = arrayOf(
                     "Always Ask (Select Player on Tap)",
-                    "🟣 Internal Player (Built-in MPV Engine)",
                     "🟢 MPVEX Player (External App)",
                     "🔵 MPV Player (External App)",
                     "🧡 VLC Player",
                     "📱 Android System Player Chooser"
                 )
-                val keys = arrayOf("ask", "internal_mpv", "mpvex", "mpv", "vlc", "chooser")
+                val keys = arrayOf("ask", "mpvex", "mpv", "vlc", "chooser")
                 AlertDialog.Builder(this@SettingsActivity)
                     .setTitle("Select Preferred Video Player")
                     .setItems(labels) { _, which ->

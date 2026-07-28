@@ -1150,7 +1150,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPlayerActionDialog(streamUrl: String, title: String, resumeMs: Long = 0L, mediaId: String = "") {
         val options = arrayOf(
-            "🟣 Internal Player (Built-in MPV Engine)",
             "🟢 MPVEX Player (External App)",
             "🔵 MPV Player (External App)",
             "🧡 VLC Player",
@@ -1160,11 +1159,10 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Select Video Player")
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> openStreamInPlayer("internal_mpv", streamUrl, title, resumeMs, mediaId)
-                    1 -> openStreamInPlayer("mpvex", streamUrl, title, resumeMs, mediaId)
-                    2 -> openStreamInPlayer("mpv", streamUrl, title, resumeMs, mediaId)
-                    3 -> openStreamInPlayer("vlc", streamUrl, title, resumeMs, mediaId)
-                    4 -> openStreamInPlayer("chooser", streamUrl, title, resumeMs, mediaId)
+                    0 -> openStreamInPlayer("mpvex", streamUrl, title, resumeMs, mediaId)
+                    1 -> openStreamInPlayer("mpv", streamUrl, title, resumeMs, mediaId)
+                    2 -> openStreamInPlayer("vlc", streamUrl, title, resumeMs, mediaId)
+                    3 -> openStreamInPlayer("chooser", streamUrl, title, resumeMs, mediaId)
                 }
             }
             .show()
@@ -1206,13 +1204,10 @@ class MainActivity : AppCompatActivity() {
 
         when (playerType) {
             "internal_mpv", "exo", "internal" -> {
-                val mpvIntent = Intent(this, PlayerActivity::class.java).apply {
-                    putExtra("url", streamUrl)
-                    putExtra("title", title)
-                    putExtra("mediaId", mediaId)
-                    putExtra("resumeMs", resumeMs)
+                val chooser = Intent.createChooser(baseIntent, "Select Video Player")
+                try { startActivity(chooser) } catch (_: Exception) {
+                    Toast.makeText(this, "No video player found on device!", Toast.LENGTH_SHORT).show()
                 }
-                startActivity(mpvIntent)
             }
             "mpvex", "mpv" -> {
                 val packagesToTry = if (playerType == "mpv") {
