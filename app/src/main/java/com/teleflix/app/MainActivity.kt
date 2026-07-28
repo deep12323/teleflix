@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -61,6 +62,44 @@ class MainActivity : AppCompatActivity() {
     private val telegramStreamCache = mutableMapOf<String, Pair<String, String>>()
     private val telegramGroupCache = mutableMapOf<String, Pair<List<Pair<Long, Long>>, List<Long>>>()
     private var allGenreCache = listOf<MediaItem>()
+
+    private var activeMediaIdForResume: String = ""
+    private var activeStreamUrlForResume: String = ""
+    private var activeTitleForResume: String = ""
+
+    private val playerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val intent = result.data
+        if (intent != null) {
+            val posLong = intent.getLongExtra("position", -1L)
+                .takeIf { it >= 0 } ?: intent.getLongExtra("extra_position", -1L)
+                .takeIf { it >= 0 } ?: intent.getLongExtra("position_ms", -1L)
+                .takeIf { it >= 0 } ?: intent.getIntExtra("position", -1).toLong()
+                .takeIf { it >= 0 } ?: intent.getIntExtra("extra_position", -1).toLong()
+                .takeIf { it >= 0 } ?: 0L
+
+            if (posLong > 3000L) {
+                val prefsLink = getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE)
+                val prefsTitle = getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
+                val editLink = prefsLink.edit()
+                val editTitle = prefsTitle.edit()
+
+                if (activeMediaIdForResume.isNotBlank()) {
+                    editLink.putLong("id_$activeMediaIdForResume", posLong)
+                    editLink.putLong(activeMediaIdForResume, posLong)
+                }
+                if (activeStreamUrlForResume.isNotBlank()) {
+                    editLink.putLong(activeStreamUrlForResume, posLong)
+                }
+                if (activeTitleForResume.isNotBlank()) {
+                    editTitle.putLong("resume_$activeTitleForResume", posLong)
+                }
+                editLink.apply()
+                editTitle.apply()
+
+                TeleflixLogger.log("MainActivity", "Saved resume position $posLong ms for $activeTitleForResume")
+            }
+        }
+    }
 
     private val mediaList = mutableListOf<MediaItem>()
     private var mediaAdapter: MediaAdapter? = null
@@ -1135,18 +1174,18 @@ class MainActivity : AppCompatActivity() {
         var savedPositionMs = 0L
         if (mediaId.isNotBlank()) {
             savedPositionMs = prefsLink.getLong("id_$mediaId", 0L)
-            if (savedPositionMs <= 10_000L) {
+            if (savedPositionMs <= 3_000L) {
                 savedPositionMs = prefsLink.getLong(mediaId, 0L)
             }
         }
-        if (savedPositionMs <= 10_000L) {
+        if (savedPositionMs <= 3_000L) {
             savedPositionMs = prefsLink.getLong(streamUrl, 0L)
         }
-        if (savedPositionMs <= 10_000L) {
+        if (savedPositionMs <= 3_000L) {
             savedPositionMs = prefsTitle.getLong("resume_$title", 0L)
         }
 
-        if (savedPositionMs > 10_000L) {
+        if (savedPositionMs > 3_000L) {
             val formattedTime = formatMillisToTime(savedPositionMs)
             AlertDialog.Builder(this)
                 .setTitle("Resume Playback")
@@ -1207,6 +1246,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openStreamInPlayer(playerType: String, streamUrl: String, title: String, resumeMs: Long, mediaId: String = "") {
+        activeMediaIdForResume = mediaId
+        activeStreamUrlForResume = streamUrl
+        activeTitleForResume = title
+
         // Immediately pre-warm TDLib download for offset 0 so first chunk is available in 0ms to external players
         val fileId = streamUrl.substringAfter("/file/", "").substringBefore("/").substringBefore("?").toIntOrNull()
         if (fileId != null) {
@@ -1243,7 +1286,7 @@ class MainActivity : AppCompatActivity() {
         when (playerType) {
             "internal_mpv", "exo", "internal" -> {
                 val chooser = Intent.createChooser(baseIntent, "Select Video Player")
-                try { startActivity(chooser) } catch (_: Exception) {
+                try { playerLauncher.launch(chooser) } catch (_: Exception) {
                     Toast.makeText(this, "No video player found on device!", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -1258,7 +1301,7 @@ class MainActivity : AppCompatActivity() {
                 for (pkg in packagesToTry) {
                     try {
                         val intent = Intent(baseIntent).apply { setPackage(pkg) }
-                        startActivity(intent)
+                        playerLauncher.launch(intent)
                         launched = true
                         break
                     } catch (_: Exception) {}
@@ -1274,7 +1317,7 @@ class MainActivity : AppCompatActivity() {
                         }
                         if (mpvMatch != null) {
                             val intent = Intent(baseIntent).apply { setPackage(mpvMatch.activityInfo.packageName) }
-                            startActivity(intent)
+                            playerLauncher.launch(intent)
                             launched = true
                         }
                     } catch (_: Exception) {}
@@ -1286,7 +1329,7 @@ class MainActivity : AppCompatActivity() {
                         .setMessage("MPVEX Player was not detected on your phone (Android 11+ requires granting visibility or installing the APK).\n\nWould you like to pick another existing player to start watching immediately, or download MPVEX from GitHub?")
                         .setPositiveButton("Choose Installed Player") { _, _ ->
                             val chooser = Intent.createChooser(baseIntent, "Select Video Player")
-                            try { startActivity(chooser) } catch (_: Exception) {
+                            try { playerLauncher.launch(chooser) } catch (_: Exception) {
                                 Toast.makeText(this, "No video player found on device!", Toast.LENGTH_SHORT).show()
                             }
                         }
@@ -1304,13 +1347,13 @@ class MainActivity : AppCompatActivity() {
             }
             "vlc" -> {
                 val vlcIntent = Intent(baseIntent).apply { setPackage("org.videolan.vlc") }
-                try { startActivity(vlcIntent) } catch (e: Exception) {
+                try { playerLauncher.launch(vlcIntent) } catch (e: Exception) {
                     Toast.makeText(this, "VLC Player is not installed on your device", Toast.LENGTH_SHORT).show()
                 }
             }
             else -> {
                 val chooser = Intent.createChooser(baseIntent, "Select Video Player")
-                try { startActivity(chooser) } catch (e: Exception) {
+                try { playerLauncher.launch(chooser) } catch (e: Exception) {
                     Toast.makeText(this, "No video player found on phone!", Toast.LENGTH_SHORT).show()
                 }
             }
