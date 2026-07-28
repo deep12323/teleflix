@@ -1024,14 +1024,7 @@ object TelegramStreamingProxy {
         limit: Int,
         metrics: StreamMetrics? = null
     ): ByteArray? {
-        val fileInfo = getFileInfo(fileId)
-        val fileName = fileInfo?.first ?: ""
-        val isMkvProbe = fileName.endsWith(".mkv", ignoreCase = true) && metrics?.requestType == "seek_probe"
-        val timeoutMs = when {
-            isMkvProbe -> 15_000L
-            metrics?.requestType == "seek_probe" -> 4_000L
-            else -> DOWNLOAD_TIMEOUT_MS
-        }
+        val timeoutMs = if (metrics?.requestType == "seek_probe") 15_000L else DOWNLOAD_TIMEOUT_MS
         val dataBytes = withTimeoutOrNull(timeoutMs) {
             var attempts = 0
             var consecutiveGetFileErrors = 0
