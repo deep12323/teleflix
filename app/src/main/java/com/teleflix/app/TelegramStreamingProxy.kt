@@ -54,6 +54,7 @@ object TelegramStreamingProxy {
         var chunksOk: Int = 0,
         var chunksRetried: Int = 0,
         var chunksTimedOut: Int = 0,
+        var totalQueueWaitMs: Long = 0L,
         var exitReason: String = "completed"
     ) {
         val requestType: String
@@ -71,9 +72,9 @@ object TelegramStreamingProxy {
             val durationMs = maxOf(1L, System.currentTimeMillis() - startTimeMs)
             val avgKbps = (totalBytesServed * 8L) / durationMs
             val totalMb = String.format(java.util.Locale.US, "%.2f MB", totalBytesServed.toDouble() / (1024.0 * 1024.0))
-            TeleflixLogger.log("TelegramProxy", "Stream END id=$fileId reqId=$reqId type=$requestType bytesServed=$totalBytesServed ($totalMb) durationMs=$durationMs avgKbps=$avgKbps reason=$exitReason")
+            TeleflixLogger.log("TelegramProxy", "Stream END id=$fileId reqId=$reqId type=$requestType bytesServed=$totalBytesServed ($totalMb) durationMs=$durationMs queueWaitMs=$totalQueueWaitMs avgKbps=$avgKbps reason=$exitReason")
             
-            val jsonLog = "{\"ts\":\"${java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())}\",\"event\":\"stream_end\",\"fileId\":$fileId,\"reqId\":\"$reqId\",\"type\":\"$requestType\",\"bytesServed\":$totalBytesServed,\"durationMs\":$durationMs,\"avgKbps\":$avgKbps,\"reason\":\"$exitReason\"}"
+            val jsonLog = "{\"ts\":\"${java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())}\",\"event\":\"stream_end\",\"fileId\":$fileId,\"reqId\":\"$reqId\",\"type\":\"$requestType\",\"bytesServed\":$totalBytesServed,\"durationMs\":$durationMs,\"queueWaitMs\":$totalQueueWaitMs,\"avgKbps\":$avgKbps,\"reason\":\"$exitReason\"}"
             TeleflixLogger.log("TelegramProxyMetrics", jsonLog)
         }
     }
@@ -1025,7 +1026,10 @@ object TelegramStreamingProxy {
             var consecutiveGetFileErrors = 0
             while (attempts < 600 && running) {
                 val data = try {
+                    val lockStart = System.currentTimeMillis()
                     getFileMutex(fileId).withLock {
+                        val waitMs = System.currentTimeMillis() - lockStart
+                        metrics?.totalQueueWaitMs = (metrics?.totalQueueWaitMs ?: 0L) + waitMs
                         TelegramClient.sendRequest(
                             TdApi.ReadFilePart(fileId, offset, limit.toLong())
                         ) as? TdApi.Data
