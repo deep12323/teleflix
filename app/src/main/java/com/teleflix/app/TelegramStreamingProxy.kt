@@ -450,10 +450,8 @@ object TelegramStreamingProxy {
                 val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
 
                 val safeLimit = calculateSafeTdlibLimit(offset, totalSize, prefetchSizeMb, chunkSize)
-                val triggerThreshold = if (safeLimit > 0L) safeLimit / 2 else 0L
 
-                if (offset >= activeDownloadEnd - triggerThreshold) {
-                    val safeLimit = calculateSafeTdlibLimit(offset, totalSize, prefetchSizeMb, chunkSize)
+                if (activeDownloadEnd < 0L || offset >= activeDownloadEnd - maxOf(CHUNK_SIZE.toLong(), safeLimit / 4)) {
                     triggerTdlibDownload(fileId, offset, safeLimit)
                     activeDownloadEnd = if (safeLimit == 0L) totalSize else offset + safeLimit
                     activeDownloadWindows[fileId] = Pair(offset, activeDownloadEnd)
