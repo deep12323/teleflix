@@ -501,7 +501,7 @@ class MainActivity : AppCompatActivity() {
                     loadingText.visibility = android.view.View.GONE
                     isLoadingMore = false
 
-                    if (results.size < 20) {
+                    if (results.size < 20 || catalogId.contains("genre=")) {
                         hasMoreItems = false
                     }
                 }
