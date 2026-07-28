@@ -16,7 +16,7 @@ import kotlin.concurrent.thread
 
 object TelegramStreamingProxy {
     private const val TAG = "TelegramProxy"
-    private const val CHUNK_SIZE = 64 * 1024          // 64 KB per socket chunk for sub-50ms TTFB and zero timeouts
+    private const val CHUNK_SIZE = 256 * 1024         // 256 KB per socket chunk for high throughput & fast MPVEX demuxing
     var prefetchSizeMb = 20L                             // Prefetch window sent to TDLib (dynamically configured)
     private const val DOWNLOAD_TIMEOUT_MS = 30_000L
     private const val DOWNLOAD_PRIORITY = 32              // max TDLib priority
@@ -111,6 +111,8 @@ object TelegramStreamingProxy {
 
     private suspend fun handleClient(socket: Socket) {
         try {
+            socket.tcpNoDelay = true
+            try { socket.sendBufferSize = 1048576 } catch (_: Exception) {}
             socket.soTimeout = 30000
             val inputStream = socket.getInputStream()
             val reader = inputStream.bufferedReader()
@@ -1015,7 +1017,7 @@ object TelegramStreamingProxy {
                     activeDownloadWindows[fileId] = Pair(offset, winEnd)
                 }
                 
-                delay(50L)
+                delay(15L)
                 attempts++
             }
             null
