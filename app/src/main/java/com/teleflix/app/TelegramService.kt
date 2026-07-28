@@ -70,11 +70,9 @@ class TelegramService : Service() {
         val prefs = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
         val isEnabled = prefs.getBoolean("pref_run_in_background", true)
 
-        if (intent?.action == "ACTION_STOP_SERVICE" || !isEnabled) {
-            Log.d(TAG, "Stopping service: enabled=$isEnabled, action=${intent?.action}")
-            if (intent?.action == "ACTION_STOP_SERVICE") {
-                prefs.edit().putBoolean("pref_run_in_background", false).apply()
-            }
+        if (intent?.action == "ACTION_EXIT_APP" || intent?.action == "ACTION_STOP_SERVICE" || !isEnabled) {
+            Log.d(TAG, "Stopping service session: enabled=$isEnabled, action=${intent?.action}")
+            // Do NOT alter pref_run_in_background setting when user closes app via notification button!
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -136,11 +134,11 @@ class TelegramService : Service() {
             else PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val stopIntent = Intent(this, TelegramService::class.java).apply {
-            action = "ACTION_STOP_SERVICE"
+        val exitIntent = Intent(this, TelegramService::class.java).apply {
+            action = "ACTION_EXIT_APP"
         }
-        val stopPendingIntent = PendingIntent.getService(
-            this, 2, stopIntent,
+        val exitPendingIntent = PendingIntent.getService(
+            this, 2, exitIntent,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             else PendingIntent.FLAG_UPDATE_CURRENT
         )
@@ -152,7 +150,7 @@ class TelegramService : Service() {
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_menu_preferences, "Settings", settingsPendingIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Close App", exitPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
