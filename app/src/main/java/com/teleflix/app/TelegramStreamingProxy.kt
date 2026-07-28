@@ -939,6 +939,7 @@ object TelegramStreamingProxy {
     ): ByteArray? {
         val dataBytes = withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
             var attempts = 0
+            var consecutiveGetFileErrors = 0
             while (attempts < 600 && running) {
                 val data = try {
                     TelegramClient.sendRequest(
@@ -952,7 +953,20 @@ object TelegramStreamingProxy {
                     return@withTimeoutOrNull data.data
                 }
                 
-                val file = try { TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File } catch (e: Exception) { null }
+                val file = try {
+                    val res = TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File
+                    if (res != null) consecutiveGetFileErrors = 0
+                    res
+                } catch (e: Exception) {
+                    consecutiveGetFileErrors++
+                    null
+                }
+
+                if (consecutiveGetFileErrors >= 10 && attempts > 10) {
+                    TeleflixLogger.log(TAG, "fileId=$fileId invalid or not found in TDLib after $consecutiveGetFileErrors attempts, failing fast", isError = true)
+                    return@withTimeoutOrNull null
+                }
+
                 if (file?.local?.isDownloadingCompleted == true) {
                     val finalData = try {
                         TelegramClient.sendRequest(
