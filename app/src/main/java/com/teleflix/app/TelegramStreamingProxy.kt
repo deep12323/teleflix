@@ -294,7 +294,10 @@ object TelegramStreamingProxy {
     private suspend fun streamFile(fileId: Int, fileName: String?, rangeHeader: String?, output: java.io.OutputStream, urlSize: Long, isHead: Boolean = false) {
         val currentJob = kotlin.coroutines.coroutineContext[Job]
         if (currentJob != null) {
-            activeFileJobs.put(fileId, currentJob)
+            val oldJob = activeFileJobs.put(fileId, currentJob)
+            if (oldJob != null && oldJob != currentJob && oldJob.isActive) {
+                oldJob.cancel()
+            }
         }
 
         try {
@@ -1003,8 +1006,8 @@ object TelegramStreamingProxy {
                 // Use force=true to bypass the anti-spam guard since the data clearly isn't ready yet
                 // Also force-cancel and re-issue if TDLib stopped downloading for this file
                 if (attempts % 5 == 0) {
-                    if (attempts > 0 && (attempts % 30 == 0 || !isDownloading)) {
-                        // TDLib stalled or delayed — cancel and reissue to unstick TDLib immediately
+                    if (attempts > 0 && (attempts % 200 == 0 || !isDownloading)) {
+                        // TDLib stalled — cancel and reissue to unstick TDLib after 3 seconds of silence
                         TeleflixLogger.log(TAG, "Download stalled for fileId=$fileId offset=$offset attempt=$attempts, cancelling and re-issuing")
                         runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
                     }
