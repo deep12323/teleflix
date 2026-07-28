@@ -492,6 +492,11 @@ object TelegramStreamingProxy {
     }
 
     private suspend fun readChunkFromMerged(
+        fileIds: List<Int>,
+        sizes: List<Long>,
+        globalOffset: Long,
+        limit: Int
+    ): ByteArray? {
         if (fileIds.isEmpty() || sizes.isEmpty()) return null
         val totalSize = sizes.sum()
         if (globalOffset >= totalSize) return null
