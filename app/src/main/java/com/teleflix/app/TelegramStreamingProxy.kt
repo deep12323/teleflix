@@ -1015,7 +1015,8 @@ object TelegramStreamingProxy {
         metrics: StreamMetrics? = null
     ): ByteArray? {
         val chunkStartMs = System.currentTimeMillis()
-        val dataBytes = withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
+        val timeoutMs = if (metrics?.requestType == "seek_probe") 4_000L else DOWNLOAD_TIMEOUT_MS
+        val dataBytes = withTimeoutOrNull(timeoutMs) {
             var attempts = 0
             var consecutiveGetFileErrors = 0
             while (attempts < 600 && running) {
@@ -1091,7 +1092,7 @@ object TelegramStreamingProxy {
         }
         if (dataBytes == null) {
             metrics?.chunksTimedOut = (metrics?.chunksTimedOut ?: 0) + 1
-            TeleflixLogger.log(TAG, "downloadChunk TIMEOUT: fileId=$fileId offset=$offset limit=$limit after ${DOWNLOAD_TIMEOUT_MS}ms", isError = true)
+            TeleflixLogger.log(TAG, "downloadChunk TIMEOUT: fileId=$fileId offset=$offset limit=$limit after ${timeoutMs}ms", isError = true)
         }
         return dataBytes
     }
