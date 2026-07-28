@@ -1003,8 +1003,8 @@ object TelegramStreamingProxy {
                 // Use force=true to bypass the anti-spam guard since the data clearly isn't ready yet
                 // Also force-cancel and re-issue if TDLib stopped downloading for this file
                 if (attempts % 5 == 0) {
-                    if (!isDownloading && attempts > 0) {
-                        // TDLib stopped downloading — cancel and reissue to unstick it
+                    if (attempts > 0 && (attempts % 30 == 0 || !isDownloading)) {
+                        // TDLib stalled or delayed — cancel and reissue to unstick TDLib immediately
                         TeleflixLogger.log(TAG, "Download stalled for fileId=$fileId offset=$offset attempt=$attempts, cancelling and re-issuing")
                         runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
                     }
