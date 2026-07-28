@@ -28,7 +28,7 @@ object TelegramStreamingProxy {
     private var port: Int = 0
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
-    private val activeStreams = java.util.concurrent.ConcurrentHashMap<Int, Int>()
+    private val activeStreamRequests = java.util.concurrent.ConcurrentHashMap<Int, java.util.Set<String>>()
     private val activeFileJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
     private val activeDownloadWindows = java.util.concurrent.ConcurrentHashMap<Int, Pair<Long, Long>>()
     private val lastDownloadRequestOffset = java.util.concurrent.ConcurrentHashMap<Int, Long>()
@@ -362,7 +362,7 @@ object TelegramStreamingProxy {
             val totalSize = exactSize ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
             val localPath = fileInfo?.first
             
-            activeStreams[fileId] = (activeStreams[fileId] ?: 0) + 1
+            activeStreamRequests.getOrPut(fileId) { java.util.concurrent.ConcurrentHashMap.newKeySet() }.add(metrics.reqId)
 
             if (totalSize <= 0L) {
                 output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
@@ -480,26 +480,20 @@ object TelegramStreamingProxy {
             if (currentJob != null) {
                 activeFileJobs.remove(jobKey, currentJob)
             }
-            val remaining = (activeStreams[fileId] ?: 1) - 1
-            if (remaining <= 0) {
-                activeStreams.remove(fileId)
+            val reqSet = activeStreamRequests[fileId]
+            reqSet?.remove(metrics.reqId)
+            if (reqSet == null || reqSet.isEmpty()) {
+                activeStreamRequests.remove(fileId)
                 activeDownloadWindows.remove(fileId)
-                TeleflixLogger.log(TAG, "No active streams remaining for fileId=$fileId, cancelling TDLib background download")
+                TeleflixLogger.log(TAG, "No active streams remaining for fileId=$fileId, cancelling TDLib background download immediately")
                 runCatching {
                     TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
                 }
-            } else {
-                activeStreams[fileId] = remaining
             }
         }
     }
 
     private suspend fun readChunkFromMerged(
-        fileIds: List<Int>,
-        sizes: List<Long>,
-        globalOffset: Long,
-        limit: Int
-    ): ByteArray? {
         if (fileIds.isEmpty() || sizes.isEmpty()) return null
         val totalSize = sizes.sum()
         if (globalOffset >= totalSize) return null
@@ -962,7 +956,7 @@ object TelegramStreamingProxy {
                 }
             }
             activeDownloadWindows.clear()
-            activeStreams.clear()
+            activeStreamRequests.clear()
             TeleflixLogger.log(TAG, "Cancelled all active TDLib background downloads")
         }
     }
