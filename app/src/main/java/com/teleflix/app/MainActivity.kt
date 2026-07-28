@@ -1483,18 +1483,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (savedPositionMs > 3_000L) {
-            val formattedTime = formatMillisToTime(savedPositionMs)
-            AlertDialog.Builder(this)
-                .setTitle("Resume Playback")
-                .setMessage("You previously watched '$title' up to $formattedTime.\n\nDo you want to resume where you left off or start from the beginning?")
-                .setPositiveButton("▶ Resume ($formattedTime)") { _, _ ->
-                    handlePlayerLaunch(streamUrl, title, savedPositionMs, mediaId)
-                }
-                .setNegativeButton("🔄 Start Over") { _, _ ->
-                    handlePlayerLaunch(streamUrl, title, 0L, mediaId)
-                }
-                .setNeutralButton("Cancel", null)
-                .show()
+            val alwaysResume = getSharedPreferences("teleflix_preferences", android.content.Context.MODE_PRIVATE)
+                .getBoolean("always_resume", false)
+            if (alwaysResume) {
+                handlePlayerLaunch(streamUrl, title, savedPositionMs, mediaId)
+            } else {
+                val formattedTime = formatMillisToTime(savedPositionMs)
+                AlertDialog.Builder(this)
+                    .setTitle("Resume Playback")
+                    .setMessage("You previously watched '$title' up to $formattedTime.\n\nDo you want to resume where you left off or start from the beginning?")
+                    .setPositiveButton("▶ Resume ($formattedTime)") { _, _ ->
+                        handlePlayerLaunch(streamUrl, title, savedPositionMs, mediaId)
+                    }
+                    .setNegativeButton("🔄 Start Over") { _, _ ->
+                        handlePlayerLaunch(streamUrl, title, 0L, mediaId)
+                    }
+                    .setNeutralButton("Cancel", null)
+                    .show()
+            }
         } else {
             handlePlayerLaunch(streamUrl, title, 0L, mediaId)
         }

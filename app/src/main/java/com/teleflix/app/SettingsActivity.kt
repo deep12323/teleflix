@@ -324,6 +324,67 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
         playerBox.addView(changePlayerBtn)
+
+        // Always Resume Toggle
+        val resumeSpacer = android.view.View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 2).apply {
+                setMargins(0, 20, 0, 20)
+            }
+            setBackgroundColor(Color.parseColor("#334155"))
+        }
+        playerBox.addView(resumeSpacer)
+
+        val resumeTitle = TextView(this).apply {
+            text = "Auto-Resume Playback"
+            textSize = 16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+        }
+        playerBox.addView(resumeTitle)
+
+        val resumeDesc = TextView(this).apply {
+            text = "When enabled, videos will always automatically resume from where you left off without asking. When disabled, you'll get a dialog to choose Resume or Start Over."
+            textSize = 14f
+            setTextColor(Color.parseColor("#93C5FD"))
+            setPadding(0, 12, 0, 12)
+        }
+        playerBox.addView(resumeDesc)
+
+        var isAlwaysResume = prefs.getBoolean("always_resume", false)
+        val resumeStatusText = TextView(this).apply {
+            text = if (isAlwaysResume) "Status: ON — Always resumes automatically" else "Status: OFF — Asks before resuming"
+            textSize = 15f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(if (isAlwaysResume) Color.parseColor("#10B981") else Color.parseColor("#F59E0B"))
+            setPadding(0, 0, 0, 16)
+        }
+        playerBox.addView(resumeStatusText)
+
+        val resumeToggleBtn = Button(this).apply {
+            text = if (isAlwaysResume) "❌ TURN OFF ALWAYS RESUME" else "✅ TURN ON ALWAYS RESUME"
+            setBackgroundColor(if (isAlwaysResume) Color.parseColor("#DC2626") else Color.parseColor("#059669"))
+            setTextColor(Color.WHITE)
+            setPadding(24, 16, 24, 16)
+            setOnClickListener {
+                isAlwaysResume = !isAlwaysResume
+                prefs.edit().putBoolean("always_resume", isAlwaysResume).apply()
+                if (isAlwaysResume) {
+                    text = "❌ TURN OFF ALWAYS RESUME"
+                    setBackgroundColor(Color.parseColor("#DC2626"))
+                    resumeStatusText.text = "Status: ON — Always resumes automatically"
+                    resumeStatusText.setTextColor(Color.parseColor("#10B981"))
+                    Toast.makeText(this@SettingsActivity, "Always Resume turned ON — videos will auto-resume", Toast.LENGTH_SHORT).show()
+                } else {
+                    text = "✅ TURN ON ALWAYS RESUME"
+                    setBackgroundColor(Color.parseColor("#059669"))
+                    resumeStatusText.text = "Status: OFF — Asks before resuming"
+                    resumeStatusText.setTextColor(Color.parseColor("#F59E0B"))
+                    Toast.makeText(this@SettingsActivity, "Always Resume turned OFF — will ask before resuming", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        playerBox.addView(resumeToggleBtn)
+
         playbackSectionContainer.addView(playerBox)
 
         // 4. Background Service Section (Collapsible)
