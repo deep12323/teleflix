@@ -58,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tabScroll: HorizontalScrollView
     private lateinit var tabRow: LinearLayout
     private var isTelegramCatalogMode = false
+    private var currentOpenChannelId: String? = null
     private var currentOpenTopicId: Int = 0
 
     private fun formatFileSize(bytes: Long): String {

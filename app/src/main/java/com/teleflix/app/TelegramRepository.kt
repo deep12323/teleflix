@@ -882,7 +882,7 @@ object TelegramRepository {
         val seen = mutableSetOf<Pair<String, Long>>()
         val chatId = getChatId(channelUsernameOrId) ?: return Pair(emptyList(), 0L)
 
-        val topicFilter: TdApi.MessageTopicInfo? = if (topicId > 0) TdApi.MessageTopicForum(topicId) else null
+        val topicFilter = if (topicId > 0) TdApi.MessageTopicForum(topicId) else null
 
         val filters = mutableListOf<TdApi.SearchMessagesFilter>(
             TdApi.SearchMessagesFilterDocument(),
