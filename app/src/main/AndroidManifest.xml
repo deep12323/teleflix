@@ -18,7 +18,10 @@
         </intent>
         <package android:name="id.nzxm.mpvex" />
         <package android:name="id.nzxm.mpvex.debug" />
+        <package android:name="id.nzxm.mpv" />
         <package android:name="is.xyz.mpv" />
+        <package android:name="is.xyz.mpv.debug" />
+        <package android:name="com.mpvex.app" />
         <package android:name="org.videolan.vlc" />
         <package android:name="com.mxtech.videoplayer.ad" />
         <package android:name="com.mxtech.videoplayer.pro" />

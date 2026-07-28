@@ -1211,9 +1211,9 @@ class MainActivity : AppCompatActivity() {
             }
             "mpvex", "mpv" -> {
                 val packagesToTry = if (playerType == "mpv") {
-                    listOf("is.xyz.mpv", "id.nzxm.mpvex", "id.nzxm.mpvex.debug", "dev.anilbeesetti.nextplayer")
+                    listOf("is.xyz.mpv", "is.xyz.mpv.debug", "id.nzxm.mpv", "id.nzxm.mpvex", "id.nzxm.mpvex.debug", "com.mpvex.app")
                 } else {
-                    listOf("id.nzxm.mpvex", "id.nzxm.mpvex.debug", "is.xyz.mpv", "dev.anilbeesetti.nextplayer")
+                    listOf("id.nzxm.mpvex", "id.nzxm.mpvex.debug", "com.mpvex.app", "id.nzxm.mpv", "is.xyz.mpv", "is.xyz.mpv.debug")
                 }
 
                 var launched = false
@@ -1232,7 +1232,7 @@ class MainActivity : AppCompatActivity() {
                         val mpvMatch = resolveInfo.firstOrNull { 
                             val pkgName = it.activityInfo.packageName.lowercase()
                             val label = it.loadLabel(packageManager).toString().lowercase()
-                            pkgName.contains("mpv") || label.contains("mpv") || pkgName.contains("nextplayer")
+                            pkgName.contains("mpv") || label.contains("mpv")
                         }
                         if (mpvMatch != null) {
                             val intent = Intent(baseIntent).apply { setPackage(mpvMatch.activityInfo.packageName) }
