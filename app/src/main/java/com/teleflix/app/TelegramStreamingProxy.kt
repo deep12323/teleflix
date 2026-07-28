@@ -362,7 +362,7 @@ object TelegramStreamingProxy {
             val totalSize = exactSize ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
             val localPath = fileInfo?.first
             
-            TeleflixLogger.log(TAG, "Streaming fileId=$fileId totalSize=$totalSize range=${rangeHeader ?: "full"} prefetchMb=$prefetchSizeMb isHead=$isHead")
+            activeStreams[fileId] = (activeStreams[fileId] ?: 0) + 1
 
             if (totalSize <= 0L) {
                 output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
@@ -479,6 +479,17 @@ object TelegramStreamingProxy {
         } finally {
             if (currentJob != null) {
                 activeFileJobs.remove(jobKey, currentJob)
+            }
+            val remaining = (activeStreams[fileId] ?: 1) - 1
+            if (remaining <= 0) {
+                activeStreams.remove(fileId)
+                activeDownloadWindows.remove(fileId)
+                TeleflixLogger.log(TAG, "No active streams remaining for fileId=$fileId, cancelling TDLib background download")
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                }
+            } else {
+                activeStreams[fileId] = remaining
             }
         }
     }
@@ -941,6 +952,17 @@ object TelegramStreamingProxy {
         ensureRunning()
         val encodedInner = java.net.URLEncoder.encode(innerFileName, "UTF-8").replace("+", "%20")
         return "http://127.0.0.1:$port/zip/$fileId/$encodedInner?size=$zipSize&token=$authToken"
+    }
+
+    fun cancelAllBackgroundDownloads() {
+        activeDownloadWindows.keys.forEach { fileId ->
+            runCatching {
+                TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+            }
+        }
+        activeDownloadWindows.clear()
+        activeStreams.clear()
+        TeleflixLogger.log(TAG, "Cancelled all active TDLib background downloads")
     }
 
     private suspend fun serveThumbnail(fileId: Int, output: java.io.OutputStream, isHead: Boolean = false) {

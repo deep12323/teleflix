@@ -1804,6 +1804,11 @@ class MainActivity : AppCompatActivity() {
         super.onBackPressed()
     }
 
+    override fun onStop() {
+        super.onStop()
+        TelegramStreamingProxy.cancelAllBackgroundDownloads()
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 101 && grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
