@@ -7,6 +7,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import org.drinkless.tdlib.TdApi
 import java.io.IOException
@@ -37,6 +39,8 @@ object TelegramStreamingProxy {
         }
     }
     private val messageThumbMap = java.util.concurrent.ConcurrentHashMap<Pair<Long, Long>, Int>()
+    private val fileMutexes = java.util.concurrent.ConcurrentHashMap<Int, Mutex>()
+    private fun getFileMutex(fileId: Int): Mutex = fileMutexes.getOrPut(fileId) { Mutex() }
     @Volatile private var lastStreamedFileId: Int? = null
 
     data class StreamMetrics(
@@ -1021,9 +1025,11 @@ object TelegramStreamingProxy {
             var consecutiveGetFileErrors = 0
             while (attempts < 600 && running) {
                 val data = try {
-                    TelegramClient.sendRequest(
-                        TdApi.ReadFilePart(fileId, offset, limit.toLong())
-                    ) as? TdApi.Data
+                    getFileMutex(fileId).withLock {
+                        TelegramClient.sendRequest(
+                            TdApi.ReadFilePart(fileId, offset, limit.toLong())
+                        ) as? TdApi.Data
+                    }
                 } catch (e: Exception) {
                     null
                 }
