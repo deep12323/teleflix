@@ -1024,6 +1024,7 @@ object TelegramStreamingProxy {
         limit: Int,
         metrics: StreamMetrics? = null
     ): ByteArray? {
+        val chunkStartMs = System.currentTimeMillis()
         val timeoutMs = if (metrics?.requestType == "seek_probe") 15_000L else DOWNLOAD_TIMEOUT_MS
         val dataBytes = withTimeoutOrNull(timeoutMs) {
             var attempts = 0

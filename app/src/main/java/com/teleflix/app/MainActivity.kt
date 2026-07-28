@@ -1439,10 +1439,17 @@ class MainActivity : AppCompatActivity() {
     private fun saveLinkToWatchHistory(streamUrl: String, title: String, posterUrl: String, mediaId: String) {
         if (streamUrl.isBlank() && mediaId.isBlank()) return
         val effectiveId = if (mediaId.isNotBlank()) mediaId else "link_" + streamUrl.hashCode()
+        var effectivePoster = posterUrl
+        if (effectivePoster.isBlank()) {
+            val matchingMedia = mediaList.firstOrNull { it.id == mediaId || it.title.equals(title, ignoreCase = true) }
+            if (matchingMedia != null && matchingMedia.posterUrl.isNotBlank()) {
+                effectivePoster = matchingMedia.posterUrl
+            }
+        }
         val item = MediaItem(
             id = effectiveId,
             title = title,
-            posterUrl = posterUrl,
+            posterUrl = effectivePoster,
             year = "Watched",
             rating = "▶",
             overview = "Playing stream: $title",
