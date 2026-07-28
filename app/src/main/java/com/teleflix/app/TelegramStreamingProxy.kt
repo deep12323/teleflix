@@ -368,6 +368,19 @@ object TelegramStreamingProxy {
                 return
             }
 
+            if (start == 0L && totalSize > 1_000_000L && (ext == "mkv" || ext == "mp4" || ext == "webm")) {
+                val tailOffset = maxOf(0L, totalSize - 524288L)
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        req.fileId = fileId
+                        req.priority = 16
+                        req.offset = tailOffset
+                        req.limit = 524288L
+                        req.synchronous = false
+                    })
+                }
+            }
+
             var activeDownloadEnd = -1L
 
             var offset = start
@@ -386,9 +399,14 @@ object TelegramStreamingProxy {
 
                 val bytes = downloadChunk(fileId, offset, chunkSize)
                 if (bytes == null || bytes.isEmpty()) break
-                output.write(bytes)
-                output.flush()
-                offset += bytes.size
+                try {
+                    output.write(bytes)
+                    output.flush()
+                    offset += bytes.size
+                } catch (e: Exception) {
+                    TeleflixLogger.log(TAG, "Client disconnected: ${e.message ?: "Broken pipe"}")
+                    break
+                }
             }
         } finally {
             if (currentJob != null) {
