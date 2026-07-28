@@ -955,14 +955,16 @@ object TelegramStreamingProxy {
     }
 
     fun cancelAllBackgroundDownloads() {
-        activeDownloadWindows.keys.forEach { fileId ->
-            runCatching {
-                TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+        scope.launch {
+            activeDownloadWindows.keys.forEach { fileId ->
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                }
             }
+            activeDownloadWindows.clear()
+            activeStreams.clear()
+            TeleflixLogger.log(TAG, "Cancelled all active TDLib background downloads")
         }
-        activeDownloadWindows.clear()
-        activeStreams.clear()
-        TeleflixLogger.log(TAG, "Cancelled all active TDLib background downloads")
     }
 
     private suspend fun serveThumbnail(fileId: Int, output: java.io.OutputStream, isHead: Boolean = false) {
