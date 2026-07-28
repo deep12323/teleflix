@@ -39,7 +39,7 @@ object TelegramStreamingProxy {
     private val messageThumbMap = java.util.concurrent.ConcurrentHashMap<Pair<Long, Long>, Int>()
     @Volatile private var lastStreamedFileId: Int? = null
 
-    private suspend fun triggerTdlibDownload(fileId: Int, offset: Long, limit: Long) {
+    private suspend fun triggerTdlibDownload(fileId: Int, offset: Long, limit: Long, force: Boolean = false) {
         val now = System.currentTimeMillis()
         val lastOffset = lastDownloadRequestOffset[fileId]
         val lastTime = lastDownloadRequestTime[fileId] ?: 0L
@@ -53,7 +53,8 @@ object TelegramStreamingProxy {
         }
 
         // Prevent spamming TDLib with DownloadFile for the same offset within 5 seconds
-        if (lastOffset == offset && (now - lastTime) < 5000L) {
+        // unless force=true (used by downloadChunk retries when data isn't available yet)
+        if (!force && lastOffset == offset && (now - lastTime) < 5000L) {
             return
         }
 
@@ -961,14 +962,23 @@ object TelegramStreamingProxy {
                     return@withTimeoutOrNull finalData?.data
                 }
 
-                // Immediately trigger DownloadFile on attempt 0 and re-assert every 250ms (every 5 attempts)
-                // so concurrent range requests (e.g. MKV end-of-file Cues) never stall or starve the playback stream
+                // Check if download is active; if not downloading at all, cancel and re-issue
+                val isDownloading = file?.local?.isDownloadingActive == true
+
+                // Re-trigger DownloadFile on attempt 0 and every 250ms (every 5 attempts)
+                // Use force=true to bypass the anti-spam guard since the data clearly isn't ready yet
+                // Also force-cancel and re-issue if TDLib stopped downloading for this file
                 if (attempts % 5 == 0) {
+                    if (!isDownloading && attempts > 0) {
+                        // TDLib stopped downloading — cancel and reissue to unstick it
+                        TeleflixLogger.log(TAG, "Download stalled for fileId=$fileId offset=$offset attempt=$attempts, cancelling and re-issuing")
+                        runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
+                    }
                     val fileInfo = getFileInfo(fileId)
                     val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
                     val safeLimit = calculateSafeTdlibLimit(offset, totalSize, prefetchSizeMb, limit)
 
-                    triggerTdlibDownload(fileId, offset, safeLimit)
+                    triggerTdlibDownload(fileId, offset, safeLimit, force = true)
                     val winEnd = if (safeLimit == 0L) Long.MAX_VALUE else offset + safeLimit
                     activeDownloadWindows[fileId] = Pair(offset, winEnd)
                 }
@@ -977,6 +987,9 @@ object TelegramStreamingProxy {
                 attempts++
             }
             null
+        }
+        if (dataBytes == null) {
+            TeleflixLogger.log(TAG, "downloadChunk TIMEOUT: fileId=$fileId offset=$offset limit=$limit after ${DOWNLOAD_TIMEOUT_MS}ms", isError = true)
         }
         return dataBytes
     }
