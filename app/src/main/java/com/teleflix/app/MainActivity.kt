@@ -34,8 +34,10 @@ data class MediaItem(
     val year: String,
     val rating: String,
     val overview: String,
-    val type: String = "movie",  // "movie" or "series" or "telegram_media"
-    val streamUrl: String = ""
+    val type: String = "movie",  // "movie" or "series" or "telegram_media" or "history_group"
+    val streamUrl: String = "",
+    val originalFileName: String = "",
+    val groupedFiles: List<MediaItem> = emptyList()
 )
 
 data class EpisodeItem(
@@ -315,9 +317,11 @@ class MainActivity : AppCompatActivity() {
             when (item.type) {
                 "channel" -> loadTelegramChannelMedia(item.id, item.title)
                 "topic" -> loadTelegramTopicMedia(item.id, item.title)
+                "history_group" -> showHistoryGroupFilesPicker(item)
                 "telegram_media" -> {
                     val streamInfo = telegramStreamCache[item.id]
                     val titleToPlay = streamInfo?.second ?: item.title
+                    val fileName = item.originalFileName.ifBlank { titleToPlay }
                     val groupInfo = telegramGroupCache[item.id]
 
                     if (groupInfo != null) {
@@ -325,10 +329,10 @@ class MainActivity : AppCompatActivity() {
                             val cleanTitle = titleToPlay.removePrefix("📦 ")
                             val freshUrl = TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second)
                             if (freshUrl != null && freshUrl.isNotBlank()) {
-                                checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id)
+                                checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
                             } else {
                                 val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
-                                checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id)
+                                checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
                             }
                         }
                     } else {
@@ -341,11 +345,11 @@ class MainActivity : AppCompatActivity() {
                             CoroutineScope(Dispatchers.Main).launch {
                                 val freshUrl = TelegramRepository.getFreshMediaUrl(chatId, messageId)
                                 if (freshUrl != null && freshUrl.isNotBlank()) {
-                                    checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id)
+                                    checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
                                 } else {
                                     val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
                                     if (backupUrl.isNotBlank()) {
-                                        checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id)
+                                        checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
                                     } else {
                                         Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
                                     }
@@ -355,7 +359,7 @@ class MainActivity : AppCompatActivity() {
                             val rawUrl = streamInfo?.first ?: item.streamUrl
                             val urlToPlay = TelegramStreamingProxy.refreshUrl(rawUrl)
                             if (urlToPlay.isNotBlank()) {
-                                checkResumeAndSelectPlayer(urlToPlay, titleToPlay, item.posterUrl, item.id)
+                                checkResumeAndSelectPlayer(urlToPlay, titleToPlay, item.posterUrl, item.id, fileName)
                             } else {
                                 Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
                             }
@@ -1375,7 +1379,7 @@ class MainActivity : AppCompatActivity() {
                         isFocusable = true
                         setOnClickListener {
                             streamDialog.dismiss()
-                            checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, stream.id)
+                            checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, stream.id, stream.fileName)
                         }
                     }
 
@@ -1436,7 +1440,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveLinkToWatchHistory(streamUrl: String, title: String, posterUrl: String, mediaId: String) {
+    private fun saveLinkToWatchHistory(streamUrl: String, title: String, posterUrl: String, mediaId: String, originalFileName: String = "") {
         if (streamUrl.isBlank() && mediaId.isBlank()) return
         val effectiveId = if (mediaId.isNotBlank()) mediaId else "link_" + streamUrl.hashCode()
         var effectivePoster = posterUrl
@@ -1454,13 +1458,14 @@ class MainActivity : AppCompatActivity() {
             rating = "▶",
             overview = "Playing stream: $title",
             type = "telegram_media",
-            streamUrl = streamUrl
+            streamUrl = streamUrl,
+            originalFileName = originalFileName
         )
         saveToHistory(item)
     }
 
-    private fun checkResumeAndSelectPlayer(streamUrl: String, title: String, posterUrl: String = "", mediaId: String = "") {
-        saveLinkToWatchHistory(streamUrl, title, posterUrl, mediaId)
+    private fun checkResumeAndSelectPlayer(streamUrl: String, title: String, posterUrl: String = "", mediaId: String = "", originalFileName: String = "") {
+        saveLinkToWatchHistory(streamUrl, title, posterUrl, mediaId, originalFileName)
         val prefsLink = getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE)
         val prefsTitle = getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
         var savedPositionMs = 0L
@@ -1662,10 +1667,11 @@ class MainActivity : AppCompatActivity() {
         if (item.type == "channel" || item.id == "watch_history") return
         try {
             val prefs = getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE)
-            val currentList = loadWatchHistory().toMutableList()
-            currentList.removeAll { it.id == item.id || it.title == item.title || it.type == "channel" }
+            val currentList = loadRawWatchHistory().toMutableList()
+            // Only remove exact duplicate by ID (not by title — we want to keep different files of same movie/series)
+            currentList.removeAll { it.id == item.id || it.type == "channel" }
             currentList.add(0, item)
-            val trimmed = if (currentList.size > 60) currentList.subList(0, 60) else currentList
+            val trimmed = if (currentList.size > 120) currentList.subList(0, 120) else currentList
             val jsonArray = JSONArray()
             for (m in trimmed) {
                 val obj = JSONObject().apply {
@@ -1677,6 +1683,7 @@ class MainActivity : AppCompatActivity() {
                     put("overview", m.overview)
                     put("type", m.type)
                     put("streamUrl", m.streamUrl)
+                    put("originalFileName", m.originalFileName)
                 }
                 jsonArray.put(obj)
             }
@@ -1686,7 +1693,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadWatchHistory(): List<MediaItem> {
+    // Raw history loader — returns individual entries without grouping
+    private fun loadRawWatchHistory(): List<MediaItem> {
         val list = mutableListOf<MediaItem>()
         try {
             val prefs = getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE)
@@ -1705,7 +1713,8 @@ class MainActivity : AppCompatActivity() {
                         rating = obj.optString("rating", ""),
                         overview = obj.optString("overview", ""),
                         type = itemType,
-                        streamUrl = TelegramStreamingProxy.refreshUrl(obj.optString("streamUrl", ""))
+                        streamUrl = TelegramStreamingProxy.refreshUrl(obj.optString("streamUrl", "")),
+                        originalFileName = obj.optString("originalFileName", "")
                     )
                 )
             }
@@ -1713,6 +1722,229 @@ class MainActivity : AppCompatActivity() {
             android.util.Log.e("MainActivity", "Error loading watch history: ${e.message}")
         }
         return list
+    }
+
+    // Grouped history loader — groups items with the same title, showing original file names
+    private fun loadWatchHistory(): List<MediaItem> {
+        val rawList = loadRawWatchHistory()
+        if (rawList.isEmpty()) return rawList
+
+        // Normalize title for grouping (strip episode prefixes like emojis, trim whitespace)
+        fun normalizeTitle(title: String): String {
+            return title.trim().removePrefix("📦 ").removePrefix("🗄️ ").trim().lowercase()
+        }
+
+        // Group items by normalized title, preserving insertion order
+        val groupMap = LinkedHashMap<String, MutableList<MediaItem>>()
+        for (item in rawList) {
+            val key = normalizeTitle(item.title)
+            groupMap.getOrPut(key) { mutableListOf() }.add(item)
+        }
+
+        val result = mutableListOf<MediaItem>()
+        for ((_, items) in groupMap) {
+            if (items.size == 1) {
+                // Single file — show as-is but add file name to overview if available
+                val single = items.first()
+                val fileInfo = if (single.originalFileName.isNotBlank()) {
+                    "📁 ${single.originalFileName}"
+                } else ""
+                val enhancedOverview = if (fileInfo.isNotBlank() && !single.overview.contains(single.originalFileName)) {
+                    "$fileInfo\n${single.overview}"
+                } else single.overview
+                result.add(single.copy(overview = enhancedOverview))
+            } else {
+                // Multiple files for the same title — create a group entry
+                val mostRecent = items.first() // First item is the most recently watched
+                val fileNames = items.mapIndexed { index, it ->
+                    val name = it.originalFileName.ifBlank { it.title }
+                    "${index + 1}. $name"
+                }
+                val filesOverview = "📂 ${items.size} different files:\n${fileNames.joinToString("\n")}"
+                result.add(
+                    MediaItem(
+                        id = "history_group_${mostRecent.id}",
+                        title = mostRecent.title,
+                        posterUrl = mostRecent.posterUrl,
+                        year = "📂 ${items.size} files",
+                        rating = "▶",
+                        overview = filesOverview,
+                        type = "history_group",
+                        streamUrl = mostRecent.streamUrl,
+                        originalFileName = mostRecent.originalFileName,
+                        groupedFiles = items
+                    )
+                )
+            }
+        }
+        return result
+    }
+
+    // Show a file picker dialog for grouped history entries
+    private fun showHistoryGroupFilesPicker(groupItem: MediaItem) {
+        val files = groupItem.groupedFiles
+        if (files.isEmpty()) return
+
+        // If only 1 file somehow, just play it directly
+        if (files.size == 1) {
+            val single = files.first()
+            playHistoryItem(single)
+            return
+        }
+
+        val scrollView = ScrollView(this).apply {
+            setBackgroundColor(android.graphics.Color.parseColor("#090A0F"))
+        }
+        val cardList = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 24, 24, 24)
+        }
+
+        val headerText = TextView(this).apply {
+            text = "📂 ${files.size} Files for: ${groupItem.title.removePrefix("📦 ").removePrefix("🗄️ ")}"
+            textSize = 16f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor(android.graphics.Color.parseColor("#E2E8F0"))
+            setPadding(8, 8, 8, 24)
+        }
+        cardList.addView(headerText)
+
+        val subHeaderText = TextView(this).apply {
+            text = "Tap a file to play it"
+            textSize = 12f
+            setTextColor(android.graphics.Color.parseColor("#9CA3AF"))
+            setPadding(8, 0, 8, 24)
+        }
+        cardList.addView(subHeaderText)
+
+        val fileDialog = AlertDialog.Builder(this)
+            .setView(scrollView)
+            .setNegativeButton("Close", null)
+            .create()
+
+        for ((index, file) in files.withIndex()) {
+            val displayName = file.originalFileName.ifBlank { file.title }
+
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(android.graphics.Color.parseColor("#1E293B"))
+                setPadding(32, 24, 32, 24)
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { setMargins(0, 0, 0, 16) }
+                layoutParams = lp
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    fileDialog.dismiss()
+                    playHistoryItem(file)
+                }
+            }
+
+            val indexBadge = TextView(this).apply {
+                text = "#${index + 1}"
+                textSize = 11f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setTextColor(android.graphics.Color.parseColor("#F59E0B"))
+                setPadding(0, 0, 0, 6)
+            }
+            card.addView(indexBadge)
+
+            val fileNameText = TextView(this).apply {
+                text = "📁 $displayName"
+                textSize = 14f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setTextColor(android.graphics.Color.WHITE)
+                setPadding(0, 0, 0, 8)
+            }
+            card.addView(fileNameText)
+
+            val infoRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+
+            val idBadge = TextView(this).apply {
+                text = "🆔 ${file.id.take(30)}${if (file.id.length > 30) "…" else ""}"
+                textSize = 10f
+                setTextColor(android.graphics.Color.parseColor("#9CA3AF"))
+                val badgeLp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { setMargins(0, 0, 24, 0) }
+                layoutParams = badgeLp
+            }
+            infoRow.addView(idBadge)
+
+            val spacer = android.view.View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+            }
+            infoRow.addView(spacer)
+
+            val playAction = TextView(this).apply {
+                text = "▶ PLAY"
+                textSize = 13f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setTextColor(android.graphics.Color.parseColor("#E50914"))
+            }
+            infoRow.addView(playAction)
+
+            card.addView(infoRow)
+            cardList.addView(card)
+        }
+
+        scrollView.addView(cardList)
+        fileDialog.show()
+    }
+
+    // Play a specific history item (resolves fresh URLs if needed)
+    private fun playHistoryItem(item: MediaItem) {
+        val streamInfo = telegramStreamCache[item.id]
+        val titleToPlay = streamInfo?.second ?: item.title
+        val fileName = item.originalFileName.ifBlank { titleToPlay }
+        val groupInfo = telegramGroupCache[item.id]
+
+        if (groupInfo != null) {
+            CoroutineScope(Dispatchers.Main).launch {
+                val cleanTitle = titleToPlay.removePrefix("📦 ")
+                val freshUrl = TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second)
+                if (freshUrl != null && freshUrl.isNotBlank()) {
+                    checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                } else {
+                    val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                    checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                }
+            }
+        } else {
+            val cleanId = item.id.removePrefix("single_").removePrefix("stream_")
+            val parts = cleanId.split("_")
+            val chatId = parts.getOrNull(0)?.toLongOrNull()
+            val messageId = parts.getOrNull(1)?.toLongOrNull()
+
+            if (chatId != null && messageId != null && streamInfo == null) {
+                CoroutineScope(Dispatchers.Main).launch {
+                    val freshUrl = TelegramRepository.getFreshMediaUrl(chatId, messageId)
+                    if (freshUrl != null && freshUrl.isNotBlank()) {
+                        checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                    } else {
+                        val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                        if (backupUrl.isNotBlank()) {
+                            checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                        } else {
+                            Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            } else {
+                val rawUrl = streamInfo?.first ?: item.streamUrl
+                val urlToPlay = TelegramStreamingProxy.refreshUrl(rawUrl)
+                if (urlToPlay.isNotBlank()) {
+                    checkResumeAndSelectPlayer(urlToPlay, titleToPlay, item.posterUrl, item.id, fileName)
+                } else {
+                    Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     private fun handleItemLongPress(item: MediaItem): Boolean {
@@ -1730,8 +1962,27 @@ class MainActivity : AppCompatActivity() {
             .setItems(options) { _, which ->
                 when {
                     which == 0 -> {
-                        val currentList = loadWatchHistory().toMutableList()
-                        currentList.removeAll { it.id == item.id || it.title == item.title }
+                        val currentList = loadRawWatchHistory().toMutableList()
+                        // For history_group items, remove all grouped files
+                        if (item.type == "history_group" && item.groupedFiles.isNotEmpty()) {
+                            val groupIds = item.groupedFiles.map { it.id }.toSet()
+                            currentList.removeAll { it.id in groupIds }
+                            // Clean up resume points for all grouped files
+                            val resumePrefs = getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE).edit()
+                            val titlePrefs = getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE).edit()
+                            for (gf in item.groupedFiles) {
+                                resumePrefs.remove(gf.streamUrl)
+                                titlePrefs.remove("resume_${gf.title}")
+                            }
+                            resumePrefs.apply()
+                            titlePrefs.apply()
+                        } else {
+                            currentList.removeAll { it.id == item.id }
+                            getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE)
+                                .edit().remove(item.streamUrl).apply()
+                            getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
+                                .edit().remove("resume_${item.title}").apply()
+                        }
                         val jsonArray = JSONArray()
                         for (m in currentList) {
                             val obj = JSONObject().apply {
@@ -1743,19 +1994,16 @@ class MainActivity : AppCompatActivity() {
                                 put("overview", m.overview)
                                 put("type", m.type)
                                 put("streamUrl", m.streamUrl)
+                                put("originalFileName", m.originalFileName)
                             }
                             jsonArray.put(obj)
                         }
                         getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE)
                             .edit().putString("history_items", jsonArray.toString()).apply()
 
-                        getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE)
-                            .edit().remove(item.streamUrl).apply()
-                        getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
-                            .edit().remove("resume_${item.title}").apply()
-
                         if (isHistoryTab) {
-                            mediaList.removeAll { it.id == item.id || it.title == item.title }
+                            mediaList.clear()
+                            mediaList.addAll(loadWatchHistory())
                             mediaAdapter?.notifyDataSetChanged()
                             if (mediaList.isEmpty()) {
                                 categoryLabel.text = selectedLabel

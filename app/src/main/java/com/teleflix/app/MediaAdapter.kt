@@ -30,7 +30,7 @@ class MediaAdapter(
     override fun getItemViewType(position: Int): Int {
         return when (items[position].type) {
             "channel" -> VIEW_TYPE_CHANNEL
-            "telegram_media" -> VIEW_TYPE_TELEGRAM_MEDIA
+            "telegram_media", "history_group" -> VIEW_TYPE_TELEGRAM_MEDIA
             else -> VIEW_TYPE_DEFAULT
         }
     }
@@ -262,6 +262,12 @@ class MediaAdapter(
         holder.titleText.text = item.title
         holder.yearText?.text = "${item.year} • ⭐ ${item.rating}"
         holder.overviewText?.text = item.overview
+        // Show expanded overview for history groups (file list)
+        if (item.type == "history_group") {
+            holder.overviewText?.maxLines = 5
+        } else if (item.type == "telegram_media") {
+            holder.overviewText?.maxLines = 1
+        }
 
         if (holder.posterView != null) {
             val refreshedPoster = TelegramStreamingProxy.refreshUrl(item.posterUrl)
