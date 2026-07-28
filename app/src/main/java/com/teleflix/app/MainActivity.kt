@@ -308,7 +308,6 @@ class MainActivity : AppCompatActivity() {
                     val groupInfo = telegramGroupCache[item.id]
 
                     if (groupInfo != null) {
-                        Toast.makeText(this@MainActivity, "🔄 Reconnecting merged split stream...", Toast.LENGTH_SHORT).show()
                         CoroutineScope(Dispatchers.Main).launch {
                             val cleanTitle = titleToPlay.removePrefix("📦 ")
                             val freshUrl = TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second)
@@ -326,7 +325,6 @@ class MainActivity : AppCompatActivity() {
                         val messageId = parts.getOrNull(1)?.toLongOrNull()
 
                         if (chatId != null && messageId != null && streamInfo == null) {
-                            Toast.makeText(this@MainActivity, "🔄 Reconnecting Telegram stream...", Toast.LENGTH_SHORT).show()
                             CoroutineScope(Dispatchers.Main).launch {
                                 val freshUrl = TelegramRepository.getFreshMediaUrl(chatId, messageId)
                                 if (freshUrl != null && freshUrl.isNotBlank()) {
