@@ -987,14 +987,16 @@ object TelegramStreamingProxy {
 
         if (localPath != null && localPath.isNotBlank()) {
             val file = java.io.File(localPath)
-            if (file.exists() && file.length() > 0) {
-                val bytes = file.readBytes()
-                thumbnailMemoryCache.put(fileId, bytes)
-                val headers = "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: ${bytes.size}\r\nConnection: keep-alive\r\n\r\n"
+            if (file.exists() && file.length() in 1..(5 * 1024 * 1024L)) {
+                val length = file.length()
+                if (length <= 2 * 1024 * 1024L) {
+                    runCatching { thumbnailMemoryCache.put(fileId, file.readBytes()) }
+                }
+                val headers = "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: $length\r\nConnection: keep-alive\r\n\r\n"
                 output.write(headers.toByteArray())
                 output.flush()
                 if (!isHead) {
-                    output.write(bytes)
+                    file.inputStream().use { input -> input.copyTo(output, bufferSize = 64 * 1024) }
                     output.flush()
                 }
                 return
@@ -1018,7 +1020,7 @@ object TelegramStreamingProxy {
             val f = try { TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File } catch (_: Exception) { null }
             if (f?.local?.isDownloadingCompleted == true && !f.local.path.isNullOrBlank()) {
                 val diskFile = java.io.File(f.local.path)
-                if (diskFile.exists() && diskFile.length() > 0) {
+                if (diskFile.exists() && diskFile.length() in 1..(5 * 1024 * 1024L)) {
                     downloadedFile = diskFile
                     break
                 }
@@ -1028,17 +1030,20 @@ object TelegramStreamingProxy {
         }
 
         if (downloadedFile != null) {
-            val bytes = downloadedFile.readBytes()
-            thumbnailMemoryCache.put(fileId, bytes)
-            val headers = "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: ${bytes.size}\r\nConnection: keep-alive\r\n\r\n"
+            val length = downloadedFile.length()
+            if (length <= 2 * 1024 * 1024L) {
+                runCatching { thumbnailMemoryCache.put(fileId, downloadedFile.readBytes()) }
+            }
+            val headers = "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: $length\r\nConnection: keep-alive\r\n\r\n"
             output.write(headers.toByteArray())
             output.flush()
             if (!isHead) {
-                output.write(bytes)
+                downloadedFile.inputStream().use { input -> input.copyTo(output, bufferSize = 64 * 1024) }
                 output.flush()
             }
         } else {
             output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
+            output.flush()
         }
     }
 
