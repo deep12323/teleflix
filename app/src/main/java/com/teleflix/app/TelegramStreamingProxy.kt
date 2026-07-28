@@ -386,6 +386,7 @@ object TelegramStreamingProxy {
                 }
             }
 
+            var totalBytesSent = 0L
             var activeDownloadEnd = -1L
 
             var offset = start
@@ -408,11 +409,14 @@ object TelegramStreamingProxy {
                     output.write(bytes)
                     output.flush()
                     offset += bytes.size
+                    totalBytesSent += bytes.size
                 } catch (e: Exception) {
                     TeleflixLogger.log(TAG, "Client disconnected: ${e.message ?: "Broken pipe"}")
                     break
                 }
             }
+            val totalSentMb = String.format(java.util.Locale.US, "%.2f MB", totalBytesSent.toDouble() / (1024.0 * 1024.0))
+            TeleflixLogger.log(TAG, "Finished stream fileId=$fileId range=${rangeHeader ?: "full"} exactBytesSent=$totalBytesSent ($totalSentMb)")
         } finally {
             if (currentJob != null) {
                 activeFileJobs.remove(jobKey, currentJob)
