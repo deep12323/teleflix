@@ -60,6 +60,7 @@ class MainActivity : AppCompatActivity() {
     private var currentOpenChannelId: String? = null
     private val telegramStreamCache = mutableMapOf<String, Pair<String, String>>()
     private val telegramGroupCache = mutableMapOf<String, Pair<List<Pair<Long, Long>>, List<Long>>>()
+    private var allGenreCache = listOf<MediaItem>()
 
     private val mediaList = mutableListOf<MediaItem>()
     private var mediaAdapter: MediaAdapter? = null
@@ -496,14 +497,19 @@ class MainActivity : AppCompatActivity() {
 
                 withContext(Dispatchers.Main) {
                     mediaList.clear()
-                    mediaList.addAll(results)
+                    if (catalogId.contains("genre=")) {
+                        allGenreCache = results
+                        val initialBatch = allGenreCache.take(30)
+                        mediaList.addAll(initialBatch)
+                        hasMoreItems = allGenreCache.size > 30
+                    } else {
+                        allGenreCache = emptyList()
+                        mediaList.addAll(results)
+                        hasMoreItems = results.size >= 20
+                    }
                     mediaAdapter?.notifyDataSetChanged()
                     loadingText.visibility = android.view.View.GONE
                     isLoadingMore = false
-
-                    if (results.size < 20 || catalogId.contains("genre=")) {
-                        hasMoreItems = false
-                    }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -517,6 +523,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadMoreCinemeta() {
         if (isLoadingMore || !hasMoreItems || isInSearchMode) return
+
+        if (selectedCategory.contains("genre=")) {
+            isLoadingMore = true
+            val currentCount = mediaList.size
+            val nextBatch = allGenreCache.drop(currentCount).take(30)
+            if (nextBatch.isNotEmpty()) {
+                mediaList.addAll(nextBatch)
+                mediaAdapter?.notifyItemRangeInserted(currentCount, nextBatch.size)
+            }
+            hasMoreItems = mediaList.size < allGenreCache.size
+            isLoadingMore = false
+            return
+        }
 
         isLoadingMore = true
         currentSkip += 100  // Cinemeta steps pagination by 100 items
