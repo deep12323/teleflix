@@ -39,6 +39,41 @@ object TelegramStreamingProxy {
     private val messageThumbMap = java.util.concurrent.ConcurrentHashMap<Pair<Long, Long>, Int>()
     @Volatile private var lastStreamedFileId: Int? = null
 
+    data class StreamMetrics(
+        val reqId: String = java.util.UUID.randomUUID().toString().substring(0, 6),
+        val fileId: Int,
+        val rangeHeader: String?,
+        val startOffset: Long,
+        val totalSize: Long,
+        val startTimeMs: Long = System.currentTimeMillis(),
+        var totalBytesServed: Long = 0L,
+        var chunksOk: Int = 0,
+        var chunksRetried: Int = 0,
+        var chunksTimedOut: Int = 0,
+        var exitReason: String = "completed"
+    ) {
+        val requestType: String
+            get() = when {
+                totalSize > 0 && startOffset >= maxOf(0L, totalSize - 1_000_000L) -> "seek_probe"
+                startOffset > 10_000_000L -> "seek_stream"
+                else -> "normal_stream"
+            }
+
+        fun logStart() {
+            TeleflixLogger.log("TelegramProxy", "Stream START id=$fileId range=${rangeHeader ?: "full"} reqId=$reqId type=$requestType prefetchMb=$prefetchSizeMb")
+        }
+
+        fun logEnd() {
+            val durationMs = maxOf(1L, System.currentTimeMillis() - startTimeMs)
+            val avgKbps = (totalBytesServed * 8L) / durationMs
+            val totalMb = String.format(java.util.Locale.US, "%.2f MB", totalBytesServed.toDouble() / (1024.0 * 1024.0))
+            TeleflixLogger.log("TelegramProxy", "Stream END id=$fileId reqId=$reqId type=$requestType bytesServed=$totalBytesServed ($totalMb) durationMs=$durationMs avgKbps=$avgKbps reason=$exitReason")
+            
+            val jsonLog = "{\"ts\":\"${java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())}\",\"event\":\"stream_end\",\"fileId\":$fileId,\"reqId\":\"$reqId\",\"type\":\"$requestType\",\"bytesServed\":$totalBytesServed,\"durationMs\":$durationMs,\"avgKbps\":$avgKbps,\"reason\":\"$exitReason\"}"
+            TeleflixLogger.log("TelegramProxyMetrics", jsonLog)
+        }
+    }
+
     private suspend fun triggerTdlibDownload(fileId: Int, offset: Long, limit: Long, force: Boolean = false) {
         val now = System.currentTimeMillis()
         val lastOffset = lastDownloadRequestOffset[fileId]
@@ -338,7 +373,17 @@ object TelegramStreamingProxy {
 
             end = minOf(end, totalSize - 1L)
 
+            val metrics = StreamMetrics(
+                fileId = fileId,
+                rangeHeader = rangeHeader,
+                startOffset = start,
+                totalSize = totalSize
+            )
+            metrics.logStart()
+
             if (start >= totalSize || start > end) {
+                metrics.exitReason = "range_not_satisfiable"
+                metrics.logEnd()
                 output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$totalSize\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
                 output.flush()
                 return
@@ -370,6 +415,8 @@ object TelegramStreamingProxy {
             output.flush()
 
             if (isHead) {
+                metrics.exitReason = "head_request"
+                metrics.logEnd()
                 return
             }
 
@@ -386,7 +433,6 @@ object TelegramStreamingProxy {
                 }
             }
 
-            var totalBytesSent = 0L
             var activeDownloadEnd = -1L
 
             var offset = start
@@ -403,20 +449,23 @@ object TelegramStreamingProxy {
                     activeDownloadWindows[fileId] = Pair(offset, activeDownloadEnd)
                 }
 
-                val bytes = downloadChunk(fileId, offset, chunkSize)
-                if (bytes == null || bytes.isEmpty()) break
+                val bytes = downloadChunk(fileId, offset, chunkSize, metrics)
+                if (bytes == null || bytes.isEmpty()) {
+                    metrics.exitReason = "read_timeout_or_empty"
+                    break
+                }
                 try {
                     output.write(bytes)
                     output.flush()
                     offset += bytes.size
-                    totalBytesSent += bytes.size
+                    metrics.totalBytesServed += bytes.size
+                    metrics.chunksOk++
                 } catch (e: Exception) {
-                    TeleflixLogger.log(TAG, "Client disconnected: ${e.message ?: "Broken pipe"}")
+                    metrics.exitReason = "client_disconnect"
                     break
                 }
             }
-            val totalSentMb = String.format(java.util.Locale.US, "%.2f MB", totalBytesSent.toDouble() / (1024.0 * 1024.0))
-            TeleflixLogger.log(TAG, "Finished stream fileId=$fileId range=${rangeHeader ?: "full"} exactBytesSent=$totalBytesSent ($totalSentMb)")
+            metrics.logEnd()
         } finally {
             if (currentJob != null) {
                 activeFileJobs.remove(jobKey, currentJob)
@@ -962,8 +1011,10 @@ object TelegramStreamingProxy {
     private suspend fun downloadChunk(
         fileId: Int,
         offset: Long,
-        limit: Int
+        limit: Int,
+        metrics: StreamMetrics? = null
     ): ByteArray? {
+        val chunkStartMs = System.currentTimeMillis()
         val dataBytes = withTimeoutOrNull(DOWNLOAD_TIMEOUT_MS) {
             var attempts = 0
             var consecutiveGetFileErrors = 0
@@ -977,6 +1028,10 @@ object TelegramStreamingProxy {
                 }
                 
                 if (data != null && data.data.isNotEmpty()) {
+                    val tdlibMs = System.currentTimeMillis() - chunkStartMs
+                    if (tdlibMs > 500L) {
+                        TeleflixLogger.log(TAG, "[TDLib] chunk fileId=$fileId offset=$offset size=${data.data.size} tdlibMs=$tdlibMs status=ok")
+                    }
                     return@withTimeoutOrNull data.data
                 }
                 
@@ -1010,6 +1065,7 @@ object TelegramStreamingProxy {
                 // Use force=true to bypass the anti-spam guard since the data clearly isn't ready yet
                 // Also force-cancel and re-issue if TDLib stopped downloading for this file
                 if (attempts % 5 == 0) {
+                    metrics?.chunksRetried = (metrics?.chunksRetried ?: 0) + 1
                     val downloadedSize = file?.local?.downloadedSize ?: 0L
                     val fileInfo = getFileInfo(fileId)
                     val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
@@ -1019,7 +1075,7 @@ object TelegramStreamingProxy {
 
                     if (!isBufferFilled) {
                         if (attempts > 0 && (attempts % 200 == 0 || !isDownloading)) {
-                            TeleflixLogger.log(TAG, "Download stalled for fileId=$fileId offset=$offset attempt=$attempts, cancelling and re-issuing")
+                            TeleflixLogger.log(TAG, "[TDLib] Retry fileId=$fileId offset=$offset attempt=$attempts backoffMs=15 totalWastedMs=${attempts * 15}")
                             runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
                         }
                         triggerTdlibDownload(fileId, offset, safeLimit, force = true)
@@ -1034,6 +1090,7 @@ object TelegramStreamingProxy {
             null
         }
         if (dataBytes == null) {
+            metrics?.chunksTimedOut = (metrics?.chunksTimedOut ?: 0) + 1
             TeleflixLogger.log(TAG, "downloadChunk TIMEOUT: fileId=$fileId offset=$offset limit=$limit after ${DOWNLOAD_TIMEOUT_MS}ms", isError = true)
         }
         return dataBytes
