@@ -874,12 +874,15 @@ object TelegramRepository {
     suspend fun fetchChannelMedia(
         channelUsernameOrId: String,
         fromMessageId: Long = 0L,
+        topicId: Int = 0,
         limit: Int = 100,
         includeAudio: Boolean = true
     ): Pair<List<TelegramVideoMessage>, Long> {
         val results = mutableListOf<TelegramVideoMessage>()
         val seen = mutableSetOf<Pair<String, Long>>()
         val chatId = getChatId(channelUsernameOrId) ?: return Pair(emptyList(), 0L)
+
+        val topicFilter: TdApi.MessageTopicInfo? = if (topicId > 0) TdApi.MessageTopicForum(topicId) else null
 
         val filters = mutableListOf<TdApi.SearchMessagesFilter>(
             TdApi.SearchMessagesFilterDocument(),
@@ -901,7 +904,7 @@ object TelegramRepository {
                     req.offset = 0
                     req.limit = limit
                     req.filter = filter
-                    req.topicId = null
+                    req.topicId = topicFilter
                 })
                 val found = (historyResult as? TdApi.FoundChatMessages) ?: continue
 
