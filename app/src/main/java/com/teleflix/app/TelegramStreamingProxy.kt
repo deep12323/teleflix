@@ -72,9 +72,9 @@ object TelegramStreamingProxy {
             val durationMs = maxOf(1L, System.currentTimeMillis() - startTimeMs)
             val avgKbps = (totalBytesServed * 8L) / durationMs
             val totalMb = String.format(java.util.Locale.US, "%.2f MB", totalBytesServed.toDouble() / (1024.0 * 1024.0))
-            TeleflixLogger.log("TelegramProxy", "Stream END id=$fileId reqId=$reqId type=$requestType bytesServed=$totalBytesServed ($totalMb) durationMs=$durationMs queueWaitMs=$totalQueueWaitMs avgKbps=$avgKbps reason=$exitReason")
+            TeleflixLogger.log("TelegramProxy", "Stream END id=$fileId reqId=$reqId type=$requestType bytesServed=$totalBytesServed ($totalMb) durationMs=$durationMs chunksFetched=$chunksOk queueWaitMs=$totalQueueWaitMs avgKbps=$avgKbps reason=$exitReason")
             
-            val jsonLog = "{\"ts\":\"${java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())}\",\"event\":\"stream_end\",\"fileId\":$fileId,\"reqId\":\"$reqId\",\"type\":\"$requestType\",\"bytesServed\":$totalBytesServed,\"durationMs\":$durationMs,\"queueWaitMs\":$totalQueueWaitMs,\"avgKbps\":$avgKbps,\"reason\":\"$exitReason\"}"
+            val jsonLog = "{\"ts\":\"${java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())}\",\"event\":\"stream_end\",\"fileId\":$fileId,\"reqId\":\"$reqId\",\"type\":\"$requestType\",\"bytesServed\":$totalBytesServed,\"durationMs\":$durationMs,\"chunksFetched\":$chunksOk,\"queueWaitMs\":$totalQueueWaitMs,\"avgKbps\":$avgKbps,\"reason\":\"$exitReason\"}"
             TeleflixLogger.log("TelegramProxyMetrics", jsonLog)
         }
     }
@@ -1044,8 +1044,10 @@ object TelegramStreamingProxy {
                 
                 if (data != null && data.data.isNotEmpty()) {
                     val tdlibMs = System.currentTimeMillis() - chunkStartMs
-                    if (tdlibMs > 500L) {
-                        TeleflixLogger.log(TAG, "[TDLib] chunk fileId=$fileId offset=$offset size=${data.data.size} tdlibMs=$tdlibMs status=ok")
+                    metrics?.chunksOk = (metrics?.chunksOk ?: 0) + 1
+                    val count = metrics?.chunksOk ?: 1
+                    if (tdlibMs > 500L || count % 5 == 0 || count == 1) {
+                        TeleflixLogger.log(TAG, "[TDLib] chunk #$count fileId=$fileId offset=$offset size=${data.data.size} tdlibMs=$tdlibMs status=ok")
                     }
                     return@withTimeoutOrNull data.data
                 }
