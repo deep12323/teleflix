@@ -1117,10 +1117,7 @@ object TelegramStreamingProxy {
                     val bufferedAhead = maxOf(0L, downloadedSize - offset)
                     val isBufferFilled = safeLimit > 0L && bufferedAhead >= maxBufferBytes
 
-                    if (isBufferFilled) {
-                        // Buffer is full! Pause TDLib download to strictly enforce buffer size setting
-                        runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
-                    } else {
+                    if (!isBufferFilled) {
                         if (attempts > 0 && !isDownloading && attempts % 300 == 0) {
                             TeleflixLogger.log(TAG, "[TDLib] Retry fileId=$fileId offset=$offset attempt=$attempts backoffMs=15 totalWastedMs=${attempts * 15}")
                             runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
