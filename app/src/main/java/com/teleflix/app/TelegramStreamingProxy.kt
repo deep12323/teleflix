@@ -1074,11 +1074,11 @@ object TelegramStreamingProxy {
                     val isBufferFilled = safeLimit > 0L && downloadedSize >= (offset + safeLimit)
 
                     if (!isBufferFilled) {
-                        if (attempts > 0 && (attempts % 200 == 0 || !isDownloading)) {
+                        if (attempts > 0 && !isDownloading && attempts % 300 == 0) {
                             TeleflixLogger.log(TAG, "[TDLib] Retry fileId=$fileId offset=$offset attempt=$attempts backoffMs=15 totalWastedMs=${attempts * 15}")
                             runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
                         }
-                        triggerTdlibDownload(fileId, offset, safeLimit, force = true)
+                        triggerTdlibDownload(fileId, offset, safeLimit, force = (attempts == 0 || !isDownloading))
                         val winEnd = if (safeLimit == 0L) Long.MAX_VALUE else offset + safeLimit
                         activeDownloadWindows[fileId] = Pair(offset, winEnd)
                     }
