@@ -291,27 +291,7 @@ object TelegramStreamingProxy {
             } else if (zipInnerName != null) {
                 streamZipEntry(fileId, zipInnerName!!, rangeHeader, output, urlSize, isHead)
             } else {
-                synchronized(activeStreams) {
-                    activeStreams[fileId] = (activeStreams[fileId] ?: 0) + 1
-                }
-                try {
-                    streamFile(fileId, fileName, rangeHeader, output, urlSize, isHead)
-                } finally {
-                    val count = synchronized(activeStreams) {
-                        val current = (activeStreams[fileId] ?: 1) - 1
-                        activeStreams[fileId] = current
-                        current
-                    }
-                    if (count <= 0) {
-                        synchronized(activeStreams) { activeStreams.remove(fileId) }
-                        scope.launch {
-                            delay(30_000)
-                            if (!isCacheEnabled() && (activeStreams[fileId] ?: 0) <= 0) {
-                                deleteFile(fileId)
-                            }
-                        }
-                    }
-                }
+                streamFile(fileId, fileName, rangeHeader, output, urlSize, isHead)
             }
         } catch (e: java.util.concurrent.CancellationException) {
             TeleflixLogger.log(TAG, "Client stream cancelled")
@@ -349,7 +329,7 @@ object TelegramStreamingProxy {
 
         try {
             val prev = lastStreamedFileId
-            if (prev != null && prev != fileId && (activeStreams[prev] ?: 0) <= 0) {
+            if (prev != null && prev != fileId && (activeStreamRequests[prev]?.isEmpty() != false)) {
                 if (!isCacheEnabled()) {
                     scope.launch { deleteFile(prev) }
                 }
@@ -361,8 +341,6 @@ object TelegramStreamingProxy {
             val exactSize = fileInfo?.second?.takeIf { it > 0 } ?: urlSize.takeIf { it > 0 }
             val totalSize = exactSize ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
             val localPath = fileInfo?.first
-            
-            activeStreamRequests.getOrPut(fileId) { java.util.concurrent.ConcurrentHashMap.newKeySet() }.add(metrics.reqId)
 
             if (totalSize <= 0L) {
                 output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
@@ -389,6 +367,7 @@ object TelegramStreamingProxy {
                 startOffset = start,
                 totalSize = totalSize
             )
+            activeStreamRequests.getOrPut(fileId) { java.util.concurrent.ConcurrentHashMap.newKeySet() }.add(metrics.reqId)
             metrics.logStart()
 
             if (start >= totalSize || start > end) {
