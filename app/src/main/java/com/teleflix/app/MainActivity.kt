@@ -1512,7 +1512,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPlayerActionDialog(streamUrl: String, title: String, resumeMs: Long = 0L, mediaId: String = "") {
         val options = arrayOf(
-            "🟢 MPVEX Player (External App)",
+            "⚡ ExoPlayer (External App / Just Player)",
             "🔵 MPV Player (External App)",
             "🧡 VLC Player",
             "📱 Choose From All Installed Players..."
@@ -1521,7 +1521,7 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Select Video Player")
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> openStreamInPlayer("mpvex", streamUrl, title, resumeMs, mediaId)
+                    0 -> openStreamInPlayer("exo", streamUrl, title, resumeMs, mediaId)
                     1 -> openStreamInPlayer("mpv", streamUrl, title, resumeMs, mediaId)
                     2 -> openStreamInPlayer("vlc", streamUrl, title, resumeMs, mediaId)
                     3 -> openStreamInPlayer("chooser", streamUrl, title, resumeMs, mediaId)
@@ -1569,18 +1569,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         when (playerType) {
-            "internal_mpv", "exo", "internal" -> {
-                val chooser = Intent.createChooser(baseIntent, "Select Video Player")
-                try { playerLauncher.launch(chooser) } catch (_: Exception) {
-                    Toast.makeText(this, "No video player found on device!", Toast.LENGTH_SHORT).show()
-                }
-            }
-            "mpvex", "mpv" -> {
-                val packagesToTry = if (playerType == "mpv") {
-                    listOf("is.xyz.mpv", "is.xyz.mpv.debug", "id.nzxm.mpv", "id.nzxm.mpvex", "id.nzxm.mpvex.debug", "com.mpvex.app")
-                } else {
-                    listOf("id.nzxm.mpvex", "id.nzxm.mpvex.debug", "com.mpvex.app", "id.nzxm.mpv", "is.xyz.mpv", "is.xyz.mpv.debug")
-                }
+            "exo", "mpvex" -> {
+                val packagesToTry = listOf("com.brouken.player", "dev.anilbeesetti.nextplayer", "com.nextplayer.app", "com.google.android.exoplayer", "com.mxtech.videoplayer.ad", "com.mxtech.videoplayer.pro")
 
                 var launched = false
                 for (pkg in packagesToTry) {
@@ -1595,13 +1585,13 @@ class MainActivity : AppCompatActivity() {
                 if (!launched) {
                     try {
                         val resolveInfo = packageManager.queryIntentActivities(baseIntent, 0)
-                        val mpvMatch = resolveInfo.firstOrNull { 
+                        val exoMatch = resolveInfo.firstOrNull { 
                             val pkgName = it.activityInfo.packageName.lowercase()
                             val label = it.loadLabel(packageManager).toString().lowercase()
-                            pkgName.contains("mpv") || label.contains("mpv")
+                            pkgName.contains("brouken") || pkgName.contains("nextplayer") || label.contains("just player") || label.contains("next player") || label.contains("exo")
                         }
-                        if (mpvMatch != null) {
-                            val intent = Intent(baseIntent).apply { setPackage(mpvMatch.activityInfo.packageName) }
+                        if (exoMatch != null) {
+                            val intent = Intent(baseIntent).apply { setPackage(exoMatch.activityInfo.packageName) }
                             playerLauncher.launch(intent)
                             launched = true
                         }
@@ -1610,17 +1600,17 @@ class MainActivity : AppCompatActivity() {
 
                 if (!launched) {
                     AlertDialog.Builder(this)
-                        .setTitle("🟢 MPVEX / MPV Not Found")
-                        .setMessage("MPVEX Player was not detected on your phone (Android 11+ requires granting visibility or installing the APK).\n\nWould you like to pick another existing player to start watching immediately, or download MPVEX from GitHub?")
+                        .setTitle("⚡ ExoPlayer App Not Found")
+                        .setMessage("An ExoPlayer-based app (like Just Player or Next Player) was not detected on your phone.\n\nWould you like to select from your installed players or download Just Player (ExoPlayer) from GitHub?")
                         .setPositiveButton("Choose Installed Player") { _, _ ->
                             val chooser = Intent.createChooser(baseIntent, "Select Video Player")
                             try { playerLauncher.launch(chooser) } catch (_: Exception) {
                                 Toast.makeText(this, "No video player found on device!", Toast.LENGTH_SHORT).show()
                             }
                         }
-                        .setNeutralButton("Download MPVEX APK") { _, _ ->
+                        .setNeutralButton("Download Just Player") { _, _ ->
                             try {
-                                val dlIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/marlboro-advance/mpvEx/releases"))
+                                val dlIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/brouken/just-player/releases"))
                                 startActivity(dlIntent)
                             } catch (_: Exception) {
                                 Toast.makeText(this, "Could not open browser", Toast.LENGTH_SHORT).show()
@@ -1628,6 +1618,22 @@ class MainActivity : AppCompatActivity() {
                         }
                         .setNegativeButton("Cancel", null)
                         .show()
+                }
+            }
+            "mpv" -> {
+                val packagesToTry = listOf("is.xyz.mpv", "is.xyz.mpv.debug", "id.nzxm.mpv")
+                var launched = false
+                for (pkg in packagesToTry) {
+                    try {
+                        val intent = Intent(baseIntent).apply { setPackage(pkg) }
+                        playerLauncher.launch(intent)
+                        launched = true
+                        break
+                    } catch (_: Exception) {}
+                }
+                if (!launched) {
+                    val chooser = Intent.createChooser(baseIntent, "Select MPV Player")
+                    try { playerLauncher.launch(chooser) } catch (_: Exception) {}
                 }
             }
             "vlc" -> {
