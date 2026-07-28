@@ -187,7 +187,12 @@ object TelegramClient {
     private fun handleUpdate(context: Context, obj: TdApi.Object) {
         when (obj) {
             is TdApi.UpdateAuthorizationState -> handleAuthState(context, obj.authorizationState)
+            is TdApi.UpdateConnectionState -> {
+                val stateName = obj.state::class.simpleName ?: "Unknown"
+                TeleflixLogger.log("TelegramDC", "[ConnectionState] -> $stateName")
+            }
             is TdApi.Error -> {
+                TeleflixLogger.log("TelegramDC", "[TDLib Error] code=${obj.code} message=${obj.message}", isError = true)
                 val state = _authState.value
                 if (state is TelegramAuthState.Initializing ||
                     state is TelegramAuthState.WaitPhone ||
