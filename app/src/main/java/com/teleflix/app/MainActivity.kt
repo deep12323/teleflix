@@ -59,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tabRow: LinearLayout
     private var isTelegramCatalogMode = false
     private var currentOpenChannelId: String? = null
+    private var lastTelegramFromMessageId: Long = 0L
     private val telegramStreamCache = mutableMapOf<String, Pair<String, String>>()
     private val telegramGroupCache = mutableMapOf<String, Pair<List<Pair<Long, Long>>, List<Long>>>()
     private var allGenreCache = listOf<MediaItem>()
@@ -380,12 +381,16 @@ class MainActivity : AppCompatActivity() {
                 super.onScrolled(recyclerView, dx, dy)
                 if (dy <= 0) return // Only check on downward scroll
 
-                if (!isLoadingMore && hasMoreItems && !isInSearchMode && !isTelegramCatalogMode) {
+                if (!isLoadingMore && hasMoreItems && !isInSearchMode) {
                     val totalItemCount = gridLayoutManager.itemCount
                     val lastVisibleItemPosition = gridLayoutManager.findLastVisibleItemPosition()
 
                     if (totalItemCount > 0 && lastVisibleItemPosition + 4 >= totalItemCount) {
-                        loadMoreCinemeta()
+                        if (isTelegramCatalogMode && currentOpenChannelId != null) {
+                            loadMoreTelegramChannelMedia()
+                        } else if (!isTelegramCatalogMode) {
+                            loadMoreCinemeta()
+                        }
                     }
                 }
             }
@@ -743,12 +748,13 @@ class MainActivity : AppCompatActivity() {
     private fun loadTelegramChannelMedia(channelUsername: String, title: String) {
         isInSearchMode = false
         currentOpenChannelId = channelUsername
-        hasMoreItems = false
-        isLoadingMore = false
+        lastTelegramFromMessageId = 0L
+        hasMoreItems = true
+        isLoadingMore = true
         mediaList.clear()
         mediaAdapter?.notifyDataSetChanged()
         loadingText.visibility = android.view.View.VISIBLE
-        loadingText.text = "Loading all media files from $title..."
+        loadingText.text = "Loading media files from $title..."
         categoryLabel.text = "⬅ Back to Channels  •  Browsing: $title"
         categoryLabel.isClickable = true
         categoryLabel.isFocusable = true
@@ -757,10 +763,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         CoroutineScope(Dispatchers.IO).launch {
-            val mediaMessages = try {
-                TelegramRepository.fetchChannelMedia(channelUsername, limit = 200, includeAudio = true)
+            val (mediaMessages, nextFromId) = try {
+                TelegramRepository.fetchChannelMedia(channelUsername, fromMessageId = 0L, limit = 100, includeAudio = true)
             } catch (e: Exception) {
-                emptyList()
+                Pair(emptyList<TelegramVideoMessage>(), 0L)
+            }
+
+            if (nextFromId > 0L) {
+                lastTelegramFromMessageId = nextFromId
             }
 
             val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
@@ -768,10 +778,13 @@ class MainActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 loadingText.visibility = android.view.View.GONE
                 mediaList.clear()
+                isLoadingMore = false
                 if (groupedItems.isEmpty()) {
+                    hasMoreItems = false
                     loadingText.visibility = android.view.View.VISIBLE
                     loadingText.text = "No video or audio files found in $channelUsername."
                 } else {
+                    hasMoreItems = (nextFromId > 0L)
                     groupedItems.forEach { dItem ->
                         when (dItem) {
                             is DisplayItem.Group -> {
@@ -836,6 +849,110 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     mediaAdapter?.notifyDataSetChanged()
+                }
+            }
+        }
+    }
+
+    private fun loadMoreTelegramChannelMedia() {
+        val channelId = currentOpenChannelId ?: return
+        if (isLoadingMore || !hasMoreItems || isInSearchMode) return
+
+        isLoadingMore = true
+        loadingText.text = "Loading more media files from $channelId..."
+        loadingText.visibility = android.view.View.VISIBLE
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val (mediaMessages, nextFromId) = try {
+                TelegramRepository.fetchChannelMedia(channelId, fromMessageId = lastTelegramFromMessageId, limit = 100, includeAudio = true)
+            } catch (e: Exception) {
+                Pair(emptyList<TelegramVideoMessage>(), 0L)
+            }
+
+            if (nextFromId > 0L) {
+                lastTelegramFromMessageId = nextFromId
+            }
+
+            val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+
+            withContext(Dispatchers.Main) {
+                isLoadingMore = false
+                loadingText.visibility = android.view.View.GONE
+
+                if (groupedItems.isNotEmpty()) {
+                    val startPos = mediaList.size
+                    val newMediaItems = mutableListOf<MediaItem>()
+                    groupedItems.forEach { dItem ->
+                        when (dItem) {
+                            is DisplayItem.Group -> {
+                                val group = dItem.group
+                                val firstMsg = group.parts.first()
+                                val key = "group_${firstMsg.chatId}_${group.baseName}"
+                                val freshIds = group.parts.map { it.fileId }
+                                val partSizes = group.parts.map { it.fileSize }
+                                val totalSizeMb = group.totalSize / (1024 * 1024)
+                                val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
+                                telegramStreamCache[key] = Pair(url, group.baseName)
+                                telegramGroupCache[key] = Pair(group.parts.map { Pair(it.chatId, it.messageId) }, partSizes)
+                                val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
+                                    TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
+                                } else ""
+                                newMediaItems.add(
+                                    MediaItem(
+                                        id = key,
+                                        title = "📦 ${group.baseName}",
+                                        posterUrl = thumbUrl,
+                                        year = "${totalSizeMb} MB",
+                                        rating = "📦 Split Pack (${group.parts.size} parts)",
+                                        overview = "Merged Telegram Split/ZIP Archive (${group.parts.size} split files combined into a single continuous stream).",
+                                        type = "telegram_media",
+                                        streamUrl = url
+                                    )
+                                )
+                            }
+                            is DisplayItem.Single -> {
+                                val msg = dItem.message
+                                val key = "${msg.chatId}_${msg.messageId}"
+                                val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+                                val sizeMb = msg.fileSize / (1024 * 1024)
+                                val url = if (ext == "zip" && msg.fileSize > 1_000_000) {
+                                    TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                } else {
+                                    TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                }
+                                telegramStreamCache[key] = Pair(url, msg.fileName.ifBlank { "Telegram Media" })
+                                val isAudio = msg.mimeType.startsWith("audio/")
+                                val badge = when {
+                                    ext == "zip" -> "🗄️ ZIP Stream"
+                                    isAudio -> "🎵 Audio"
+                                    else -> "🎬 Video"
+                                }
+                                val thumbUrl = if (msg.thumbnailFileId != null || msg.chatId != 0L) {
+                                    TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId, msg.thumbnailFileId)
+                                } else ""
+                                newMediaItems.add(
+                                    MediaItem(
+                                        id = key,
+                                        title = if (ext == "zip") "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
+                                        posterUrl = thumbUrl,
+                                        year = "${sizeMb} MB",
+                                        rating = badge,
+                                        overview = msg.caption.ifBlank { "Telegram File: ${msg.fileName}\nSize: $sizeMb MB" },
+                                        type = "telegram_media",
+                                        streamUrl = url
+                                    )
+                                )
+                            }
+                        }
+                    }
+                    if (newMediaItems.isNotEmpty()) {
+                        mediaList.addAll(newMediaItems)
+                        mediaAdapter?.notifyItemRangeInserted(startPos, newMediaItems.size)
+                    }
+                }
+
+                if (mediaMessages.isEmpty() || nextFromId == 0L) {
+                    hasMoreItems = false
                 }
             }
         }
