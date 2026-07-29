@@ -74,12 +74,9 @@ object TelegramClient {
             }
             try {
                 val dbDir = File(context.filesDir, "tdlib")
-                val filesDir = File(context.cacheDir, "tdlib_files")
+                val filesDir = File(context.filesDir, "tdlib_files")
                 if (!dbDir.exists()) dbDir.mkdirs()
                 if (!filesDir.exists()) filesDir.mkdirs()
-
-                // Purge any residual media cache files from previous app sessions on startup
-                clearMediaCache(context)
 
                 client = Client.create(
                     { update -> handleUpdate(context, update) },
@@ -95,7 +92,7 @@ object TelegramClient {
 
     private fun sendTdlibParameters(context: Context) {
         val dbDir = File(context.filesDir, "tdlib").absolutePath
-        val filesDir = File(context.cacheDir, "tdlib_files").absolutePath
+        val filesDir = File(context.filesDir, "tdlib_files").absolutePath
         client?.send(TdApi.SetTdlibParameters().also { p ->
             p.apiId = TdlibManager.getApiId(context)
             p.apiHash = TdlibManager.getApiHash(context)
@@ -190,22 +187,6 @@ object TelegramClient {
     fun clearMediaCache(context: Context) {
         scope.launch {
             runCatching { optimizeStorage() }
-            runCatching {
-                val mediaCacheDir = File(context.cacheDir, "tdlib_files")
-                if (mediaCacheDir.exists()) {
-                    mediaCacheDir.listFiles()?.forEach { file ->
-                        runCatching {
-                            if (file.isDirectory) file.deleteRecursively()
-                            else file.delete()
-                        }
-                    }
-                }
-                val oldFilesDir = File(context.filesDir, "tdlib_files")
-                if (oldFilesDir.exists()) {
-                    oldFilesDir.deleteRecursively()
-                }
-                Log.d(TAG, "Media cache purged successfully")
-            }
         }
     }
 

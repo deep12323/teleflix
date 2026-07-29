@@ -1037,27 +1037,29 @@ object TelegramStreamingProxy {
             var attempts = 0
             var consecutiveGetFileErrors = 0
             while (attempts < 2000 && running) {
-                val data = try {
+                val readRes = try {
                     val lockStart = System.currentTimeMillis()
                     getFileMutex(fileId).withLock {
                         val waitMs = System.currentTimeMillis() - lockStart
                         metrics?.totalQueueWaitMs = (metrics?.totalQueueWaitMs ?: 0L) + waitMs
                         TelegramClient.sendRequest(
                             TdApi.ReadFilePart(fileId, offset, limit.toLong())
-                        ) as? TdApi.Data
+                        )
                     }
                 } catch (e: Exception) {
                     null
                 }
                 
-                if (data != null && data.data.isNotEmpty()) {
+                if (readRes is TdApi.Data && readRes.data.isNotEmpty()) {
                     val tdlibMs = System.currentTimeMillis() - chunkStartMs
                     metrics?.chunksOk = (metrics?.chunksOk ?: 0) + 1
                     val count = metrics?.chunksOk ?: 1
                     if (tdlibMs > 500L || count % 5 == 0 || count == 1) {
-                        TeleflixLogger.log(TAG, "[TDLib] chunk #$count fileId=$fileId offset=$offset size=${data.data.size} tdlibMs=$tdlibMs status=ok")
+                        TeleflixLogger.log(TAG, "[TDLib] chunk #$count fileId=$fileId offset=$offset size=${readRes.data.size} tdlibMs=$tdlibMs status=ok")
                     }
-                    return@withTimeoutOrNull data.data
+                    return@withTimeoutOrNull readRes.data
+                } else if (readRes is TdApi.Error && (attempts == 0 || attempts % 100 == 0)) {
+                    TeleflixLogger.log(TAG, "[TDLib ReadFilePart Error] fileId=$fileId offset=$offset: code=${readRes.code} msg=${readRes.message}", isError = true)
                 }
                 
                 val file = try {
