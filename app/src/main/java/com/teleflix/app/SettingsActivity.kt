@@ -8,6 +8,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -271,40 +272,54 @@ class SettingsActivity : AppCompatActivity() {
 
         val playerBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#161B28"))
-            setPadding(24, 24, 24, 24)
+            background = UITheme.createCardShape(this@SettingsActivity, UITheme.CARD, 16, UITheme.STROKE_COLOR, 1)
+            val pad = UITheme.dpToPx(this@SettingsActivity, 16)
+            setPadding(pad, pad, pad, pad)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+
+        val prefs = getSharedPreferences("teleflix_preferences", android.content.Context.MODE_PRIVATE)
+
+        // Preferred Player Row
+        val playerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 8))
+        }
+
+        val playerInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         val playerTitle = TextView(this).apply {
             text = "Preferred Video Player"
-            textSize = 16f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
+            UITheme.applyCardTitleStyle(this)
+            textSize = 15f
         }
-        playerBox.addView(playerTitle)
+        playerInfo.addView(playerTitle)
 
-        val prefs = getSharedPreferences("teleflix_preferences", android.content.Context.MODE_PRIVATE)
-        val currentDefault = prefs.getString("default_player", "ask") ?: "ask"
         val playerMap = mapOf(
-            "ask" to "Always Ask (Select Player on Tap)",
-            "exo" to "⚡ ExoPlayer (External App / Just Player)",
-            "mpvex" to "🔴 MPVEX Player (app.marlboroadvance.mpvex)",
-            "mpv" to "🔵 MPV Player (is.xyz.mpv)",
+            "ask" to "Always Ask",
+            "exo" to "⚡ ExoPlayer",
+            "mpvex" to "🔴 MPVEX Player",
+            "mpv" to "🔵 MPV Player",
             "vlc" to "🧡 VLC Player",
-            "chooser" to "📱 Android System Player Chooser"
+            "chooser" to "📱 System Chooser"
         )
-        val playerDesc = TextView(this).apply {
-            text = "Current Preferred Player:\n${playerMap[currentDefault] ?: "Always Ask"}"
-            textSize = 14f
-            setTextColor(Color.parseColor("#93C5FD"))
-            setPadding(0, 12, 0, 12)
+        var currentDefault = prefs.getString("default_player", "ask") ?: "ask"
+        val playerSub = TextView(this).apply {
+            text = playerMap[currentDefault] ?: "Always Ask"
+            UITheme.applyMetadataStyle(this)
+            setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
         }
-        playerBox.addView(playerDesc)
+        playerInfo.addView(playerSub)
+        playerRow.addView(playerInfo)
 
         val changePlayerBtn = Button(this).apply {
-            text = "Select Default Player (ExoPlayer / MPVEX / MPV / VLC)"
-            setBackgroundColor(Color.parseColor("#3B82F6"))
+            text = "Select"
+            textSize = 12f
+            background = UITheme.createBadgeDrawable(this@SettingsActivity, UITheme.ACCENT_BLUE, 10)
             setTextColor(Color.WHITE)
             setOnClickListener {
                 val labels = arrayOf(
@@ -320,142 +335,116 @@ class SettingsActivity : AppCompatActivity() {
                     .setTitle("Select Preferred Video Player")
                     .setItems(labels) { _, which ->
                         val selectedKey = keys[which]
-                        val selectedLabel = labels[which]
                         prefs.edit().putString("default_player", selectedKey).apply()
-                        playerDesc.text = "Current Preferred Player:\n$selectedLabel"
-                        Toast.makeText(this@SettingsActivity, "Default player set to: $selectedLabel", Toast.LENGTH_SHORT).show()
+                        playerSub.text = playerMap[selectedKey] ?: labels[which]
+                        Toast.makeText(this@SettingsActivity, "Default player updated", Toast.LENGTH_SHORT).show()
                     }
                     .show()
             }
         }
-        playerBox.addView(changePlayerBtn)
+        playerRow.addView(changePlayerBtn)
+        playerBox.addView(playerRow)
 
-        // Always Resume Toggle
-        val resumeSpacer = android.view.View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 2).apply {
-                setMargins(0, 20, 0, 20)
+        // Divider
+        val div1 = android.view.View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                setMargins(0, UITheme.dpToPx(this@SettingsActivity, 10), 0, UITheme.dpToPx(this@SettingsActivity, 10))
             }
-            setBackgroundColor(Color.parseColor("#334155"))
+            setBackgroundColor(Color.parseColor(UITheme.STROKE_COLOR))
         }
-        playerBox.addView(resumeSpacer)
+        playerBox.addView(div1)
+
+        // Auto-Resume Toggle Row
+        val resumeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, UITheme.dpToPx(this@SettingsActivity, 4), 0, UITheme.dpToPx(this@SettingsActivity, 4))
+        }
+
+        val resumeInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
 
         val resumeTitle = TextView(this).apply {
             text = "Auto-Resume Playback"
-            textSize = 16f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-        }
-        playerBox.addView(resumeTitle)
-
-        val resumeDesc = TextView(this).apply {
-            text = "When enabled, videos will always automatically resume from where you left off without asking. When disabled, you'll get a dialog to choose Resume or Start Over."
-            textSize = 14f
-            setTextColor(Color.parseColor("#93C5FD"))
-            setPadding(0, 12, 0, 12)
-        }
-        playerBox.addView(resumeDesc)
-
-        var isAlwaysResume = prefs.getBoolean("always_resume", false)
-        val resumeStatusText = TextView(this).apply {
-            text = if (isAlwaysResume) "Status: ON — Always resumes automatically" else "Status: OFF — Asks before resuming"
+            UITheme.applyCardTitleStyle(this)
             textSize = 15f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(if (isAlwaysResume) Color.parseColor("#10B981") else Color.parseColor("#F59E0B"))
-            setPadding(0, 0, 0, 16)
         }
-        playerBox.addView(resumeStatusText)
+        resumeInfo.addView(resumeTitle)
 
-        val resumeToggleBtn = Button(this).apply {
-            text = if (isAlwaysResume) "❌ TURN OFF ALWAYS RESUME" else "✅ TURN ON ALWAYS RESUME"
-            setBackgroundColor(if (isAlwaysResume) Color.parseColor("#DC2626") else Color.parseColor("#059669"))
-            setTextColor(Color.WHITE)
-            setPadding(24, 16, 24, 16)
-            setOnClickListener {
-                isAlwaysResume = !isAlwaysResume
-                prefs.edit().putBoolean("always_resume", isAlwaysResume).apply()
-                if (isAlwaysResume) {
-                    text = "❌ TURN OFF ALWAYS RESUME"
-                    setBackgroundColor(Color.parseColor("#DC2626"))
-                    resumeStatusText.text = "Status: ON — Always resumes automatically"
-                    resumeStatusText.setTextColor(Color.parseColor("#10B981"))
-                    Toast.makeText(this@SettingsActivity, "Always Resume turned ON — videos will auto-resume", Toast.LENGTH_SHORT).show()
-                } else {
-                    text = "✅ TURN ON ALWAYS RESUME"
-                    setBackgroundColor(Color.parseColor("#059669"))
-                    resumeStatusText.text = "Status: OFF — Asks before resuming"
-                    resumeStatusText.setTextColor(Color.parseColor("#F59E0B"))
-                    Toast.makeText(this@SettingsActivity, "Always Resume turned OFF — will ask before resuming", Toast.LENGTH_SHORT).show()
-                }
+        val resumeSub = TextView(this).apply {
+            text = "Automatically resume videos from last saved position"
+            UITheme.applyMetadataStyle(this)
+        }
+        resumeInfo.addView(resumeSub)
+        resumeRow.addView(resumeInfo)
+
+        val resumeSwitch = Switch(this).apply {
+            isChecked = prefs.getBoolean("always_resume", false)
+            setOnCheckedChangeListener { _, isChecked ->
+                prefs.edit().putBoolean("always_resume", isChecked).apply()
+                val msg = if (isChecked) "Auto-resume turned ON" else "Auto-resume turned OFF"
+                Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_SHORT).show()
             }
         }
-        playerBox.addView(resumeToggleBtn)
-
+        resumeRow.addView(resumeSwitch)
+        playerBox.addView(resumeRow)
         playbackSectionContainer.addView(playerBox)
 
         // 4. Background Service Section (Collapsible)
         val bgSectionContainer = createCollapsibleSection("⚡ Background Service & Execution")
         val bgBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#161B28"))
-            setPadding(24, 24, 24, 24)
+            background = UITheme.createCardShape(this@SettingsActivity, UITheme.CARD, 16, UITheme.STROKE_COLOR, 1)
+            val pad = UITheme.dpToPx(this@SettingsActivity, 16)
+            setPadding(pad, pad, pad, pad)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
+
+        val bgRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+
+        val bgInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
         val bgTitle = TextView(this).apply {
-            text = "Run in Background Option"
-            textSize = 16f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-        }
-        bgBox.addView(bgTitle)
-
-        val bgDesc = TextView(this).apply {
-            text = "When enabled, Teleflix keeps a persistent background service running for faster media streaming & notifications. Turn this OFF if you want Teleflix to completely shut down when you exit the app."
-            textSize = 14f
-            setTextColor(Color.parseColor("#93C5FD"))
-            setPadding(0, 12, 0, 16)
-        }
-        bgBox.addView(bgDesc)
-
-        var isBackgroundEnabled = prefs.getBoolean("pref_run_in_background", true)
-        val bgStatusText = TextView(this).apply {
-            text = if (isBackgroundEnabled) "Status: Enabled (Active in background)" else "Status: Disabled (Stops when closed)"
+            text = "Run in Background"
+            UITheme.applyCardTitleStyle(this)
             textSize = 15f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(if (isBackgroundEnabled) Color.parseColor("#10B981") else Color.parseColor("#EF4444"))
-            setPadding(0, 0, 0, 16)
         }
-        bgBox.addView(bgStatusText)
+        bgInfo.addView(bgTitle)
 
-        val bgToggleButton = Button(this).apply {
-            text = if (isBackgroundEnabled) "❌ TURN OFF RUN IN BACKGROUND" else "✅ TURN ON RUN IN BACKGROUND"
-            setBackgroundColor(if (isBackgroundEnabled) Color.parseColor("#DC2626") else Color.parseColor("#059669"))
-            setTextColor(Color.WHITE)
-            setPadding(24, 16, 24, 16)
-            setOnClickListener {
-                isBackgroundEnabled = !isBackgroundEnabled
-                prefs.edit().putBoolean("pref_run_in_background", isBackgroundEnabled).apply()
-                if (isBackgroundEnabled) {
+        val bgSub = TextView(this).apply {
+            text = "Keep service active for faster streaming & notifications"
+            UITheme.applyMetadataStyle(this)
+        }
+        bgInfo.addView(bgSub)
+        bgRow.addView(bgInfo)
+
+        val bgSwitch = Switch(this).apply {
+            isChecked = prefs.getBoolean("pref_run_in_background", true)
+            setOnCheckedChangeListener { _, isChecked ->
+                prefs.edit().putBoolean("pref_run_in_background", isChecked).apply()
+                if (isChecked) {
                     if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                         requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
                     } else {
                         TelegramService.start(this@SettingsActivity)
                     }
-                    text = "❌ TURN OFF RUN IN BACKGROUND"
-                    setBackgroundColor(Color.parseColor("#DC2626"))
-                    bgStatusText.text = "Status: Enabled (Active in background)"
-                    bgStatusText.setTextColor(Color.parseColor("#10B981"))
-                    Toast.makeText(this@SettingsActivity, "Run in background Turned ON & Started", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@SettingsActivity, "Background service enabled", Toast.LENGTH_SHORT).show()
                 } else {
                     TelegramService.stop(this@SettingsActivity)
-                    text = "✅ TURN ON RUN IN BACKGROUND"
-                    setBackgroundColor(Color.parseColor("#059669"))
-                    bgStatusText.text = "Status: Disabled (Stops when closed)"
-                    bgStatusText.setTextColor(Color.parseColor("#EF4444"))
-                    Toast.makeText(this@SettingsActivity, "Run in background Turned OFF & Stopped", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@SettingsActivity, "Background service disabled", Toast.LENGTH_SHORT).show()
                 }
             }
         }
-        bgBox.addView(bgToggleButton)
+        bgRow.addView(bgSwitch)
+        bgBox.addView(bgRow)
         bgSectionContainer.addView(bgBox)
 
         // 5. Storage, Cache & History Section (Collapsible)

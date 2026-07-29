@@ -471,28 +471,133 @@ class MainActivity : AppCompatActivity() {
             "⚽ Sport", "🔪 Thriller", "⚔️ War", "🤠 Western"
         )
 
-        AlertDialog.Builder(this)
-            .setTitle("🎭 Pick a Genre")
-            .setItems(genreIcons) { _, which ->
-                val genre = genres[which]
-                val formatOptions = arrayOf("🎬 Top $genre Movies", "📺 Top $genre Series")
-                AlertDialog.Builder(this)
-                    .setTitle("Select Format for $genre")
-                    .setItems(formatOptions) { _, fmt ->
-                        val catalogId = if (fmt == 0) "movie/top/genre=$genre" else "series/top/genre=$genre"
-                        val label = formatOptions[fmt]
-                        selectedCategory = catalogId
-                        selectedLabel = label
-                        categoryLabel.text = label
-                        categoryLabel.isClickable = false
-                        updateTabSelection(catalogId)
-                        loadInitialCinemeta(catalogId, label)
-                    }
-                    .setNegativeButton("Back") { _, _ -> showGenreSelectionDialog() }
-                    .show()
+        val scrollView = ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
+        }
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val title = TextView(this).apply {
+            text = "🎭 Select Movie / Series Genre"
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.WHITE)
+            setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 14))
+        }
+        container.addView(title)
+
+        var dialog: AlertDialog? = null
+
+        for (i in genreIcons.indices) {
+            val genreCard = TextView(this).apply {
+                text = genreIcons[i]
+                UITheme.applyCardTitleStyle(this)
+                background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 14, UITheme.STROKE_COLOR)
+                val pV = UITheme.dpToPx(this@MainActivity, 12)
+                val pH = UITheme.dpToPx(this@MainActivity, 16)
+                setPadding(pH, pV, pH, pV)
+                isClickable = true
+                isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
+                }
+                setOnClickListener {
+                    dialog?.dismiss()
+                    val genre = genres[i]
+                    showFormatSelectionDialog(genre)
+                }
             }
+            container.addView(genreCard)
+        }
+
+        scrollView.addView(container)
+
+        dialog = AlertDialog.Builder(this)
+            .setView(scrollView)
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+        dialog.show()
+    }
+
+    private fun showFormatSelectionDialog(genre: String) {
+        val optionsView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = UITheme.createCardShape(this@MainActivity, UITheme.CARD, 18, UITheme.STROKE_COLOR, 1)
+            val pad = UITheme.dpToPx(this@MainActivity, 20)
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val title = TextView(this).apply {
+            text = "Select Category for $genre"
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.WHITE)
+            setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 16))
+        }
+        optionsView.addView(title)
+
+        var fmtDialog: AlertDialog? = null
+
+        val movieCard = TextView(this).apply {
+            text = "🎬 Top $genre Movies"
+            UITheme.applyCardTitleStyle(this)
+            background = UITheme.createRippleCardShape(this@MainActivity, UITheme.SURFACE, 14, UITheme.PRIMARY)
+            val pV = UITheme.dpToPx(this@MainActivity, 14)
+            val pH = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(pH, pV, pH, pV)
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 10)) }
+            setOnClickListener {
+                fmtDialog?.dismiss()
+                val catalogId = "movie/top/genre=$genre"
+                val label = "🎬 Top $genre Movies"
+                selectedCategory = catalogId
+                selectedLabel = label
+                categoryLabel.text = label
+                categoryLabel.isClickable = false
+                updateTabSelection(catalogId)
+                loadInitialCinemeta(catalogId, label)
+            }
+        }
+        optionsView.addView(movieCard)
+
+        val seriesCard = TextView(this).apply {
+            text = "📺 Top $genre Series"
+            UITheme.applyCardTitleStyle(this)
+            background = UITheme.createRippleCardShape(this@MainActivity, UITheme.SURFACE, 14, UITheme.ACCENT_BLUE)
+            val pV = UITheme.dpToPx(this@MainActivity, 14)
+            val pH = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(pH, pV, pH, pV)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                fmtDialog?.dismiss()
+                val catalogId = "series/top/genre=$genre"
+                val label = "📺 Top $genre Series"
+                selectedCategory = catalogId
+                selectedLabel = label
+                categoryLabel.text = label
+                categoryLabel.isClickable = false
+                updateTabSelection(catalogId)
+                loadInitialCinemeta(catalogId, label)
+            }
+        }
+        optionsView.addView(seriesCard)
+
+        fmtDialog = AlertDialog.Builder(this)
+            .setView(optionsView)
+            .setNegativeButton("Back") { _, _ -> showGenreSelectionDialog() }
+            .create()
+        fmtDialog.show()
     }
 
     // ── Catalog Loading & Endless Pagination ────────────────────
@@ -1326,9 +1431,41 @@ class MainActivity : AppCompatActivity() {
             title
         }
 
+        val loadingView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            background = UITheme.createCardShape(this@MainActivity, UITheme.CARD, 18, UITheme.STROKE_COLOR, 1)
+            val pad = UITheme.dpToPx(this@MainActivity, 20)
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val progressBar = android.widget.ProgressBar(this).apply {
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.parseColor(UITheme.PRIMARY))
+            val lp = LinearLayout.LayoutParams(UITheme.dpToPx(this@MainActivity, 40), UITheme.dpToPx(this@MainActivity, 40)).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 12))
+            }
+            layoutParams = lp
+        }
+        loadingView.addView(progressBar)
+
+        val loadTitle = TextView(this).apply {
+            text = "Searching Telegram Streams"
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.WHITE)
+            gravity = android.view.Gravity.CENTER
+        }
+        loadingView.addView(loadTitle)
+
+        val loadSub = TextView(this).apply {
+            text = "Querying connected Telegram channels & chats for:\n\"$displayTitle\""
+            UITheme.applyMetadataStyle(this)
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, UITheme.dpToPx(this@MainActivity, 6), 0, 0)
+        }
+        loadingView.addView(loadSub)
+
         val progressDialog = AlertDialog.Builder(this)
-            .setTitle("Searching Telegram Streams")
-            .setMessage("Querying ALL groups, channels & chats for:\n'$displayTitle'...")
+            .setView(loadingView)
             .setCancelable(false)
             .show()
 
@@ -1351,20 +1488,20 @@ class MainActivity : AppCompatActivity() {
                     return@withContext
                 }
 
-                val scrollView = android.widget.ScrollView(this@MainActivity).apply {
-                    setBackgroundColor(android.graphics.Color.parseColor("#090A0F"))
+                val scrollView = ScrollView(this@MainActivity).apply {
+                    setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
                 }
                 val cardList = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(24, 24, 24, 24)
+                    val pad = UITheme.dpToPx(this@MainActivity, 16)
+                    setPadding(pad, pad, pad, pad)
                 }
 
                 val headerText = TextView(this@MainActivity).apply {
                     text = "Streams Found for $displayTitle (${streams.size})"
-                    textSize = 16f
-                    setTypeface(null, android.graphics.Typeface.BOLD)
-                    setTextColor(android.graphics.Color.parseColor("#E2E8F0"))
-                    setPadding(8, 8, 8, 24)
+                    UITheme.applySectionTitleStyle(this)
+                    setTextColor(Color.WHITE)
+                    setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 14))
                 }
                 cardList.addView(headerText)
 
@@ -1376,12 +1513,13 @@ class MainActivity : AppCompatActivity() {
                 for (stream in streams) {
                     val card = LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL
-                        setBackgroundColor(android.graphics.Color.parseColor("#1E293B"))
-                        setPadding(32, 28, 32, 28)
+                        background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 16, UITheme.STROKE_COLOR)
+                        val pad = UITheme.dpToPx(this@MainActivity, 14)
+                        setPadding(pad, pad, pad, pad)
                         val lp = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply { setMargins(0, 0, 0, 20) }
+                        ).apply { setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 10)) }
                         layoutParams = lp
                         isClickable = true
                         isFocusable = true
@@ -1393,35 +1531,39 @@ class MainActivity : AppCompatActivity() {
 
                     val titleText = TextView(this@MainActivity).apply {
                         text = stream.fileName
-                        textSize = 14f
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                        setTextColor(android.graphics.Color.WHITE)
-                        setPadding(0, 0, 0, 12)
+                        UITheme.applyCardTitleStyle(this)
+                        setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
                     }
                     card.addView(titleText)
 
                     val infoRow = LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
+                        gravity = android.view.Gravity.CENTER_VERTICAL
                     }
 
                     val qualityBadge = TextView(this@MainActivity).apply {
                         text = "🎬 ${stream.quality}"
-                        textSize = 12f
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                        setTextColor(android.graphics.Color.parseColor("#10B981"))
+                        UITheme.applyCaptionStyle(this)
+                        background = UITheme.createBadgeDrawable(this@MainActivity, "#059669", 8)
+                        setTextColor(Color.WHITE)
                         val badgeLp = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.WRAP_CONTENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply { setMargins(0, 0, 24, 0) }
+                        ).apply { setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 8), 0) }
                         layoutParams = badgeLp
                     }
                     infoRow.addView(qualityBadge)
 
                     val sizeBadge = TextView(this@MainActivity).apply {
                         text = "💾 ${stream.size}"
-                        textSize = 12f
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                        setTextColor(android.graphics.Color.parseColor("#38BDF8"))
+                        UITheme.applyCaptionStyle(this)
+                        background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.SECONDARY, 8)
+                        setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
+                        val badgeLp = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 8), 0) }
+                        layoutParams = badgeLp
                     }
                     infoRow.addView(sizeBadge)
 
@@ -1432,9 +1574,9 @@ class MainActivity : AppCompatActivity() {
 
                     val playAction = TextView(this@MainActivity).apply {
                         text = "▶ PLAY"
-                        textSize = 13f
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                        setTextColor(android.graphics.Color.parseColor("#E50914"))
+                        UITheme.applyCaptionStyle(this)
+                        background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.PRIMARY, 8)
+                        setTextColor(Color.WHITE)
                     }
                     infoRow.addView(playAction)
 
