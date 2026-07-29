@@ -84,15 +84,17 @@ object TelegramStreamingProxy {
         val lastOffset = lastDownloadRequestOffset[fileId]
         val lastTime = lastDownloadRequestTime[fileId] ?: 0L
 
+        val isOffsetJump = lastOffset != null && Math.abs(offset - lastOffset) > 1_000_000L
+
         // Strict rate limit: never issue DownloadFile for the exact same offset more than once per 1,500ms
-        // unless force=true (used by downloadChunk retries when data isn't available yet)
-        if (!force && lastOffset == offset && (now - lastTime) < 1500L) {
+        // unless force=true or offset jumped
+        if (!force && !isOffsetJump && lastOffset == offset && (now - lastTime) < 1500L) {
             return
         }
 
         // Prevent spamming TDLib with DownloadFile for the same offset within 5 seconds
-        // unless force=true
-        if (!force && lastOffset == offset && (now - lastTime) < 5000L) {
+        // unless force=true or offset jumped
+        if (!force && !isOffsetJump && lastOffset == offset && (now - lastTime) < 5000L) {
             return
         }
 
@@ -100,6 +102,11 @@ object TelegramStreamingProxy {
         lastDownloadRequestTime[fileId] = now
 
         try {
+            // Cancel stuck TDLib download task before switching to new offset position
+            if (isOffsetJump || force) {
+                TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+            }
+
             val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                 req.fileId = fileId
                 req.priority = DOWNLOAD_PRIORITY
@@ -110,7 +117,7 @@ object TelegramStreamingProxy {
             if (res is TdApi.Error) {
                 TeleflixLogger.log(TAG, "[TDLib Error] DownloadFile fileId=$fileId offset=$offset limit=$limit: code=${res.code} message=${res.message}", isError = true)
             } else {
-                TeleflixLogger.log(TAG, "[TDLib OK] DownloadFile fileId=$fileId offset=$offset limit=$limit force=$force")
+                TeleflixLogger.log(TAG, "[TDLib OK] DownloadFile fileId=$fileId offset=$offset limit=$limit force=$force jump=$isOffsetJump")
             }
         } catch (e: Exception) {
             TeleflixLogger.log(TAG, "[TDLib Exception] DownloadFile fileId=$fileId: ${e.message}", isError = true)
@@ -1032,7 +1039,7 @@ object TelegramStreamingProxy {
         metrics: StreamMetrics? = null
     ): ByteArray? {
         val chunkStartMs = System.currentTimeMillis()
-        val timeoutMs = if (metrics?.requestType == "seek_probe") 15_000L else DOWNLOAD_TIMEOUT_MS
+        val timeoutMs = if (metrics?.requestType == "seek_probe") 3_000L else DOWNLOAD_TIMEOUT_MS
         val dataBytes = withTimeoutOrNull(timeoutMs) {
             var attempts = 0
             var consecutiveGetFileErrors = 0
