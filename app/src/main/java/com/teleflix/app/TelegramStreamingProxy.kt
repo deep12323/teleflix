@@ -99,14 +99,21 @@ object TelegramStreamingProxy {
         lastDownloadRequestOffset[fileId] = offset
         lastDownloadRequestTime[fileId] = now
 
-        runCatching {
-            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+        try {
+            val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                 req.fileId = fileId
                 req.priority = DOWNLOAD_PRIORITY
                 req.offset = offset
-                req.limit = limit
+                req.limit = 0L // 0 = unlimited download from offset to EOF for maximum throughput
                 req.synchronous = false
             })
+            if (res is TdApi.Error) {
+                TeleflixLogger.log(TAG, "[TDLib Error] DownloadFile fileId=$fileId offset=$offset: code=${res.code} message=${res.message}", isError = true)
+            } else {
+                TeleflixLogger.log(TAG, "[TDLib OK] DownloadFile fileId=$fileId offset=$offset force=$force")
+            }
+        } catch (e: Exception) {
+            TeleflixLogger.log(TAG, "[TDLib Exception] DownloadFile fileId=$fileId: ${e.message}", isError = true)
         }
     }
     private val authToken = java.util.UUID.randomUUID().toString()
@@ -402,19 +409,6 @@ object TelegramStreamingProxy {
                 m.exitReason = "head_request"
                 m.logEnd()
                 return
-            }
-
-            if (start == 0L && totalSize > 1_000_000L && (ext == "mkv" || ext == "mp4" || ext == "webm")) {
-                val tailOffset = maxOf(0L, totalSize - 524288L)
-                runCatching {
-                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                        req.fileId = fileId
-                        req.priority = 16
-                        req.offset = tailOffset
-                        req.limit = 524288L
-                        req.synchronous = false
-                    })
-                }
             }
 
             var activeDownloadEnd = -1L
