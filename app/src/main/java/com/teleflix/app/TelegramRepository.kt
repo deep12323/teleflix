@@ -50,6 +50,7 @@ object TelegramRepository {
     fun wipeTdlibFiles(context: Context) {
         sessionMarker(context).delete()
         File(context.filesDir, "tdlib").deleteRecursively()
+        File(context.cacheDir, "tdlib_files").deleteRecursively()
         File(context.filesDir, "tdlib_files").deleteRecursively()
         TelegramClient.clearNativeLibraryCache(context)
         Log.d(TAG, "TDLib database and native library wiped")
@@ -133,10 +134,11 @@ object TelegramRepository {
             total += getFolderSize(context.cacheDir)
             total += getFolderSize(context.externalCacheDir)
             
-            val tdlibDir1 = File(context.filesDir, "tdlib_files")
-            val tdlibDir2 = File(context.filesDir, "tdlib")
+            val tdlibDir1 = File(context.cacheDir, "tdlib_files")
+            val tdlibDir2 = File(context.filesDir, "tdlib_files")
+            val tdlibDir3 = File(context.filesDir, "tdlib")
             
-            listOf(tdlibDir1, tdlibDir2).forEach { dir ->
+            listOf(tdlibDir1, tdlibDir2, tdlibDir3).forEach { dir ->
                 if (dir.exists()) {
                     dir.walkBottomUp().filter { it.isFile }.forEach { f ->
                         val name = f.name.lowercase()
@@ -158,12 +160,13 @@ object TelegramRepository {
 
     fun clearCache(context: Context) {
         try {
-            TelegramClient.optimizeStorage()
+            TelegramClient.clearMediaCache(context)
         } catch (_: Exception) {}
         
         try {
             clearFolder(context.cacheDir, preserveDb = false)
             clearFolder(context.externalCacheDir, preserveDb = false)
+            clearFolder(File(context.cacheDir, "tdlib_files"), preserveDb = true)
             clearFolder(File(context.filesDir, "tdlib_files"), preserveDb = true)
             clearFolder(File(context.filesDir, "tdlib"), preserveDb = true)
         } catch (_: Exception) {}

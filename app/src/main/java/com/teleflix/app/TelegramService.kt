@@ -98,12 +98,20 @@ class TelegramService : Service() {
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.d(TAG, "Task removed by user. Purging temporary media cache...")
+        try { TelegramClient.clearMediaCache(this) } catch (_: Exception) {}
+        try { TelegramStreamingProxy.stop() } catch (_: Exception) {}
+    }
+
     override fun onBind(intent: Intent?): IBinder? {
         return null
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        try { TelegramClient.clearMediaCache(this) } catch (_: Exception) {}
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 stopForeground(STOP_FOREGROUND_REMOVE)
