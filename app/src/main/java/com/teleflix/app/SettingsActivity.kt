@@ -886,7 +886,6 @@ class SettingsActivity : AppCompatActivity() {
         clearLogsRow.addView(clearLogsBtn)
         logsBox.addView(clearLogsRow)
         logsSectionContainer.addView(logsBox)
-        root.addView(logsSectionContainer)
 
         setContentView(scrollView)
 
