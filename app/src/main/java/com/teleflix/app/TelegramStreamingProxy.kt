@@ -1042,7 +1042,7 @@ object TelegramStreamingProxy {
         val dataBytes = withTimeoutOrNull(timeoutMs) {
             var attempts = 0
             var consecutiveGetFileErrors = 0
-            while (attempts < 600 && running) {
+            while (attempts < 2000 && running) {
                 val data = try {
                     val lockStart = System.currentTimeMillis()
                     getFileMutex(fileId).withLock {
@@ -1092,29 +1092,21 @@ object TelegramStreamingProxy {
                 // Check if download is active; if not downloading at all, cancel and re-issue
                 val isDownloading = file?.local?.isDownloadingActive == true
 
-                // Re-trigger DownloadFile on attempt 0 and every 250ms (every 5 attempts)
-                // Use force=true to bypass the anti-spam guard since the data clearly isn't ready yet
-                // Also force-cancel and re-issue if TDLib stopped downloading for this file
+                // Re-trigger DownloadFile on attempt 0 and every 75ms (every 5 attempts)
+                // Force=true if data is missing or downloading is paused
                 if (attempts % 5 == 0) {
                     metrics?.chunksRetried = (metrics?.chunksRetried ?: 0) + 1
-                    val downloadedSize = file?.local?.downloadedSize ?: 0L
                     val fileInfo = getFileInfo(fileId)
                     val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
                     val safeLimit = calculateSafeTdlibLimit(offset, totalSize, prefetchSizeMb, limit)
 
-                    val maxBufferBytes = if (prefetchSizeMb > 0L) prefetchSizeMb * 1024L * 1024L else 10_485_760L
-                    val bufferedAhead = maxOf(0L, downloadedSize - offset)
-                    val isBufferFilled = safeLimit > 0L && bufferedAhead >= maxBufferBytes
-
-                    if (!isBufferFilled) {
-                        if (attempts > 0 && !isDownloading && attempts % 300 == 0) {
-                            TeleflixLogger.log(TAG, "[TDLib] Retry fileId=$fileId offset=$offset attempt=$attempts backoffMs=15 totalWastedMs=${attempts * 15}")
-                            runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
-                        }
-                        triggerTdlibDownload(fileId, offset, safeLimit, force = (attempts == 0 || !isDownloading))
-                        val winEnd = if (safeLimit == 0L) Long.MAX_VALUE else offset + safeLimit
-                        activeDownloadWindows[fileId] = Pair(offset, winEnd)
+                    if (attempts > 0 && !isDownloading && attempts % 300 == 0) {
+                        TeleflixLogger.log(TAG, "[TDLib] Retry fileId=$fileId offset=$offset attempt=$attempts backoffMs=15 totalWastedMs=${attempts * 15}")
+                        runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
                     }
+                    triggerTdlibDownload(fileId, offset, safeLimit, force = (attempts == 0 || !isDownloading))
+                    val winEnd = if (safeLimit == 0L) Long.MAX_VALUE else offset + safeLimit
+                    activeDownloadWindows[fileId] = Pair(offset, winEnd)
                 }
                 
                 delay(15L)
