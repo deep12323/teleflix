@@ -1525,14 +1525,14 @@ class MainActivity : AppCompatActivity() {
 
             val epBadge = TextView(this).apply {
                 text = "E${String.format("%02d", ep.episode)}"
-                UITheme.applyCaptionStyle(this)
-                background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.PRIMARY, 8)
-                setTextColor(Color.WHITE)
+                textSize = 18f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setTextColor(Color.parseColor(UITheme.PRIMARY))
                 val lp = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 12), 0)
+                    setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 14), 0)
                 }
                 layoutParams = lp
             }
@@ -1549,14 +1549,6 @@ class MainActivity : AppCompatActivity() {
                 textSize = 14f
             }
             textContainer.addView(titleView)
-
-            if (ep.released.isNotBlank()) {
-                val subView = TextView(this).apply {
-                    text = "Released: ${ep.released}"
-                    UITheme.applyMetadataStyle(this)
-                }
-                textContainer.addView(subView)
-            }
 
             card.addView(textContainer)
             container.addView(card)
