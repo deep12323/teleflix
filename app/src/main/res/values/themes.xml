@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Teleflix" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/accent_red</item>
-        <item name="colorPrimaryVariant">@color/accent_red</item>
-        <item name="colorOnPrimary">@color/text_white</item>
-        <item name="android:statusBarColor">@color/bg_primary</item>
-        <item name="android:windowBackground">@color/bg_primary</item>
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryVariant">@color/primary</item>
+        <item name="colorOnPrimary">@color/text_primary</item>
+        <item name="android:statusBarColor">@color/background</item>
+        <item name="android:navigationBarColor">@color/background</item>
+        <item name="android:windowBackground">@color/background</item>
     </style>
 
     <style name="Theme.Teleflix.Fullscreen" parent="Theme.Teleflix">

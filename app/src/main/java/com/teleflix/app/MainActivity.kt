@@ -1,5 +1,6 @@
 package com.teleflix.app
 
+import android.graphics.Color
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -141,18 +142,20 @@ class MainActivity : AppCompatActivity() {
 
         val rootView = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(android.graphics.Color.parseColor("#090A0F"))
-            setPadding(24, 24, 24, 24)
+            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
+            val pad = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(pad, pad, pad, pad)
             fitsSystemWindows = true
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val pad = UITheme.dpToPx(this@MainActivity, 16)
             view.setPadding(
-                24 + insets.left,
-                24 + insets.top,
-                24 + insets.right,
-                24 + insets.bottom
+                pad + insets.left,
+                pad + insets.top,
+                pad + insets.right,
+                pad + insets.bottom
             )
             WindowInsetsCompat.CONSUMED
         }
@@ -161,22 +164,23 @@ class MainActivity : AppCompatActivity() {
         val headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 16)
+            setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 14))
         }
 
         val titleView = TextView(this).apply {
             text = "TELEFLIX"
-            textSize = 24f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor(android.graphics.Color.parseColor("#E50914")) // Netflix Red
+            UITheme.applyLargeTitleStyle(this)
+            setTextColor(Color.parseColor(UITheme.PRIMARY)) // Netflix Red
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         statusButton = TextView(this).apply {
             text = "⚙️"
-            textSize = 24f
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            setPadding(16, 8, 8, 8)
+            textSize = 18f
+            gravity = android.view.Gravity.CENTER
+            background = UITheme.createCardShape(this@MainActivity, UITheme.SURFACE, 14, UITheme.STROKE_COLOR, 1)
+            val p = UITheme.dpToPx(this@MainActivity, 10)
+            setPadding(p, p, p, p)
             isClickable = true
             isFocusable = true
             setOnClickListener {
@@ -186,11 +190,13 @@ class MainActivity : AppCompatActivity() {
 
         modeToggleButton = TextView(this).apply {
             text = "🎬 Cinemeta"
-            textSize = 14f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setBackgroundColor(android.graphics.Color.parseColor("#1F2937"))
-            setTextColor(android.graphics.Color.parseColor("#3B82F6"))
-            setPadding(28, 12, 28, 12)
+            textSize = 13f
+            setTypeface(null, android.graphics.Typeface.NORMAL)
+            background = UITheme.createCardShape(this@MainActivity, UITheme.SECONDARY, 14, UITheme.ACCENT_BLUE, 1)
+            setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
+            val pV = UITheme.dpToPx(this@MainActivity, 8)
+            val pH = UITheme.dpToPx(this@MainActivity, 14)
+            setPadding(pH, pV, pH, pV)
             isClickable = true
             isFocusable = true
             setOnClickListener {
@@ -201,7 +207,7 @@ class MainActivity : AppCompatActivity() {
         headerLayout.addView(titleView)
         headerLayout.addView(modeToggleButton)
         val headerGap = android.view.View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(20, 1)
+            layoutParams = LinearLayout.LayoutParams(UITheme.dpToPx(this@MainActivity, 10), 1)
         }
         headerLayout.addView(headerGap)
         headerLayout.addView(statusButton)
@@ -210,48 +216,53 @@ class MainActivity : AppCompatActivity() {
         // Category Banner / Current Selection Header
         categoryLabel = TextView(this).apply {
             text = selectedLabel
-            textSize = 18f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor(android.graphics.Color.WHITE)
-            setPadding(0, 8, 0, 12)
+            UITheme.applySectionTitleStyle(this)
+            setPadding(0, UITheme.dpToPx(this@MainActivity, 4), 0, UITheme.dpToPx(this@MainActivity, 10))
         }
         rootView.addView(categoryLabel)
 
         // Loading and Search Spinner / Text
         loadingText = TextView(this).apply {
             text = "Loading catalog..."
-            textSize = 13f
-            setTextColor(android.graphics.Color.parseColor("#9CA3AF"))
-            setPadding(0, 4, 0, 12)
+            UITheme.applyMetadataStyle(this)
+            background = UITheme.createCardShape(this@MainActivity, UITheme.SURFACE, 12, UITheme.STROKE_COLOR, 1)
+            val pV = UITheme.dpToPx(this@MainActivity, 10)
+            val pH = UITheme.dpToPx(this@MainActivity, 14)
+            setPadding(pH, pV, pH, pV)
             visibility = android.view.View.GONE
         }
         rootView.addView(loadingText)
 
         // Search Box (Cinemeta Search)
-        val searchLayout = LinearLayout(this).apply {
+        val searchContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 16)
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = UITheme.createInputBackground(this@MainActivity)
+            setPadding(UITheme.dpToPx(this@MainActivity, 6), UITheme.dpToPx(this@MainActivity, 4), UITheme.dpToPx(this@MainActivity, 6), UITheme.dpToPx(this@MainActivity, 4))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 14))
+            }
         }
 
         searchInput = EditText(this).apply {
             hint = "Search Movies & Series..."
-            setHintTextColor(android.graphics.Color.parseColor("#808080"))
-            setTextColor(android.graphics.Color.WHITE)
-            setBackgroundColor(android.graphics.Color.parseColor("#1A1A1A")) // Netflix Dark Matte
-            setPadding(24, 20, 24, 20)
+            setHintTextColor(Color.parseColor(UITheme.TEXT_SECONDARY))
+            setTextColor(Color.WHITE)
+            background = null
+            val pV = UITheme.dpToPx(this@MainActivity, 10)
+            val pH = UITheme.dpToPx(this@MainActivity, 12)
+            setPadding(pH, pV, pH, pV)
             textSize = 14f
             maxLines = 1
             inputType = android.text.InputType.TYPE_CLASS_TEXT
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(0, 0, 12, 0)
-            }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         searchButton = Button(this).apply {
             text = "🔍"
             textSize = 16f
-            setBackgroundColor(android.graphics.Color.parseColor("#B81D24")) // Netflix Crimson
-            setTextColor(android.graphics.Color.WHITE)
+            background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.PRIMARY, 12)
+            setTextColor(Color.WHITE)
             setOnClickListener {
                 val q = searchInput.text.toString()
                 if (q.isNotBlank()) {
@@ -264,14 +275,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        searchLayout.addView(searchInput)
-        searchLayout.addView(searchButton)
-        rootView.addView(searchLayout)
+        searchContainer.addView(searchInput)
+        searchContainer.addView(searchButton)
+        rootView.addView(searchContainer)
 
         // Category Tabs (Horizontal Scroll)
         tabScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
-            setPadding(0, 0, 0, 12)
+            setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 12))
         }
 
         tabRow = LinearLayout(this).apply {
@@ -281,17 +292,15 @@ class MainActivity : AppCompatActivity() {
         categories.forEach { (label, catalogId) ->
             val tab = Button(this).apply {
                 text = label
-                textSize = 11f
+                textSize = 12f
+                setTypeface(null, android.graphics.Typeface.NORMAL)
                 val isSelected = catalogId == selectedCategory
-                setTextColor(if (isSelected) android.graphics.Color.WHITE else android.graphics.Color.parseColor("#A3A3A3"))
-                setBackgroundColor(
-                    if (isSelected) android.graphics.Color.parseColor("#B81D24")
-                    else android.graphics.Color.parseColor("#1A1A1A")
-                )
+                setTextColor(if (isSelected) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
+                background = UITheme.createPillDrawable(this@MainActivity, isSelected, UITheme.PRIMARY, UITheme.SURFACE)
                 val lp = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(0, 0, 8, 0) }
+                ).apply { setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 8), 0) }
                 layoutParams = lp
                 setOnClickListener {
                     if (catalogId == "genres/picker") {
@@ -443,11 +452,8 @@ class MainActivity : AppCompatActivity() {
             } else {
                 cat == activeCatalogId
             }
-            child.setTextColor(if (isSelected) android.graphics.Color.WHITE else android.graphics.Color.parseColor("#A3A3A3"))
-            child.setBackgroundColor(
-                if (isSelected) android.graphics.Color.parseColor("#B81D24")
-                else android.graphics.Color.parseColor("#1A1A1A")
-            )
+            child.setTextColor(if (isSelected) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
+            child.background = UITheme.createPillDrawable(this, isSelected, UITheme.PRIMARY, UITheme.SURFACE)
         }
     }
 
@@ -698,7 +704,8 @@ class MainActivity : AppCompatActivity() {
         if (isTelegramCatalogMode) {
             tabScroll.visibility = android.view.View.GONE
             modeToggleButton.text = "💬 Telegram Channels"
-            modeToggleButton.setTextColor(android.graphics.Color.parseColor("#10B981"))
+            modeToggleButton.setTextColor(Color.parseColor(UITheme.SUCCESS))
+            modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.SUCCESS, 1)
             categoryLabel.text = "Monitored Telegram Channels"
             categoryLabel.isClickable = false
             searchInput.hint = "Default Telegram search (all chats & channels)..."
@@ -707,7 +714,8 @@ class MainActivity : AppCompatActivity() {
             currentOpenChannelId = null
             tabScroll.visibility = android.view.View.VISIBLE
             modeToggleButton.text = "🎬 Cinemeta"
-            modeToggleButton.setTextColor(android.graphics.Color.parseColor("#3B82F6"))
+            modeToggleButton.setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
+            modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.ACCENT_BLUE, 1)
             searchInput.hint = "Search Movies & Series..."
             selectedCategory = "movie/top"
             selectedLabel = "Top Movies"

@@ -35,23 +35,25 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         val scrollView = ScrollView(this).apply {
-            setBackgroundColor(Color.parseColor("#090A0F"))
+            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
             fitsSystemWindows = true
         }
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 24, 24, 24)
+            val pad = UITheme.dpToPx(this@SettingsActivity, 16)
+            setPadding(pad, pad, pad, pad)
         }
         scrollView.addView(root)
 
         ViewCompat.setOnApplyWindowInsetsListener(scrollView) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val pad = UITheme.dpToPx(this@SettingsActivity, 16)
             view.setPadding(
-                24 + insets.left,
-                24 + insets.top,
-                24 + insets.right,
-                24 + insets.bottom
+                pad + insets.left,
+                pad + insets.top,
+                pad + insets.right,
+                pad + insets.bottom
             )
             WindowInsetsCompat.CONSUMED
         }
@@ -59,39 +61,40 @@ class SettingsActivity : AppCompatActivity() {
         // Header
         val header = TextView(this).apply {
             text = "TELEGRAM & TDLIB SETTINGS"
-            textSize = 20f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.parseColor("#3B82F6"))
-            setPadding(0, 0, 0, 24)
+            UITheme.applyLargeTitleStyle(this)
+            setTextColor(Color.parseColor(UITheme.PRIMARY))
+            setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 16))
         }
         root.addView(header)
 
         fun createCollapsibleSection(titleText: String): LinearLayout {
             val headerCard = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setBackgroundColor(Color.parseColor("#1F2937"))
-                setPadding(32, 28, 32, 28)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = UITheme.createRippleCardShape(this@SettingsActivity, UITheme.SURFACE, 16, UITheme.STROKE_COLOR)
+                val pV = UITheme.dpToPx(this@SettingsActivity, 14)
+                val pH = UITheme.dpToPx(this@SettingsActivity, 16)
+                setPadding(pH, pV, pH, pV)
                 isClickable = true
                 isFocusable = true
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, 16)
+                    setMargins(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 12))
                 }
             }
 
             val title = TextView(this).apply {
                 text = titleText
-                textSize = 17f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.WHITE)
+                UITheme.applySectionTitleStyle(this)
+                textSize = 16f
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             headerCard.addView(title)
 
             val arrow = TextView(this).apply {
                 text = "▼"
-                textSize = 16f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.parseColor("#9CA3AF"))
+                textSize = 14f
+                setTypeface(null, Typeface.NORMAL)
+                setTextColor(Color.parseColor(UITheme.TEXT_SECONDARY))
             }
             headerCard.addView(arrow)
             root.addView(headerCard)
@@ -100,7 +103,7 @@ class SettingsActivity : AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 visibility = android.view.View.GONE
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, 24)
+                    setMargins(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 16))
                 }
             }
             root.addView(container)

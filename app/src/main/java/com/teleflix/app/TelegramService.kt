@@ -154,7 +154,7 @@ class TelegramService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Teleflix Streaming Engine")
             .setContentText(statusText)
-            .setSmallIcon(R.drawable.ic_launcher)
+            .setSmallIcon(android.R.drawable.ic_media_play)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_menu_preferences, "Settings", settingsPendingIntent)
