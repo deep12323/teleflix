@@ -1531,7 +1531,7 @@ class MainActivity : AppCompatActivity() {
     private fun showPlayerActionDialog(streamUrl: String, title: String, resumeMs: Long = 0L, mediaId: String = "") {
         val options = arrayOf(
             "⚡ ExoPlayer (External App / Just Player)",
-            "🔵 MPV Player (External App)",
+            "🔴 MPVEX / MPV Player (External App)",
             "🧡 VLC Player",
             "📱 Choose From All Installed Players..."
         )
@@ -1587,7 +1587,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         when (playerType) {
-            "exo", "mpvex" -> {
+            "exo" -> {
                 val packagesToTry = listOf("com.brouken.player", "dev.anilbeesetti.nextplayer", "com.nextplayer.app", "com.google.android.exoplayer", "com.mxtech.videoplayer.ad", "com.mxtech.videoplayer.pro")
 
                 var launched = false
@@ -1638,8 +1638,15 @@ class MainActivity : AppCompatActivity() {
                         .show()
                 }
             }
-            "mpv" -> {
-                val packagesToTry = listOf("is.xyz.mpv", "is.xyz.mpv.debug", "id.nzxm.mpv")
+            "mpv", "mpvex" -> {
+                val packagesToTry = listOf(
+                    "app.marlboroadvance.mpvex",
+                    "app.marlboroadvance.mpvex.debug",
+                    "com.marlboroadvance.mpvex",
+                    "is.xyz.mpv",
+                    "is.xyz.mpv.debug",
+                    "id.nzxm.mpv"
+                )
                 var launched = false
                 for (pkg in packagesToTry) {
                     try {
@@ -1650,7 +1657,22 @@ class MainActivity : AppCompatActivity() {
                     } catch (_: Exception) {}
                 }
                 if (!launched) {
-                    val chooser = Intent.createChooser(baseIntent, "Select MPV Player")
+                    try {
+                        val resolveInfo = packageManager.queryIntentActivities(baseIntent, 0)
+                        val mpvMatch = resolveInfo.firstOrNull { 
+                            val pkgName = it.activityInfo.packageName.lowercase()
+                            val label = it.loadLabel(packageManager).toString().lowercase()
+                            pkgName.contains("mpvex") || pkgName.contains("mpv") || label.contains("mpvex") || label.contains("mpv")
+                        }
+                        if (mpvMatch != null) {
+                            val intent = Intent(baseIntent).apply { setPackage(mpvMatch.activityInfo.packageName) }
+                            playerLauncher.launch(intent)
+                            launched = true
+                        }
+                    } catch (_: Exception) {}
+                }
+                if (!launched) {
+                    val chooser = Intent.createChooser(baseIntent, "Select MPV / MPVEX Player")
                     try { playerLauncher.launch(chooser) } catch (_: Exception) {}
                 }
             }
