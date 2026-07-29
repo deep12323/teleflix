@@ -1,42 +1,67 @@
-# 📱 Teleflix - Standalone Android Application
+# Teleflix
 
-A high-performance standalone Android application designed for seamless media streaming directly from Telegram cloud servers using an embedded TDLib byte-range streaming proxy engine and interactive catalogs.
+Teleflix is an Android app that lets you stream movies, TV shows, and videos directly from Telegram channels and Cinemeta catalogs without downloading entire files first.
 
----
-
-## 🚀 Key Features
-
-- **Dual-Mode Catalogs**: Seamlessly toggle between **🎬 Cinemeta** (Top Movies, Trending TV Series, New Releases) and **💬 Monitored Telegram Channels** with full-width custom list views.
-- **Real-Time Split File & ZIP Archive Streaming**: Built-in HTTP streaming proxy sequentially merges multi-part archives (`.zip.001`, `.part1.rar`, `.z01`) and reads directly inside single `.zip` video archives over byte ranges on the fly—zero waiting, extracting, or wasting internal phone disk space!
-- **Intelligent Caption-to-Title Parsing**: Automatically reads message captions in educational study batches or media posts to generate clean, self-explanatory video titles when uploaders omit filenames.
-- **Widescreen 16:9 Posters & Thumbnails**: Pulls live real-time video preview thumbnails directly via TDLib, replacing generic icons with vibrant visual cards and actual human-readable Telegram chat names.
-- **Interactive Back Navigation**: Dedicated on-screen header banners (**"⬅ Back to Channels • Browsing: [Channel]"**) alongside hardware and swipe gesture overrides for intuitive catalog navigation.
-- **Universal Player Compatibility**: Stream directly inside our responsive built-in **ExoPlayer** with playback speed & aspect ratio controls, or transfer playback instantly into **VLC**, **MX Player**, or **MPV** with automatic playback progress resume memory.
-- **Secure Telegram Authentication**: Direct TDLib phone number and OTP login with secure local session preservation.
+It runs a local HTTP streaming proxy powered by TDLib. When you play a video, the app fetches byte ranges on demand directly from Telegram's servers and pipes them to your player (built-in ExoPlayer, VLC, MPV, MX Player, etc.).
 
 ---
 
-## 🛠️ Building & Installing the APK
+## Features
 
-### Automatic Cloud Releases (GitHub Actions)
-Each push to the master branch automatically builds a compiled APK in GitHub Releases:
-1. Navigate to **[Releases](https://github.com/deepu2135/teleflix-android-app/releases)** in this repository.
-2. Download the latest `app-debug.apk` directly to your Android device and install!
+- **Dual Catalogs**: Switch between Cinemeta (movies & series metadata) and your monitored Telegram channels.
+- **On-Demand Range Streaming**: Start watching instantly. Skip forward or back without waiting for full downloads.
+- **Split & Archive Streaming**: Merges multi-part files (`.zip.001`, `.part1.rar`) on the fly while streaming.
+- **Custom Player Choice**: Select ExoPlayer, MPV, VLC, MX Player, or your system launcher. Keeps track of watch history and resume points.
+- **Clean Dark Theme**: Dark AMOLED UI (`#0B0B0F`) with rounded cards and clear typography.
 
-### Local Build (Linux / macOS / Windows)
-To compile the APK manually using Gradle:
+---
+
+## How to Connect Your Telegram Account
+
+To stream media from your channels or private chats, you need to sign in with your Telegram account inside the app.
+
+### Step 1: Open Settings
+Open Teleflix on your phone and tap the **⚙️ Settings** icon in the top right corner.
+
+### Step 2: Set API Credentials (Optional)
+By default, Teleflix includes built-in TDLib credentials (`API_ID` 2040012). If you want to use your own Telegram API credentials:
+1. Go to [my.telegram.org](https://my.telegram.org) and log in with your phone number.
+2. Click **API development tools**.
+3. Create an application (App title and short name can be anything).
+4. Copy your **App api_id** and **App api_hash**.
+5. In Teleflix **Settings → TDLib API Credentials**, enter your `API ID` and `API Hash`, then tap **Save Credentials & Reload TDLib**.
+
+### Step 3: Log In with Phone Number
+1. In Teleflix **Settings → Teleflix Login & Account**, tap **Connect Telegram Account**.
+2. Enter your phone number with country code (e.g., `+14155552671` or `+919876543210`).
+3. Telegram will send a verification code (OTP) via your official Telegram app or SMS.
+4. Enter the verification code in the popup prompt.
+5. If your account has Two-Step Verification (2FA password) enabled, enter your 2FA password when prompted.
+6. Once authenticated, your session status will show **Connected**.
+
+### Step 4: Add Channels to Monitored Catalog
+1. Go to **Settings → Catalogue Monitored Channels**.
+2. Type the `@channel_username` (e.g., `@movie_channel`) and tap **Add**.
+3. Toggle the main screen mode to **💬 Telegram Channels** to view and stream videos from your added channels.
+
+---
+
+## Building from Source
+
+### Requirements
+- Android SDK 34+
+- Java 17 / Kotlin 1.9+
+- Gradle 8.x
+
+### Build Command
 ```bash
-chmod +x gradlew
 ./gradlew :app:assembleDebug
 ```
-Once completed, the generated APK will be output to:
+The compiled APK will be created at:
 `app/build/outputs/apk/debug/app-debug.apk`
 
 ---
 
-## 💡 Architecture Overview
+## License & Disclaimer
 
-**Teleflix** integrates an embedded local HTTP streaming engine running on `http://127.0.0.1`. When you tap any video or multi-part archive:
-1. The app generates an authenticated internal stream URL.
-2. When external or built-in video players make HTTP Range byte requests (such as skipping to minute 40 of a movie or lecture), the TDLib streaming engine (`TdApi.ReadFilePart`) directly queries Telegram cloud infrastructure in memory.
-3. Split part boundaries are bridged automatically without stutter, treating complex archives as a unified solid media stream!
+Teleflix is for personal media access. Ensure you have the rights to stream content from channels you access.
