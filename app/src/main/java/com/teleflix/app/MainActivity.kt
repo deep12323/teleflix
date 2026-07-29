@@ -1685,17 +1685,65 @@ class MainActivity : AppCompatActivity() {
             "🧡 VLC Player",
             "📱 Choose From All Installed Players..."
         )
-        AlertDialog.Builder(this)
-            .setTitle("Select Video Player")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> openStreamInPlayer("exo", streamUrl, title, resumeMs, mediaId)
-                    1 -> openStreamInPlayer("mpv", streamUrl, title, resumeMs, mediaId)
-                    2 -> openStreamInPlayer("vlc", streamUrl, title, resumeMs, mediaId)
-                    3 -> openStreamInPlayer("chooser", streamUrl, title, resumeMs, mediaId)
+        val keys = arrayOf("exo", "mpv", "vlc", "chooser")
+
+        val scrollView = ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val headerTitle = TextView(this).apply {
+            text = "Select Video Player"
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.WHITE)
+        }
+        container.addView(headerTitle)
+
+        val headerSub = TextView(this).apply {
+            text = "Playing: $title"
+            UITheme.applyMetadataStyle(this)
+            setPadding(0, UITheme.dpToPx(this@MainActivity, 4), 0, UITheme.dpToPx(this@MainActivity, 14))
+        }
+        container.addView(headerSub)
+
+        var dialog: AlertDialog? = null
+
+        for (i in options.indices) {
+            val playerKey = keys[i]
+            val card = TextView(this).apply {
+                text = options[i]
+                UITheme.applyCardTitleStyle(this)
+                background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 14, UITheme.STROKE_COLOR)
+                val pV = UITheme.dpToPx(this@MainActivity, 12)
+                val pH = UITheme.dpToPx(this@MainActivity, 16)
+                setPadding(pH, pV, pH, pV)
+                isClickable = true
+                isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
+                }
+                setOnClickListener {
+                    dialog?.dismiss()
+                    openStreamInPlayer(playerKey, streamUrl, title, resumeMs, mediaId)
                 }
             }
-            .show()
+            container.addView(card)
+        }
+
+        scrollView.addView(container)
+
+        dialog = AlertDialog.Builder(this)
+            .setView(scrollView)
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.show()
     }
 
     private fun openStreamInPlayer(playerType: String, streamUrl: String, title: String, resumeMs: Long, mediaId: String = "") {

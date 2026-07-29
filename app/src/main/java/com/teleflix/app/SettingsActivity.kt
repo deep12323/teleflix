@@ -29,6 +29,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var apiIdInput: EditText
     private lateinit var apiHashInput: EditText
     private lateinit var apiBox: LinearLayout
+    private lateinit var cacheSub: TextView
     private var authJob: Job? = null
     private var currentDialog: AlertDialog? = null
 
@@ -217,36 +218,42 @@ class SettingsActivity : AppCompatActivity() {
 
         val channelsCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#161B28"))
-            setPadding(24, 24, 24, 24)
+            background = UITheme.createCardShape(this@SettingsActivity, UITheme.CARD, 16, UITheme.STROKE_COLOR, 1)
+            val pad = UITheme.dpToPx(this@SettingsActivity, 16)
+            setPadding(pad, pad, pad, pad)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
 
         val channelDesc = TextView(this).apply {
             text = "Manage Telegram channels to show in your catalog:"
-            textSize = 14f
-            setTextColor(Color.parseColor("#93C5FD"))
-            setPadding(0, 0, 0, 12)
+            UITheme.applyMetadataStyle(this)
+            setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 10))
         }
         channelsCard.addView(channelDesc)
 
         val addLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 16)
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 12))
         }
 
         val channelInput = EditText(this).apply {
             hint = "Enter @channel_name..."
-            setHintTextColor(Color.parseColor("#6B7280"))
+            setHintTextColor(Color.parseColor(UITheme.TEXT_SECONDARY))
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#12151F"))
-            setPadding(20, 16, 20, 16)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            background = UITheme.createInputBackground(this@SettingsActivity)
+            val pV = UITheme.dpToPx(this@SettingsActivity, 10)
+            val pH = UITheme.dpToPx(this@SettingsActivity, 12)
+            setPadding(pH, pV, pH, pV)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, UITheme.dpToPx(this@SettingsActivity, 10), 0)
+            }
         }
 
         val addBtn = Button(this).apply {
             text = "Add"
-            setBackgroundColor(Color.parseColor("#E50914"))
+            textSize = 12f
+            background = UITheme.createBadgeDrawable(this@SettingsActivity, UITheme.PRIMARY, 10)
             setTextColor(Color.WHITE)
             setOnClickListener {
                 if (channelInput.text.isNotBlank()) {
@@ -331,28 +338,81 @@ class SettingsActivity : AppCompatActivity() {
                     "📱 Android System Player Chooser"
                 )
                 val keys = arrayOf("ask", "exo", "mpvex", "mpv", "vlc", "chooser")
-                AlertDialog.Builder(this@SettingsActivity)
-                    .setTitle("Select Preferred Video Player")
-                    .setItems(labels) { _, which ->
-                        val selectedKey = keys[which]
-                        prefs.edit().putString("default_player", selectedKey).apply()
-                        playerSub.text = playerMap[selectedKey] ?: labels[which]
-                        Toast.makeText(this@SettingsActivity, "Default player updated", Toast.LENGTH_SHORT).show()
+
+                val scrollView = ScrollView(this@SettingsActivity).apply {
+                    setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
+                }
+                val container = LinearLayout(this@SettingsActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    val pad = UITheme.dpToPx(this@SettingsActivity, 16)
+                    setPadding(pad, pad, pad, pad)
+                }
+
+                val title = TextView(this@SettingsActivity).apply {
+                    text = "Select Preferred Video Player"
+                    UITheme.applySectionTitleStyle(this)
+                    setTextColor(Color.WHITE)
+                    setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 14))
+                }
+                container.addView(title)
+
+                var dialog: AlertDialog? = null
+                val curKey = prefs.getString("default_player", "ask") ?: "ask"
+
+                for (i in labels.indices) {
+                    val key = keys[i]
+                    val isCur = key == curKey
+                    val card = TextView(this@SettingsActivity).apply {
+                        text = labels[i]
+                        UITheme.applyCardTitleStyle(this)
+                        background = UITheme.createRippleCardShape(
+                            this@SettingsActivity,
+                            if (isCur) UITheme.SURFACE else UITheme.CARD,
+                            14,
+                            if (isCur) UITheme.PRIMARY else UITheme.STROKE_COLOR
+                        )
+                        setTextColor(if (isCur) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
+                        val pV = UITheme.dpToPx(this@SettingsActivity, 12)
+                        val pH = UITheme.dpToPx(this@SettingsActivity, 16)
+                        setPadding(pH, pV, pH, pV)
+                        isClickable = true
+                        isFocusable = true
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 8))
+                        }
+                        setOnClickListener {
+                            dialog?.dismiss()
+                            prefs.edit().putString("default_player", key).apply()
+                            playerSub.text = playerMap[key] ?: labels[i]
+                            Toast.makeText(this@SettingsActivity, "Default player updated", Toast.LENGTH_SHORT).show()
+                        }
                     }
-                    .show()
+                    container.addView(card)
+                }
+
+                scrollView.addView(container)
+
+                dialog = AlertDialog.Builder(this@SettingsActivity)
+                    .setView(scrollView)
+                    .setNegativeButton("Cancel", null)
+                    .create()
+                dialog.show()
             }
         }
         playerRow.addView(changePlayerBtn)
         playerBox.addView(playerRow)
 
         // Divider
-        val div1 = android.view.View(this).apply {
+        val playerDiv = android.view.View(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
                 setMargins(0, UITheme.dpToPx(this@SettingsActivity, 10), 0, UITheme.dpToPx(this@SettingsActivity, 10))
             }
             setBackgroundColor(Color.parseColor(UITheme.STROKE_COLOR))
         }
-        playerBox.addView(div1)
+        playerBox.addView(playerDiv)
 
         // Auto-Resume Toggle Row
         val resumeRow = LinearLayout(this).apply {
@@ -452,63 +512,157 @@ class SettingsActivity : AppCompatActivity() {
 
         val storageBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#161B28"))
-            setPadding(24, 24, 24, 24)
+            background = UITheme.createCardShape(this@SettingsActivity, UITheme.CARD, 16, UITheme.STROKE_COLOR, 1)
+            val pad = UITheme.dpToPx(this@SettingsActivity, 16)
+            setPadding(pad, pad, pad, pad)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
 
-        val storageTitle = TextView(this).apply {
-            text = "App Cache & Storage Management"
-            textSize = 16f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
+        // Buffer Row
+        val bufferRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 8))
         }
-        storageBox.addView(storageTitle)
+
+        val bufferInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val bufferTitle = TextView(this).apply {
+            text = "Pre-fetch RAM Buffer"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 15f
+        }
+        bufferInfo.addView(bufferTitle)
 
         val currentBufMb = TelegramRepository.getBufferSizeMb(this)
         val bufDisplay = if (currentBufMb >= 1024L) "${currentBufMb / 1024} GB" else "$currentBufMb MB"
-
-        val bufferDesc = TextView(this).apply {
-            text = "Video Pre-fetch RAM Buffer Size (Current: $bufDisplay)\n\n⚡ Video & Audio file caching is permanently disabled. Streamed video/audio buffers are cleaned up immediately after watching to save device storage!"
-            textSize = 14f
-            setTextColor(Color.parseColor("#93C5FD"))
-            setPadding(0, 12, 0, 8)
+        val bufferSub = TextView(this).apply {
+            text = "Current Buffer: $bufDisplay"
+            UITheme.applyMetadataStyle(this)
+            setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
         }
-        storageBox.addView(bufferDesc)
+        bufferInfo.addView(bufferSub)
+        bufferRow.addView(bufferInfo)
 
-        val bufferBtn = Button(this).apply {
-            text = "Change Pre-fetch RAM Buffer (5 MB - 100 GB)"
-            setBackgroundColor(Color.parseColor("#1E3A8A"))
+        val changeBufferBtn = Button(this).apply {
+            text = "Change"
+            textSize = 12f
+            background = UITheme.createBadgeDrawable(this@SettingsActivity, UITheme.ACCENT_BLUE, 10)
             setTextColor(Color.WHITE)
             setOnClickListener {
-                val sizes = arrayOf("5 MB (Low RAM)", "10 MB", "20 MB (Default)", "50 MB (Smooth 4K)", "100 MB (Ultra Smooth)", "100 GB (Full Media Buffer / Download)")
+                val sizes = arrayOf("5 MB (Low RAM)", "10 MB", "20 MB (Default)", "50 MB (Smooth 4K)", "100 MB (Ultra Smooth)", "100 GB (Full Buffer)")
                 val values = arrayOf(5L, 10L, 20L, 50L, 100L, 102400L)
-                AlertDialog.Builder(this@SettingsActivity)
-                    .setTitle("Select Video Pre-fetch Buffer Size")
-                    .setItems(sizes) { _, which ->
-                        val selected = values[which]
-                        val selDisplay = if (selected >= 1024L) "${selected / 1024} GB" else "$selected MB"
-                        TelegramRepository.saveBufferSizeMb(this@SettingsActivity, selected)
-                        TelegramStreamingProxy.prefetchSizeMb = selected
-                        bufferDesc.text = "Video Pre-fetch RAM Buffer Size (Current: $selDisplay)\n\n⚡ Video & Audio file caching is permanently disabled. Streamed video/audio buffers are cleaned up immediately after watching to save device storage!"
-                        Toast.makeText(this@SettingsActivity, "Buffer set to $selDisplay", Toast.LENGTH_SHORT).show()
+
+                val scrollView = ScrollView(this@SettingsActivity).apply {
+                    setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
+                }
+                val container = LinearLayout(this@SettingsActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    val pad = UITheme.dpToPx(this@SettingsActivity, 16)
+                    setPadding(pad, pad, pad, pad)
+                }
+
+                val title = TextView(this@SettingsActivity).apply {
+                    text = "Select Pre-fetch RAM Buffer"
+                    UITheme.applySectionTitleStyle(this)
+                    setTextColor(Color.WHITE)
+                    setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 14))
+                }
+                container.addView(title)
+
+                var dialog: AlertDialog? = null
+                val curBuf = TelegramRepository.getBufferSizeMb(this@SettingsActivity)
+
+                for (i in sizes.indices) {
+                    val valMb = values[i]
+                    val isCur = valMb == curBuf
+                    val card = TextView(this@SettingsActivity).apply {
+                        text = sizes[i]
+                        UITheme.applyCardTitleStyle(this)
+                        background = UITheme.createRippleCardShape(
+                            this@SettingsActivity,
+                            if (isCur) UITheme.SURFACE else UITheme.CARD,
+                            14,
+                            if (isCur) UITheme.PRIMARY else UITheme.STROKE_COLOR
+                        )
+                        setTextColor(if (isCur) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
+                        val pV = UITheme.dpToPx(this@SettingsActivity, 12)
+                        val pH = UITheme.dpToPx(this@SettingsActivity, 16)
+                        setPadding(pH, pV, pH, pV)
+                        isClickable = true
+                        isFocusable = true
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 8))
+                        }
+                        setOnClickListener {
+                            dialog?.dismiss()
+                            val selDisplay = if (valMb >= 1024L) "${valMb / 1024} GB" else "$valMb MB"
+                            TelegramRepository.saveBufferSizeMb(this@SettingsActivity, valMb)
+                            TelegramStreamingProxy.prefetchSizeMb = valMb
+                            bufferSub.text = "Current Buffer: $selDisplay"
+                            Toast.makeText(this@SettingsActivity, "Buffer set to $selDisplay", Toast.LENGTH_SHORT).show()
+                        }
                     }
-                    .show()
+                    container.addView(card)
+                }
+
+                scrollView.addView(container)
+
+                dialog = AlertDialog.Builder(this@SettingsActivity)
+                    .setView(scrollView)
+                    .setNegativeButton("Cancel", null)
+                    .create()
+                dialog.show()
             }
         }
-        storageBox.addView(bufferBtn)
+        bufferRow.addView(changeBufferBtn)
+        storageBox.addView(bufferRow)
 
-        val cacheDesc = TextView(this).apply {
-            text = "Calculating total app cache size..."
-            textSize = 14f
-            setTextColor(Color.parseColor("#9CA3AF"))
-            setPadding(0, 16, 0, 8)
+        // Divider
+        val storageDiv1 = android.view.View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                setMargins(0, UITheme.dpToPx(this@SettingsActivity, 8), 0, UITheme.dpToPx(this@SettingsActivity, 8))
+            }
+            setBackgroundColor(Color.parseColor(UITheme.STROKE_COLOR))
         }
-        storageBox.addView(cacheDesc)
+        storageBox.addView(storageDiv1)
+
+        // App Cache Row
+        val cacheRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, UITheme.dpToPx(this@SettingsActivity, 4), 0, UITheme.dpToPx(this@SettingsActivity, 4))
+        }
+
+        val cacheInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val cacheTitle = TextView(this).apply {
+            text = "App Cache & Posters"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 15f
+        }
+        cacheInfo.addView(cacheTitle)
+
+        cacheSub = TextView(this).apply {
+            text = "Calculating cache size..."
+            UITheme.applyMetadataStyle(this)
+        }
+        cacheInfo.addView(cacheSub)
+        cacheRow.addView(cacheInfo)
 
         val clearCacheBtn = Button(this).apply {
-            text = "Clear App Cache (Posters & Thumbnails)"
-            setBackgroundColor(Color.parseColor("#EF4444"))
+            text = "Clear"
+            textSize = 12f
+            background = UITheme.createBadgeDrawable(this@SettingsActivity, "#DC2626", 10)
             setTextColor(Color.WHITE)
             setOnClickListener {
                 TelegramRepository.clearCache(this@SettingsActivity)
@@ -518,15 +672,52 @@ class SettingsActivity : AppCompatActivity() {
                         try { com.bumptech.glide.Glide.get(this@SettingsActivity).clearMemory() } catch (_: Exception) {}
                     }
                 }
-                cacheDesc.text = "Total App Cache: 0.0 MB (Cleared)"
-                Toast.makeText(this@SettingsActivity, "All poster & thumbnail cache cleared successfully!", Toast.LENGTH_SHORT).show()
+                cacheSub.text = "Cache: 0.0 MB (Cleared)"
+                Toast.makeText(this@SettingsActivity, "All poster & thumbnail cache cleared!", Toast.LENGTH_SHORT).show()
             }
         }
-        storageBox.addView(clearCacheBtn)
+        cacheRow.addView(clearCacheBtn)
+        storageBox.addView(cacheRow)
+
+        // Divider
+        val div2 = android.view.View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                setMargins(0, UITheme.dpToPx(this@SettingsActivity, 8), 0, UITheme.dpToPx(this@SettingsActivity, 8))
+            }
+            setBackgroundColor(Color.parseColor(UITheme.STROKE_COLOR))
+        }
+        storageBox.addView(div2)
+
+        // Watch History Row
+        val historyRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, UITheme.dpToPx(this@SettingsActivity, 4), 0, UITheme.dpToPx(this@SettingsActivity, 4))
+        }
+
+        val historyInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val historyTitle = TextView(this).apply {
+            text = "Watch History & Resume Points"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 15f
+        }
+        historyInfo.addView(historyTitle)
+
+        val historySub = TextView(this).apply {
+            text = "Clear all saved playback positions"
+            UITheme.applyMetadataStyle(this)
+        }
+        historyInfo.addView(historySub)
+        historyRow.addView(historyInfo)
 
         val clearHistoryBtn = Button(this).apply {
-            text = "Clear All Watch History & Resume Points"
-            setBackgroundColor(Color.parseColor("#B91C1C"))
+            text = "Clear All"
+            textSize = 12f
+            background = UITheme.createBadgeDrawable(this@SettingsActivity, "#991B1B", 10)
             setTextColor(Color.WHITE)
             setOnClickListener {
                 AlertDialog.Builder(this@SettingsActivity)
@@ -542,7 +733,8 @@ class SettingsActivity : AppCompatActivity() {
                     .show()
             }
         }
-        storageBox.addView(clearHistoryBtn)
+        historyRow.addView(clearHistoryBtn)
+        storageBox.addView(historyRow)
         storageSectionContainer.addView(storageBox)
 
         // --- Diagnostic & Streaming Logs Section ---
@@ -624,7 +816,7 @@ class SettingsActivity : AppCompatActivity() {
             val sizeBytes = try { TelegramRepository.getCacheSize(this@SettingsActivity) } catch (_: Exception) { 0L }
             val sizeMb = sizeBytes / (1024.0 * 1024.0)
             withContext(Dispatchers.Main) {
-                try { cacheDesc.text = String.format("Total App Cache (Posters & Thumbnails): %.1f MB", sizeMb) } catch (_: Exception) {}
+                try { cacheSub.text = String.format("Cache: %.1f MB", sizeMb) } catch (_: Exception) {}
             }
         }
 
@@ -814,45 +1006,57 @@ class SettingsActivity : AppCompatActivity() {
         val list = TdlibManager.getChannels(this)
         if (list.isEmpty()) {
             val emptyMsg = TextView(this).apply {
-                text = "No Telegram channels monitored yet.\nEnter a channel username above (e.g. @your_channel) and press ADD!"
-                setTextColor(Color.parseColor("#6B7280"))
-                textSize = 13f
-                setPadding(8, 16, 8, 16)
+                text = "No Telegram channels monitored yet.\nEnter a channel username above (e.g. @your_channel) and tap Add!"
+                UITheme.applyMetadataStyle(this)
+                setPadding(0, UITheme.dpToPx(this@SettingsActivity, 8), 0, UITheme.dpToPx(this@SettingsActivity, 8))
             }
             channelContainer.addView(emptyMsg)
             return
         }
         list.forEach { ch ->
-            val row = LinearLayout(this).apply {
+            val card = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setBackgroundColor(Color.parseColor("#12151F"))
-                setPadding(16, 12, 16, 12)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = UITheme.createCardShape(this@SettingsActivity, UITheme.SURFACE, 12, UITheme.STROKE_COLOR, 1)
+                val pad = UITheme.dpToPx(this@SettingsActivity, 12)
+                setPadding(pad, pad, pad, pad)
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 4, 0, 4)
+                    setMargins(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 8))
                 }
             }
 
-            val name = TextView(this).apply {
-                text = "${ch.username} (${ch.title})"
-                setTextColor(Color.WHITE)
-                textSize = 14f
+            val textLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
 
+            val titleView = TextView(this).apply {
+                text = if (ch.title.isNotBlank()) "📢 ${ch.title}" else "📢 ${ch.username}"
+                UITheme.applyCardTitleStyle(this)
+                textSize = 14f
+            }
+            textLayout.addView(titleView)
+
+            val subView = TextView(this).apply {
+                text = ch.username
+                UITheme.applyMetadataStyle(this)
+            }
+            textLayout.addView(subView)
+
             val removeBtn = Button(this).apply {
                 text = "Remove"
-                setBackgroundColor(Color.parseColor("#7F1D1D"))
-                setTextColor(Color.WHITE)
                 textSize = 11f
+                background = UITheme.createBadgeDrawable(this@SettingsActivity, "#991B1B", 8)
+                setTextColor(Color.WHITE)
                 setOnClickListener {
                     TdlibManager.removeChannel(this@SettingsActivity, ch.username)
                     loadChannels()
                 }
             }
 
-            row.addView(name)
-            row.addView(removeBtn)
-            channelContainer.addView(row)
+            card.addView(textLayout)
+            card.addView(removeBtn)
+            channelContainer.addView(card)
         }
     }
 
