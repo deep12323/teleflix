@@ -737,43 +737,94 @@ class SettingsActivity : AppCompatActivity() {
         storageBox.addView(historyRow)
         storageSectionContainer.addView(storageBox)
 
-        // --- Diagnostic & Streaming Logs Section ---
-        val logsSectionContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, 24, 0, 0)
-        }
-
-        val logsHeader = TextView(this).apply {
-            text = "📋 Diagnostic & Streaming Logs"
-            textSize = 18f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor(Color.parseColor("#38BDF8"))
-            setPadding(0, 0, 0, 12)
-        }
-        logsSectionContainer.addView(logsHeader)
+        // 6. Diagnostic & Streaming Logs Section (Collapsible)
+        val logsSectionContainer = createCollapsibleSection("📋 Diagnostic & Streaming Logs")
 
         val logsBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(20, 20, 20, 20)
-            val bg = GradientDrawable().apply {
-                setColor(Color.parseColor("#1E293B"))
-                cornerRadius = 16f
-                setStroke(2, Color.parseColor("#334155"))
-            }
-            background = bg
+            background = UITheme.createCardShape(this@SettingsActivity, UITheme.CARD, 16, UITheme.STROKE_COLOR, 1)
+            val pad = UITheme.dpToPx(this@SettingsActivity, 16)
+            setPadding(pad, pad, pad, pad)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
 
-        val logsDesc = TextView(this).apply {
-            text = "Copy or view real-time streaming proxy, TDLib range requests, and video player logs to easily diagnose playback or buffering issues."
-            textSize = 13f
-            setTextColor(Color.parseColor("#9CA3AF"))
-            setPadding(0, 0, 0, 16)
+        // View Logs Row
+        val viewLogsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 8))
         }
-        logsBox.addView(logsDesc)
+
+        val viewLogsInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val viewLogsTitle = TextView(this).apply {
+            text = "Real-Time Streaming Logs"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 15f
+        }
+        viewLogsInfo.addView(viewLogsTitle)
+
+        val viewLogsSub = TextView(this).apply {
+            text = "Inspect live proxy & TDLib range requests"
+            UITheme.applyMetadataStyle(this)
+        }
+        viewLogsInfo.addView(viewLogsSub)
+        viewLogsRow.addView(viewLogsInfo)
+
+        val viewLogsBtn = Button(this).apply {
+            text = "View"
+            textSize = 12f
+            background = UITheme.createBadgeDrawable(this@SettingsActivity, UITheme.ACCENT_BLUE, 10)
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                showLogsViewerDialog()
+            }
+        }
+        viewLogsRow.addView(viewLogsBtn)
+        logsBox.addView(viewLogsRow)
+
+        // Divider 1
+        val logsDiv1 = android.view.View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                setMargins(0, UITheme.dpToPx(this@SettingsActivity, 8), 0, UITheme.dpToPx(this@SettingsActivity, 8))
+            }
+            setBackgroundColor(Color.parseColor(UITheme.STROKE_COLOR))
+        }
+        logsBox.addView(logsDiv1)
+
+        // Copy Logs Row
+        val copyLogsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, UITheme.dpToPx(this@SettingsActivity, 4), 0, UITheme.dpToPx(this@SettingsActivity, 4))
+        }
+
+        val copyLogsInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val copyLogsTitle = TextView(this).apply {
+            text = "Copy Diagnostic Logs"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 15f
+        }
+        copyLogsInfo.addView(copyLogsTitle)
+
+        val copyLogsSub = TextView(this).apply {
+            text = "Copy debug output to clipboard"
+            UITheme.applyMetadataStyle(this)
+        }
+        copyLogsInfo.addView(copyLogsSub)
+        copyLogsRow.addView(copyLogsInfo)
 
         val copyLogsBtn = Button(this).apply {
-            text = "📋 Copy Diagnostic Logs to Clipboard"
-            setBackgroundColor(Color.parseColor("#2563EB"))
+            text = "Copy"
+            textSize = 12f
+            background = UITheme.createBadgeDrawable(this@SettingsActivity, "#2563EB", 10)
             setTextColor(Color.WHITE)
             setOnClickListener {
                 val copied = TeleflixLogger.copyLogsToClipboard(this@SettingsActivity)
@@ -784,29 +835,56 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
         }
-        logsBox.addView(copyLogsBtn)
+        copyLogsRow.addView(copyLogsBtn)
+        logsBox.addView(copyLogsRow)
 
-        val viewLogsBtn = Button(this).apply {
-            text = "👁️ View Real-time Streaming Logs"
-            setBackgroundColor(Color.parseColor("#0D9488"))
-            setTextColor(Color.WHITE)
-            setOnClickListener {
-                showLogsViewerDialog()
+        // Divider 2
+        val logsDiv2 = android.view.View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                setMargins(0, UITheme.dpToPx(this@SettingsActivity, 8), 0, UITheme.dpToPx(this@SettingsActivity, 8))
             }
+            setBackgroundColor(Color.parseColor(UITheme.STROKE_COLOR))
         }
-        logsBox.addView(viewLogsBtn)
+        logsBox.addView(logsDiv2)
+
+        // Clear Logs Row
+        val clearLogsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, UITheme.dpToPx(this@SettingsActivity, 4), 0, UITheme.dpToPx(this@SettingsActivity, 4))
+        }
+
+        val clearLogsInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val clearLogsTitle = TextView(this).apply {
+            text = "Clear Diagnostic Logs"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 15f
+        }
+        clearLogsInfo.addView(clearLogsTitle)
+
+        val clearLogsSub = TextView(this).apply {
+            text = "Purge buffered log history"
+            UITheme.applyMetadataStyle(this)
+        }
+        clearLogsInfo.addView(clearLogsSub)
+        clearLogsRow.addView(clearLogsInfo)
 
         val clearLogsBtn = Button(this).apply {
-            text = "🗑️ Clear Diagnostic Logs"
-            setBackgroundColor(Color.parseColor("#475569"))
+            text = "Clear"
+            textSize = 12f
+            background = UITheme.createBadgeDrawable(this@SettingsActivity, "#475569", 10)
             setTextColor(Color.WHITE)
             setOnClickListener {
                 TeleflixLogger.clearLogs()
                 Toast.makeText(this@SettingsActivity, "Diagnostic logs cleared", Toast.LENGTH_SHORT).show()
             }
         }
-        logsBox.addView(clearLogsBtn)
-
+        clearLogsRow.addView(clearLogsBtn)
+        logsBox.addView(clearLogsRow)
         logsSectionContainer.addView(logsBox)
         root.addView(logsSectionContainer)
 
@@ -1069,13 +1147,16 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun showLogsViewerDialog() {
         val logsText = TeleflixLogger.getFormattedLogs()
-        val scrollView = ScrollView(this)
+        val scrollView = ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
+        }
         val textView = TextView(this).apply {
             text = logsText
             textSize = 12f
             setTypeface(android.graphics.Typeface.MONOSPACE)
             setTextColor(Color.parseColor("#38BDF8"))
-            setPadding(24, 24, 24, 24)
+            val pad = UITheme.dpToPx(this@SettingsActivity, 16)
+            setPadding(pad, pad, pad, pad)
             setTextIsSelectable(true)
         }
         scrollView.addView(textView)
@@ -1083,7 +1164,7 @@ class SettingsActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle("📋 Diagnostic & Streaming Logs")
             .setView(scrollView)
-            .setPositiveButton("📋 Copy All") { _, _ ->
+            .setPositiveButton("Copy All") { _, _ ->
                 TeleflixLogger.copyLogsToClipboard(this)
                 Toast.makeText(this, "Copied logs to clipboard!", Toast.LENGTH_SHORT).show()
             }

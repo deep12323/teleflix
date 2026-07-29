@@ -1396,30 +1396,179 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSeasonPicker(seriesTitle: String, seasons: Map<Int, List<EpisodeItem>>, posterUrl: String = "") {
-        val seasonLabels = seasons.keys.map { "Season $it (${seasons[it]?.size ?: 0} episodes)" }.toTypedArray()
+        val seasonList = seasons.keys.toList()
 
-        AlertDialog.Builder(this)
-            .setTitle("$seriesTitle — Pick Season")
-            .setItems(seasonLabels) { _, which ->
-                val seasonNum = seasons.keys.toList()[which]
-                val episodes = seasons[seasonNum] ?: return@setItems
-                showEpisodePicker(seriesTitle, seasonNum, episodes, posterUrl)
+        val scrollView = ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val headerTitle = TextView(this).apply {
+            text = seriesTitle
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.parseColor(UITheme.PRIMARY))
+        }
+        container.addView(headerTitle)
+
+        val headerSub = TextView(this).apply {
+            text = "Select Season"
+            UITheme.applyMetadataStyle(this)
+            setPadding(0, UITheme.dpToPx(this@MainActivity, 2), 0, UITheme.dpToPx(this@MainActivity, 14))
+        }
+        container.addView(headerSub)
+
+        var dialog: AlertDialog? = null
+
+        for (seasonNum in seasonList) {
+            val epCount = seasons[seasonNum]?.size ?: 0
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 14, UITheme.STROKE_COLOR)
+                val pV = UITheme.dpToPx(this@MainActivity, 14)
+                val pH = UITheme.dpToPx(this@MainActivity, 16)
+                setPadding(pH, pV, pH, pV)
+                isClickable = true
+                isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
+                }
+                setOnClickListener {
+                    dialog?.dismiss()
+                    val episodes = seasons[seasonNum] ?: return@setOnClickListener
+                    showEpisodePicker(seriesTitle, seasonNum, episodes, posterUrl)
+                }
             }
+
+            val titleView = TextView(this).apply {
+                text = "Season $seasonNum"
+                UITheme.applyCardTitleStyle(this)
+                textSize = 15f
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            card.addView(titleView)
+
+            val badgeView = TextView(this).apply {
+                text = "$epCount Episodes"
+                UITheme.applyCaptionStyle(this)
+                background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.SECONDARY, 8)
+                setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
+            }
+            card.addView(badgeView)
+
+            container.addView(card)
+        }
+
+        scrollView.addView(container)
+
+        dialog = AlertDialog.Builder(this)
+            .setView(scrollView)
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+        dialog.show()
     }
 
     private fun showEpisodePicker(seriesTitle: String, season: Int, episodes: List<EpisodeItem>, posterUrl: String = "") {
-        val episodeLabels = episodes.map { "E${String.format("%02d", it.episode)} — ${it.title}" }.toTypedArray()
+        val scrollView = ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(pad, pad, pad, pad)
+        }
 
-        AlertDialog.Builder(this)
-            .setTitle("$seriesTitle — Season $season")
-            .setItems(episodeLabels) { _, which ->
-                val ep = episodes[which]
-                showStreamOptions(seriesTitle, season, ep.episode, posterUrl)
+        val headerTitle = TextView(this).apply {
+            text = "$seriesTitle — Season $season"
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.WHITE)
+        }
+        container.addView(headerTitle)
+
+        val headerSub = TextView(this).apply {
+            text = "${episodes.size} Episodes Available"
+            UITheme.applyMetadataStyle(this)
+            setPadding(0, UITheme.dpToPx(this@MainActivity, 2), 0, UITheme.dpToPx(this@MainActivity, 14))
+        }
+        container.addView(headerSub)
+
+        var dialog: AlertDialog? = null
+
+        for (ep in episodes) {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 14, UITheme.STROKE_COLOR)
+                val pV = UITheme.dpToPx(this@MainActivity, 12)
+                val pH = UITheme.dpToPx(this@MainActivity, 14)
+                setPadding(pH, pV, pH, pV)
+                isClickable = true
+                isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
+                }
+                setOnClickListener {
+                    dialog?.dismiss()
+                    showStreamOptions(seriesTitle, season, ep.episode, posterUrl)
+                }
             }
+
+            val epBadge = TextView(this).apply {
+                text = "E${String.format("%02d", ep.episode)}"
+                UITheme.applyCaptionStyle(this)
+                background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.PRIMARY, 8)
+                setTextColor(Color.WHITE)
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 12), 0)
+                }
+                layoutParams = lp
+            }
+            card.addView(epBadge)
+
+            val textContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val titleView = TextView(this).apply {
+                text = ep.title
+                UITheme.applyCardTitleStyle(this)
+                textSize = 14f
+            }
+            textContainer.addView(titleView)
+
+            if (ep.released.isNotBlank()) {
+                val subView = TextView(this).apply {
+                    text = "Released: ${ep.released}"
+                    UITheme.applyMetadataStyle(this)
+                }
+                textContainer.addView(subView)
+            }
+
+            card.addView(textContainer)
+            container.addView(card)
+        }
+
+        scrollView.addView(container)
+
+        dialog = AlertDialog.Builder(this)
+            .setView(scrollView)
             .setNegativeButton("Back", null)
-            .show()
+            .create()
+        dialog.show()
     }
 
     // ── Stream Selection ────────────────────────────────────────
