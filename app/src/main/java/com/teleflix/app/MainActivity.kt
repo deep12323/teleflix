@@ -2060,7 +2060,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        TelegramStreamingProxy.cancelAllBackgroundDownloads()
     }
 
     override fun onDestroy() {

@@ -85,12 +85,13 @@ object TelegramStreamingProxy {
         val lastTime = lastDownloadRequestTime[fileId] ?: 0L
 
         // Strict rate limit: never issue DownloadFile for the exact same offset more than once per 1,500ms
-        if (lastOffset == offset && (now - lastTime) < 1500L) {
+        // unless force=true (used by downloadChunk retries when data isn't available yet)
+        if (!force && lastOffset == offset && (now - lastTime) < 1500L) {
             return
         }
 
         // Prevent spamming TDLib with DownloadFile for the same offset within 5 seconds
-        // unless force=true (used by downloadChunk retries when data isn't available yet)
+        // unless force=true
         if (!force && lastOffset == offset && (now - lastTime) < 5000L) {
             return
         }
@@ -457,10 +458,18 @@ object TelegramStreamingProxy {
                 reqSet?.remove(reqId)
                 if (reqSet == null || reqSet.isEmpty()) {
                     activeStreamRequests.remove(fileId)
-                    activeDownloadWindows.remove(fileId)
-                    TeleflixLogger.log(TAG, "No active streams remaining for fileId=$fileId, cancelling TDLib background download immediately")
-                    runCatching {
-                        TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                    // 5-second grace period: do NOT cancel TDLib download immediately.
+                    // Media players often open header/probe requests that close right before starting full playback.
+                    scope.launch {
+                        delay(5000L)
+                        val currentRequests = activeStreamRequests[fileId]
+                        if (currentRequests == null || currentRequests.isEmpty()) {
+                            activeDownloadWindows.remove(fileId)
+                            TeleflixLogger.log(TAG, "No active streams remaining for fileId=$fileId after 5s grace period, cancelling TDLib background download")
+                            runCatching {
+                                TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                            }
+                        }
                     }
                 }
             }
@@ -930,13 +939,15 @@ object TelegramStreamingProxy {
     fun cancelAllBackgroundDownloads() {
         scope.launch {
             activeDownloadWindows.keys.forEach { fileId ->
-                runCatching {
-                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                val hasActiveRequests = activeStreamRequests[fileId]?.isNotEmpty() == true
+                if (!hasActiveRequests) {
+                    runCatching {
+                        TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+                    }
+                    activeDownloadWindows.remove(fileId)
                 }
             }
-            activeDownloadWindows.clear()
-            activeStreamRequests.clear()
-            TeleflixLogger.log(TAG, "Cancelled all active TDLib background downloads")
+            TeleflixLogger.log(TAG, "Cancelled idle TDLib background downloads")
         }
     }
 
