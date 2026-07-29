@@ -104,13 +104,13 @@ object TelegramStreamingProxy {
                 req.fileId = fileId
                 req.priority = DOWNLOAD_PRIORITY
                 req.offset = offset
-                req.limit = 0L // 0 = unlimited download from offset to EOF for maximum throughput
+                req.limit = if (limit > 0L) limit else 0L
                 req.synchronous = false
             })
             if (res is TdApi.Error) {
-                TeleflixLogger.log(TAG, "[TDLib Error] DownloadFile fileId=$fileId offset=$offset: code=${res.code} message=${res.message}", isError = true)
+                TeleflixLogger.log(TAG, "[TDLib Error] DownloadFile fileId=$fileId offset=$offset limit=$limit: code=${res.code} message=${res.message}", isError = true)
             } else {
-                TeleflixLogger.log(TAG, "[TDLib OK] DownloadFile fileId=$fileId offset=$offset force=$force")
+                TeleflixLogger.log(TAG, "[TDLib OK] DownloadFile fileId=$fileId offset=$offset limit=$limit force=$force")
             }
         } catch (e: Exception) {
             TeleflixLogger.log(TAG, "[TDLib Exception] DownloadFile fileId=$fileId: ${e.message}", isError = true)
