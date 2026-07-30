@@ -29,7 +29,6 @@ object TelegramStreamingProxy {
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
     private val activeStreamRequests = java.util.concurrent.ConcurrentHashMap<Int, MutableSet<String>>()
-    private val latestActiveStreamReqId = java.util.concurrent.ConcurrentHashMap<Int, String>()
     private val activeFileJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
     private val activeDownloadWindows = java.util.concurrent.ConcurrentHashMap<Int, Pair<Long, Long>>()
     private val lastDownloadRequestOffset = java.util.concurrent.ConcurrentHashMap<Int, Long>()
@@ -86,11 +85,6 @@ object TelegramStreamingProxy {
         val lastTime = lastDownloadRequestTime[fileId] ?: 0L
 
         val isOffsetJump = lastOffset != null && Math.abs(offset - lastOffset) > 1_000_000L
-
-        // Prevent thrashing TDLib with rapid CancelDownloadFile calls on offset jumps within 300ms
-        if (isOffsetJump && (now - lastTime) < 300L) {
-            return
-        }
 
         // Strict rate limit: never issue DownloadFile for the exact same offset more than once per 1,500ms
         // unless force=true or offset jumped
@@ -331,12 +325,11 @@ object TelegramStreamingProxy {
 
     private suspend fun streamFile(fileId: Int, fileName: String?, rangeHeader: String?, output: java.io.OutputStream, urlSize: Long, isHead: Boolean = false) {
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
-        val jobKey = "file_$fileId"
+        val jobKey = "${fileId}_${rangeStart ?: 0}"
         val currentJob = kotlin.coroutines.coroutineContext[Job]
         if (currentJob != null) {
             val oldJob = activeFileJobs.put(jobKey, currentJob)
             if (oldJob != null && oldJob != currentJob && oldJob.isActive) {
-                TeleflixLogger.log(TAG, "Cancelling previous stream job for fileId=$fileId due to new request $jobKey")
                 oldJob.cancel()
             }
         }
@@ -384,7 +377,6 @@ object TelegramStreamingProxy {
             )
             metrics = m
             activeStreamRequests.getOrPut(fileId) { java.util.concurrent.ConcurrentHashMap.newKeySet<String>() }.add(m.reqId)
-            latestActiveStreamReqId[fileId] = m.reqId
             m.logStart()
 
             if (start >= totalSize || start > end) {
@@ -463,9 +455,6 @@ object TelegramStreamingProxy {
             }
             val reqId = metrics?.reqId
             if (reqId != null) {
-                if (latestActiveStreamReqId[fileId] == reqId) {
-                    latestActiveStreamReqId.remove(fileId)
-                }
                 val reqSet = activeStreamRequests[fileId]
                 reqSet?.remove(reqId)
                 if (reqSet == null || reqSet.isEmpty()) {
@@ -492,8 +481,7 @@ object TelegramStreamingProxy {
         fileIds: List<Int>,
         sizes: List<Long>,
         globalOffset: Long,
-        limit: Int,
-        metrics: StreamMetrics? = null
+        limit: Int
     ): ByteArray? {
         if (fileIds.isEmpty() || sizes.isEmpty()) return null
         val totalSize = sizes.sum()
@@ -528,26 +516,7 @@ object TelegramStreamingProxy {
             })
         }
 
-        // Prefetch next part if we are within 20MB of the boundary of the current part
-        if (partRemaining <= 20 * 1024 * 1024L && partIndex + 1 < fileIds.size) {
-            val nextPartFileId = fileIds[partIndex + 1]
-            val nextPrefetchBytes = when {
-                prefetchSizeMb == -1L -> 0L
-                prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
-                else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
-            }
-            runCatching {
-                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                    req.fileId = nextPartFileId
-                    req.priority = DOWNLOAD_PRIORITY
-                    req.offset = 0
-                    req.limit = nextPrefetchBytes
-                    req.synchronous = false
-                })
-            }
-        }
-
-        return downloadChunk(partFileId, partOffset, chunkSize, metrics)
+        return downloadChunk(partFileId, partOffset, chunkSize)
     }
 
     private suspend fun readBufferFromMerged(
@@ -569,312 +538,6 @@ object TelegramStreamingProxy {
         return if (bytesRead == totalToRead) buffer else if (bytesRead > 0) buffer.copyOf(bytesRead) else null
     }
 
-    private data class MergedStreamLayout(
-        val headerOffsets: LongArray,
-        val payloadSizes: LongArray,
-        val totalPayloadSize: Long,
-        val innerFileName: String?,
-        val mimeType: String,
-        val isZip: Boolean
-    )
-
-    private fun readVint(buffer: ByteArray, offset: Int): Pair<Long, Int> {
-        var result = 0L
-        var shift = 0
-        var pos = offset
-        while (pos < buffer.size && shift < 63) {
-            val b = buffer[pos].toInt() and 0xFF
-            result = result or ((b and 0x7F).toLong() shl shift)
-            pos++
-            if ((b and 0x80) == 0) break
-            shift += 7
-        }
-        return Pair(result, maxOf(1, pos - offset))
-    }
-
-    private data class RarHeaderResult(val headerSize: Long, val fileName: String?)
-
-    private fun parseRar4Header(buffer: ByteArray): RarHeaderResult {
-        if (buffer.size < 7) return RarHeaderResult(0L, null)
-        var pos = 7
-        var innerName: String? = null
-
-        if (pos + 7 <= buffer.size) {
-            val headType = buffer[pos + 2].toInt() and 0xFF
-            val headSize = (buffer[pos + 5].toInt() and 0xFF) or ((buffer[pos + 6].toInt() and 0xFF) shl 8)
-            if (headType == 0x73 && headSize > 0) {
-                pos += headSize
-            }
-        }
-
-        if (pos + 32 <= buffer.size) {
-            val headType = buffer[pos + 2].toInt() and 0xFF
-            val headFlags = (buffer[pos + 3].toInt() and 0xFF) or ((buffer[pos + 4].toInt() and 0xFF) shl 8)
-            val headSize = (buffer[pos + 5].toInt() and 0xFF) or ((buffer[pos + 6].toInt() and 0xFF) shl 8)
-            val nameSize = (buffer[pos + 26].toInt() and 0xFF) or ((buffer[pos + 27].toInt() and 0xFF) shl 8)
-
-            if (headType == 0x74 && headSize > 0) {
-                val isLarge = (headFlags and 0x0100) != 0
-                val nameOffset = pos + if (isLarge) 34 else 26
-                if (nameOffset + nameSize <= buffer.size && nameSize > 0) {
-                    val rawName = String(buffer, nameOffset, nameSize, Charsets.UTF_8).replace('\\', '/')
-                    innerName = rawName.substringAfterLast('/')
-                }
-                pos += headSize
-            }
-        }
-
-        return RarHeaderResult(pos.toLong(), innerName)
-    }
-
-    private fun parseRar4VolumeHeaderSize(buffer: ByteArray): Long {
-        if (buffer.size < 7) return 0L
-        if (buffer[0] != 0x52.toByte() || buffer[1] != 0x61.toByte() ||
-            buffer[2] != 0x72.toByte() || buffer[3] != 0x21.toByte() ||
-            buffer[4] != 0x1A.toByte() || buffer[5] != 0x07.toByte() ||
-            buffer[6] != 0x00.toByte()
-        ) {
-            return 0L
-        }
-
-        var pos = 7
-        if (pos + 7 <= buffer.size) {
-            val headType = buffer[pos + 2].toInt() and 0xFF
-            val headSize = (buffer[pos + 5].toInt() and 0xFF) or ((buffer[pos + 6].toInt() and 0xFF) shl 8)
-            if (headType == 0x73 && headSize > 0) {
-                pos += headSize
-            }
-        }
-        if (pos + 7 <= buffer.size) {
-            val headType = buffer[pos + 2].toInt() and 0xFF
-            val headSize = (buffer[pos + 5].toInt() and 0xFF) or ((buffer[pos + 6].toInt() and 0xFF) shl 8)
-            if ((headType == 0x74 || headType == 0x7A) && headSize > 0) {
-                pos += headSize
-            }
-        }
-
-        return pos.toLong()
-    }
-
-    private fun parseRar5Header(buffer: ByteArray): RarHeaderResult {
-        if (buffer.size < 8) return RarHeaderResult(0L, null)
-        var pos = 8
-        var innerName: String? = null
-
-        if (pos + 6 <= buffer.size) {
-            pos += 4
-            val (hSize, hSizeLen) = readVint(buffer, pos)
-            pos += hSizeLen + hSize.toInt()
-        }
-
-        if (pos + 6 <= buffer.size) {
-            val fileHeadStart = pos
-            pos += 4
-            val (hSize, hSizeLen) = readVint(buffer, pos)
-            val (hType, _) = readVint(buffer, pos + hSizeLen)
-            if (hType == 2L) {
-                try {
-                    var p = pos + hSizeLen
-                    val (_, tLen) = readVint(buffer, p); p += tLen
-                    val (_, fLen) = readVint(buffer, p); p += fLen
-                    val (_, eLen) = readVint(buffer, p); p += eLen
-                    val (_, dLen) = readVint(buffer, p); p += dLen
-                    val (_, uLen) = readVint(buffer, p); p += uLen
-                    val (_, aLen) = readVint(buffer, p); p += aLen
-                    val (_, mLen) = readVint(buffer, p); p += mLen
-                    val (_, cLen) = readVint(buffer, p); p += cLen
-                    val (_, cmLen) = readVint(buffer, p); p += cmLen
-                    val (_, oLen) = readVint(buffer, p); p += oLen
-                    val (nameLen, nLen) = readVint(buffer, p); p += nLen
-                    if (p + nameLen <= buffer.size && nameLen > 0) {
-                        val rawName = String(buffer, p, nameLen.toInt(), Charsets.UTF_8).replace('\\', '/')
-                        innerName = rawName.substringAfterLast('/')
-                    }
-                } catch (_: Exception) {}
-            }
-            pos = fileHeadStart + 4 + hSizeLen + hSize.toInt()
-        }
-
-        return RarHeaderResult(pos.toLong(), innerName)
-    }
-
-    private fun parseRar5VolumeHeaderSize(buffer: ByteArray): Long {
-        if (buffer.size < 8) return 0L
-        if (buffer[0] != 0x52.toByte() || buffer[1] != 0x61.toByte() ||
-            buffer[2] != 0x72.toByte() || buffer[3] != 0x21.toByte() ||
-            buffer[4] != 0x1A.toByte() || buffer[5] != 0x07.toByte() ||
-            buffer[6] != 0x01.toByte() || buffer[7] != 0x00.toByte()
-        ) {
-            return 0L
-        }
-
-        var pos = 8
-        if (pos + 6 <= buffer.size) {
-            pos += 4
-            val (hSize, hSizeLen) = readVint(buffer, pos)
-            pos += hSizeLen + hSize.toInt()
-        }
-        if (pos + 6 <= buffer.size) {
-            pos += 4
-            val (hSize, hSizeLen) = readVint(buffer, pos)
-            pos += hSizeLen + hSize.toInt()
-        }
-
-        return pos.toLong()
-    }
-
-    private suspend fun analyzeMergedStreamLayout(
-        fileIds: List<Int>,
-        sizes: List<Long>,
-        originalFileName: String?
-    ): MergedStreamLayout {
-        val count = sizes.size
-        val headerOffsets = LongArray(count)
-        val payloadSizes = LongArray(count)
-        var detectedInnerName: String? = null
-        var isZip = false
-
-        val firstHeader = readBufferFromMerged(fileIds, sizes, 0L, minOf(4096, sizes.first().toInt()))
-        if (firstHeader != null && firstHeader.size >= 6) {
-            val isRar4 = firstHeader.size >= 7 &&
-                    firstHeader[0] == 0x52.toByte() && firstHeader[1] == 0x61.toByte() &&
-                    firstHeader[2] == 0x72.toByte() && firstHeader[3] == 0x21.toByte() &&
-                    firstHeader[4] == 0x1A.toByte() && firstHeader[5] == 0x07.toByte() &&
-                    firstHeader[6] == 0x00.toByte()
-
-            val isRar5 = firstHeader.size >= 8 &&
-                    firstHeader[0] == 0x52.toByte() && firstHeader[1] == 0x61.toByte() &&
-                    firstHeader[2] == 0x72.toByte() && firstHeader[3] == 0x21.toByte() &&
-                    firstHeader[4] == 0x1A.toByte() && firstHeader[5] == 0x07.toByte() &&
-                    firstHeader[6] == 0x01.toByte() && firstHeader[7] == 0x00.toByte()
-
-            val is7z = firstHeader.size >= 6 &&
-                    firstHeader[0] == 0x37.toByte() && firstHeader[1] == 0x7A.toByte() &&
-                    firstHeader[2] == 0xBC.toByte() && firstHeader[3] == 0xAF.toByte() &&
-                    firstHeader[4] == 0x27.toByte() && firstHeader[5] == 0x1C.toByte()
-
-            val isZipHeader = firstHeader.size >= 4 &&
-                    firstHeader[0] == 0x50.toByte() && firstHeader[1] == 0x4B.toByte() &&
-                    (firstHeader[2] == 0x03.toByte() || firstHeader[2] == 0x05.toByte() || firstHeader[2] == 0x07.toByte())
-
-            if (isZipHeader) {
-                isZip = true
-            } else if (isRar4) {
-                val rarInfo = parseRar4Header(firstHeader)
-                headerOffsets[0] = rarInfo.headerSize
-                detectedInnerName = rarInfo.fileName
-
-                for (i in 1 until count) {
-                    headerOffsets[i] = 54L
-                }
-            } else if (isRar5) {
-                val rar5Info = parseRar5Header(firstHeader)
-                headerOffsets[0] = rar5Info.headerSize
-                detectedInnerName = rar5Info.fileName
-
-                for (i in 1 until count) {
-                    headerOffsets[i] = 54L
-                }
-            } else if (is7z) {
-                headerOffsets[0] = 32L
-                for (i in 1 until count) {
-                    headerOffsets[i] = 0L
-                }
-            }
-        }
-
-        var totalPayload = 0L
-        for (i in 0 until count) {
-            val h = minOf(headerOffsets[i], sizes[i])
-            payloadSizes[i] = maxOf(0L, sizes[i] - h)
-            totalPayload += payloadSizes[i]
-        }
-
-        val effectiveName = detectedInnerName?.takeIf { it.isNotBlank() } ?: originalFileName
-        var ext = effectiveName?.substringAfterLast('.', "")?.lowercase() ?: ""
-        if (ext.matches(Regex("^\\d+$")) || ext == "part" || ext == "rar" || ext == "7z" || ext.startsWith("z")) {
-            val clean = effectiveName?.substringBeforeLast('.', "") ?: ""
-            val ext2 = clean.substringAfterLast('.', "").lowercase()
-            if (ext2.isNotBlank() && ext2 != clean) ext = ext2
-        }
-        var mime = getMimeType(ext)
-        if (mime == "application/octet-stream" || mime.isBlank()) {
-            mime = "video/mp4"
-        }
-
-        return MergedStreamLayout(
-            headerOffsets = headerOffsets,
-            payloadSizes = payloadSizes,
-            totalPayloadSize = if (totalPayload > 0L) totalPayload else sizes.sum(),
-            innerFileName = effectiveName,
-            mimeType = mime,
-            isZip = isZip
-        )
-    }
-
-    private suspend fun readChunkFromMergedLayout(
-        fileIds: List<Int>,
-        sizes: List<Long>,
-        layout: MergedStreamLayout,
-        globalPayloadOffset: Long,
-        limit: Int,
-        metrics: StreamMetrics? = null
-    ): ByteArray? {
-        if (fileIds.isEmpty() || sizes.isEmpty()) return null
-        if (globalPayloadOffset >= layout.totalPayloadSize) return null
-
-        val payloadStartOffsets = LongArray(sizes.size)
-        for (i in 1 until sizes.size) {
-            payloadStartOffsets[i] = payloadStartOffsets[i - 1] + layout.payloadSizes[i - 1]
-        }
-
-        var partIndex = payloadStartOffsets.indexOfLast { it <= globalPayloadOffset }
-        if (partIndex < 0) partIndex = 0
-
-        val partFileId = fileIds[partIndex]
-        val payloadOffsetInPart = globalPayloadOffset - payloadStartOffsets[partIndex]
-        val partPayloadRemaining = layout.payloadSizes[partIndex] - payloadOffsetInPart
-        val chunkSize = minOf(limit.toLong(), partPayloadRemaining).toInt()
-
-        val actualOffsetInPartFile = layout.headerOffsets[partIndex] + payloadOffsetInPart
-
-        val prefetchBytes = when {
-            prefetchSizeMb == -1L -> 0L
-            prefetchSizeMb <= 0L -> chunkSize.toLong()
-            else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
-        }
-        val alignedPartOffset = actualOffsetInPartFile - (actualOffsetInPartFile % (1024 * 1024))
-        runCatching {
-            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                req.fileId = partFileId
-                req.priority = DOWNLOAD_PRIORITY
-                req.offset = alignedPartOffset
-                req.limit = prefetchBytes
-                req.synchronous = false
-            })
-        }
-
-        if (partPayloadRemaining <= 20 * 1024 * 1024L && partIndex + 1 < fileIds.size) {
-            val nextPartFileId = fileIds[partIndex + 1]
-            val nextPrefetchBytes = when {
-                prefetchSizeMb == -1L -> 0L
-                prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
-                else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
-            }
-            runCatching {
-                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                    req.fileId = nextPartFileId
-                    req.priority = DOWNLOAD_PRIORITY
-                    req.offset = layout.headerOffsets[partIndex + 1]
-                    req.limit = nextPrefetchBytes
-                    req.synchronous = false
-                })
-            }
-        }
-
-        return downloadChunk(partFileId, actualOffsetInPartFile, chunkSize, metrics)
-    }
-
     private suspend fun streamMergedFile(
         fileIds: List<Int>,
         sizes: List<Long>,
@@ -883,25 +546,17 @@ object TelegramStreamingProxy {
         output: java.io.OutputStream,
         isHead: Boolean = false
     ) {
-        val totalRawSize = sizes.sum()
-        if (totalRawSize <= 0L || fileIds.isEmpty()) {
+        val totalSize = sizes.sum()
+        if (totalSize <= 0L || fileIds.isEmpty()) {
             output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
             return
         }
 
-        var ext = fileName?.substringAfterLast('.', "")?.lowercase() ?: ""
+        val ext = fileName?.substringAfterLast('.', "")?.lowercase() ?: ""
         if (ext == "zip") {
             streamZipEntryFromMergedOrSingle(fileIds, sizes, fileName, rangeHeader, output, isHead)
             return
         }
-
-        val layout = analyzeMergedStreamLayout(fileIds, sizes, fileName)
-        if (layout.isZip) {
-            streamZipEntryFromMergedOrSingle(fileIds, sizes, fileName, rangeHeader, output, isHead)
-            return
-        }
-
-        val totalSize = layout.totalPayloadSize
 
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
         val start: Long
@@ -916,11 +571,10 @@ object TelegramStreamingProxy {
         }
         val length = end - start + 1
 
-        val mimeType = layout.mimeType
-        val effectiveFileName = layout.innerFileName ?: fileName
-        val safeFileName = effectiveFileName?.replace("\"", "\\\"") ?: "video.mp4"
+        val mimeType = getMimeType(ext)
 
         val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
+        val safeFileName = fileName?.replace("\"", "\\\"") ?: "video.$ext"
         val headers = StringBuilder().apply {
             append("HTTP/1.1 $status\r\n")
             append("Accept-Ranges: bytes\r\n")
@@ -930,93 +584,24 @@ object TelegramStreamingProxy {
             }
             append("Content-Type: $mimeType\r\n")
             append("Content-Disposition: inline; filename=\"$safeFileName\"\r\n")
-            append("Connection: keep-alive\r\n")
-            append("Keep-Alive: timeout=60, max=1000\r\n\r\n")
+            append("Connection: close\r\n\r\n")
         }.toString()
 
-        val groupKey = "merged_${fileIds.joinToString("_")}"
-        val currentJob = kotlin.coroutines.coroutineContext[Job]
-        if (currentJob != null) {
-            val oldJob = activeFileJobs.put(groupKey, currentJob)
-            if (oldJob != null && oldJob != currentJob && oldJob.isActive) {
-                oldJob.cancel()
-            }
+        output.write(headers.toByteArray())
+        output.flush()
+
+        if (isHead) {
+            return
         }
 
-        val m = StreamMetrics(
-            fileId = fileIds.first(),
-            rangeHeader = rangeHeader,
-            startOffset = start,
-            totalSize = totalSize
-        )
-
-        for (fId in fileIds) {
-            activeStreamRequests.getOrPut(fId) { java.util.concurrent.ConcurrentHashMap.newKeySet<String>() }.add(m.reqId)
-            latestActiveStreamReqId[fId] = m.reqId
-        }
-        m.logStart()
-
-        val prefetchBytes = when {
-            prefetchSizeMb == -1L -> 0L
-            prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
-            else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
-        }
-        for (fId in fileIds) {
-            runCatching {
-                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                    req.fileId = fId
-                    req.priority = DOWNLOAD_PRIORITY
-                    req.offset = 0
-                    req.limit = prefetchBytes
-                    req.synchronous = false
-                })
-            }
-        }
-
-        try {
-            output.write(headers.toByteArray())
+        var offset = start
+        while (offset <= end && running) {
+            val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
+            val bytes = readChunkFromMerged(fileIds, sizes, offset, chunkSize)
+            if (bytes == null || bytes.isEmpty()) break
+            output.write(bytes)
             output.flush()
-
-            if (isHead) {
-                m.exitReason = "head_request"
-                m.logEnd()
-                return
-            }
-
-            var offset = start
-            while (offset <= end && running) {
-                val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
-                val bytes = readChunkFromMergedLayout(fileIds, sizes, layout, offset, chunkSize, m)
-                if (bytes == null || bytes.isEmpty()) {
-                    m.exitReason = "read_timeout_or_empty"
-                    break
-                }
-                try {
-                    output.write(bytes)
-                    output.flush()
-                    offset += bytes.size
-                    m.totalBytesServed += bytes.size
-                    m.chunksOk++
-                } catch (e: Exception) {
-                    m.exitReason = "client_disconnect"
-                    break
-                }
-            }
-            m.logEnd()
-        } finally {
-            if (currentJob != null) {
-                activeFileJobs.remove(groupKey, currentJob)
-            }
-            for (fId in fileIds) {
-                if (latestActiveStreamReqId[fId] == m.reqId) {
-                    latestActiveStreamReqId.remove(fId)
-                }
-                val reqSet = activeStreamRequests[fId]
-                reqSet?.remove(m.reqId)
-                if (reqSet == null || reqSet.isEmpty()) {
-                    activeStreamRequests.remove(fId)
-                }
-            }
+            offset += bytes.size
         }
     }
 
@@ -1453,28 +1038,12 @@ object TelegramStreamingProxy {
         limit: Int,
         metrics: StreamMetrics? = null
     ): ByteArray? {
-        if (metrics != null) {
-            val latestReqId = latestActiveStreamReqId[fileId]
-            if (latestReqId != null && latestReqId != metrics.reqId) {
-                TeleflixLogger.log(TAG, "downloadChunk: reqId=${metrics.reqId} for fileId=$fileId superseded by $latestReqId")
-                metrics.exitReason = "superseded"
-                return null
-            }
-        }
         val chunkStartMs = System.currentTimeMillis()
         val timeoutMs = if (metrics?.requestType == "seek_probe") 3_000L else DOWNLOAD_TIMEOUT_MS
         val dataBytes = withTimeoutOrNull(timeoutMs) {
             var attempts = 0
             var consecutiveGetFileErrors = 0
             while (attempts < 2000 && running) {
-                if (metrics != null) {
-                    val latestReqId = latestActiveStreamReqId[fileId]
-                    if (latestReqId != null && latestReqId != metrics.reqId) {
-                        TeleflixLogger.log(TAG, "downloadChunk loop: reqId=${metrics.reqId} for fileId=$fileId superseded by $latestReqId")
-                        metrics.exitReason = "superseded"
-                        return@withTimeoutOrNull null
-                    }
-                }
                 val readRes = try {
                     val lockStart = System.currentTimeMillis()
                     getFileMutex(fileId).withLock {
