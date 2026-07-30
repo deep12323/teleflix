@@ -185,7 +185,9 @@ object TdlibManager {
                     val isZipGroup = group.baseName.lowercase().contains(".zip") || group.parts.any { it.fileName.lowercase().contains(".zip") }
 
                     if (isZipGroup) {
-                        val zipUrl = TelegramRepository.getZipStreamUrl(firstPart.fileId, group.baseName, totalSize)
+                        val freshIds = group.parts.map { it.fileId }
+                        val partSizes = group.parts.map { it.fileSize }
+                        val zipUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
                         resultSources.add(
                             StreamSource(
                                 id = "zip_${firstPart.chatId}_${firstPart.messageId}",
