@@ -133,7 +133,8 @@ class MainActivity : AppCompatActivity() {
         "New Movies" to "movie/year",
         "New Series" to "series/year",
         "IMDB Top" to "movie/imdbRating",
-        "🎭 Genres" to "genres/picker"
+        "🎭 Genres" to "genres/picker",
+        "📚 Library" to "library/list"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -306,6 +307,10 @@ class MainActivity : AppCompatActivity() {
                         showGenreSelectionDialog()
                         return@setOnClickListener
                     }
+                    if (catalogId == "library/list") {
+                        loadLibraryCatalog()
+                        return@setOnClickListener
+                    }
                     selectedCategory = catalogId
                     selectedLabel = label
                     categoryLabel.text = label
@@ -379,6 +384,10 @@ class MainActivity : AppCompatActivity() {
             }
         }, { item ->
             handleItemLongPress(item)
+        }, { item, nowBookmarked ->
+            if (selectedCategory == "library/list" && !nowBookmarked) {
+                loadLibraryCatalog()
+            }
         })
 
         val gridLayoutManager = GridLayoutManager(this, 2).apply {
@@ -601,11 +610,58 @@ class MainActivity : AppCompatActivity() {
 
     // ── Catalog Loading & Endless Pagination ────────────────────
 
+    private fun loadLibraryCatalog(label: String = "📚 Library") {
+        isInSearchMode = false
+        hasMoreItems = false
+        isLoadingMore = false
+        selectedCategory = "library/list"
+        selectedLabel = label
+        categoryLabel.text = label
+        categoryLabel.isClickable = false
+        updateTabSelection("library/list")
+
+        val libraryItems = LibraryManager.getBookmarkedItems(this)
+        mediaList.clear()
+        mediaList.addAll(libraryItems)
+        mediaAdapter?.notifyDataSetChanged()
+
+        if (libraryItems.isEmpty()) {
+            loadingText.text = "Your Library is empty. Bookmark movies, series, or Telegram media using the 🔖⭐ icon on any poster to save them here!"
+            loadingText.visibility = android.view.View.VISIBLE
+        } else {
+            loadingText.visibility = android.view.View.GONE
+            categoryLabel.text = "$label  •  [ 🗑️ Clear Library ]"
+            categoryLabel.isClickable = true
+            categoryLabel.setOnClickListener {
+                AlertDialog.Builder(this)
+                    .setTitle("Clear Library?")
+                    .setMessage("Are you sure you want to remove all bookmarked items from your Library?")
+                    .setPositiveButton("🗑️ Clear All") { _, _ ->
+                        LibraryManager.clearLibrary(this)
+                        mediaList.clear()
+                        mediaAdapter?.notifyDataSetChanged()
+                        categoryLabel.text = label
+                        categoryLabel.isClickable = false
+                        loadingText.text = "Your Library is empty."
+                        loadingText.visibility = android.view.View.VISIBLE
+                        Toast.makeText(this, "Library cleared", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }
+    }
+
     private fun loadInitialCinemeta(catalogId: String, label: String) {
         isInSearchMode = false
         currentSkip = 0
         hasMoreItems = true
         isLoadingMore = true
+
+        if (catalogId == "library/list") {
+            loadLibraryCatalog(label)
+            return
+        }
 
         if (catalogId == "history/list") {
             hasMoreItems = false
@@ -2305,18 +2361,24 @@ class MainActivity : AppCompatActivity() {
     private fun handleItemLongPress(item: MediaItem): Boolean {
         if (item.type == "channel" || item.id == "watch_history" || item.id == "settings") return false
         
+        val isLibraryTab = selectedCategory == "library/list"
         val isHistoryTab = selectedCategory == "history/list"
-        val options = if (isHistoryTab) {
-            arrayOf("🗑️ Delete from Watch History", "🧹 Clear Entire Watch History", "Cancel")
-        } else {
-            arrayOf("🗑️ Remove from Watch History & Reset Resume Progress", "Cancel")
+        val options = when {
+            isLibraryTab -> arrayOf("🗑️ Remove from Library", "Cancel")
+            isHistoryTab -> arrayOf("🗑️ Delete from Watch History", "🧹 Clear Entire Watch History", "Cancel")
+            else -> arrayOf("🗑️ Remove from Watch History & Reset Resume Progress", "Cancel")
         }
 
         AlertDialog.Builder(this)
             .setTitle("Select: ${item.title}")
             .setItems(options) { _, which ->
                 when {
-                    which == 0 -> {
+                    isLibraryTab && which == 0 -> {
+                        LibraryManager.toggleBookmark(this, item)
+                        loadLibraryCatalog()
+                        Toast.makeText(this, "Removed from Library", Toast.LENGTH_SHORT).show()
+                    }
+                    !isLibraryTab && which == 0 -> {
                         val currentList = loadRawWatchHistory().toMutableList()
                         // For history_group items, remove all grouped files
                         if (item.type == "history_group" && item.groupedFiles.isNotEmpty()) {

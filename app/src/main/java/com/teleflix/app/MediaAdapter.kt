@@ -1,14 +1,14 @@
 package com.teleflix.app
 
 import android.graphics.Color
-import android.graphics.Typeface
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.CenterCrop
@@ -17,7 +17,8 @@ import com.bumptech.glide.load.resource.bitmap.RoundedCorners
 class MediaAdapter(
     private val items: List<MediaItem>,
     private val onClick: (MediaItem) -> Unit,
-    private val onLongClick: ((MediaItem) -> Boolean)? = null
+    private val onLongClick: ((MediaItem) -> Boolean)? = null,
+    private val onBookmarkToggle: ((MediaItem, Boolean) -> Unit)? = null
 ) : RecyclerView.Adapter<MediaAdapter.ViewHolder>() {
 
     companion object {
@@ -40,7 +41,8 @@ class MediaAdapter(
         val titleText: TextView,
         val yearText: TextView? = null,
         val overviewText: TextView? = null,
-        val iconText: TextView? = null
+        val iconText: TextView? = null,
+        val bookmarkBadge: TextView? = null
     ) : RecyclerView.ViewHolder(layout)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -125,14 +127,39 @@ class MediaAdapter(
                     }
                 }
 
-                val posterView = ImageView(context).apply {
-                    scaleType = ImageView.ScaleType.CENTER_CROP
+                val posterFrame = FrameLayout(context).apply {
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         dp(125)
                     )
+                }
+
+                val posterView = ImageView(context).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
                     setBackgroundColor(Color.parseColor(UITheme.SURFACE))
                 }
+
+                val bookmarkBadge = TextView(context).apply {
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    setPadding(dp(7), dp(4), dp(7), dp(4))
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        gravity = Gravity.TOP or Gravity.END
+                        setMargins(0, dp(6), dp(6), 0)
+                    }
+                    isClickable = true
+                    isFocusable = true
+                }
+
+                posterFrame.addView(posterView)
+                posterFrame.addView(bookmarkBadge)
 
                 val textContainer = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
@@ -162,10 +189,10 @@ class MediaAdapter(
                 textContainer.addView(yearView)
                 textContainer.addView(overviewView)
 
-                card.addView(posterView)
+                card.addView(posterFrame)
                 card.addView(textContainer)
 
-                return ViewHolder(card, posterView, titleView, yearView, overviewView)
+                return ViewHolder(card, posterView, titleView, yearView, overviewView, bookmarkBadge = bookmarkBadge)
             }
 
             else -> {
@@ -182,14 +209,39 @@ class MediaAdapter(
                     }
                 }
 
-                val posterView = ImageView(context).apply {
-                    scaleType = ImageView.ScaleType.CENTER_CROP
+                val posterFrame = FrameLayout(context).apply {
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         dp(245)
                     )
+                }
+
+                val posterView = ImageView(context).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
                     setBackgroundColor(Color.parseColor(UITheme.SURFACE))
                 }
+
+                val bookmarkBadge = TextView(context).apply {
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    setPadding(dp(7), dp(4), dp(7), dp(4))
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        gravity = Gravity.TOP or Gravity.END
+                        setMargins(0, dp(8), dp(8), 0)
+                    }
+                    isClickable = true
+                    isFocusable = true
+                }
+
+                posterFrame.addView(posterView)
+                posterFrame.addView(bookmarkBadge)
 
                 val textContainer = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
@@ -218,16 +270,17 @@ class MediaAdapter(
                 textContainer.addView(yearView)
                 textContainer.addView(overviewView)
 
-                card.addView(posterView)
+                card.addView(posterFrame)
                 card.addView(textContainer)
 
-                return ViewHolder(card, posterView, titleView, yearView, overviewView)
+                return ViewHolder(card, posterView, titleView, yearView, overviewView, bookmarkBadge = bookmarkBadge)
             }
         }
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val item = items[position]
+        val context = holder.itemView.context
         holder.titleText.text = item.title
 
         if (holder.yearText != null) {
@@ -249,10 +302,10 @@ class MediaAdapter(
 
         if (holder.posterView != null) {
             val refreshedPoster = TelegramStreamingProxy.refreshUrl(item.posterUrl)
-            val cornerPx = UITheme.dpToPx(holder.itemView.context, 16)
+            val cornerPx = UITheme.dpToPx(context, 16)
             if (refreshedPoster.isNotBlank()) {
                 val defaultPlaceholder = if (item.type == "telegram_media") android.R.drawable.ic_media_play else android.R.drawable.ic_menu_gallery
-                Glide.with(holder.itemView.context)
+                Glide.with(context)
                     .load(refreshedPoster)
                     .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.ALL)
                     .transform(CenterCrop(), RoundedCorners(cornerPx))
@@ -264,9 +317,43 @@ class MediaAdapter(
             }
         }
 
+        if (holder.bookmarkBadge != null) {
+            if (item.type == "channel" || item.id == "watch_history") {
+                holder.bookmarkBadge.visibility = View.GONE
+            } else {
+                holder.bookmarkBadge.visibility = View.VISIBLE
+                val isBookmarked = LibraryManager.isBookmarked(context, item.id)
+                bindBookmarkBadge(holder.bookmarkBadge, isBookmarked, context)
+
+                holder.bookmarkBadge.setOnClickListener {
+                    val nowBookmarked = LibraryManager.toggleBookmark(context, item)
+                    bindBookmarkBadge(holder.bookmarkBadge, nowBookmarked, context)
+                    val toastMsg = if (nowBookmarked) {
+                        "Saved '${item.title}' to Library 📚"
+                    } else {
+                        "Removed '${item.title}' from Library"
+                    }
+                    Toast.makeText(context, toastMsg, Toast.SHORT).show()
+                    onBookmarkToggle?.invoke(item, nowBookmarked)
+                }
+            }
+        }
+
         holder.layout.setOnClickListener { onClick(item) }
         holder.layout.setOnLongClickListener {
             onLongClick?.invoke(item) ?: false
+        }
+    }
+
+    private fun bindBookmarkBadge(badge: TextView, isBookmarked: Boolean, context: android.content.Context) {
+        if (isBookmarked) {
+            badge.text = "🔖⭐"
+            badge.setTextColor(Color.parseColor("#FFC107"))
+            badge.background = UITheme.createCardShape(context, "#E60F0F17", 10, "#FFC107", 2)
+        } else {
+            badge.text = "🔖"
+            badge.setTextColor(Color.parseColor("#B0FFFFFF"))
+            badge.background = UITheme.createCardShape(context, "#80000000", 10, "#44FFFFFF", 1)
         }
     }
 
