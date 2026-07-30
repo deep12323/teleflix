@@ -83,6 +83,7 @@ class MainActivity : AppCompatActivity() {
     private var lastTelegramFromMessageId: Long = 0L
     private val telegramStreamCache = mutableMapOf<String, Pair<String, String>>()
     private val telegramGroupCache = mutableMapOf<String, Pair<List<Pair<Long, Long>>, List<Long>>>()
+    private val telegramGroupPartsCache = mutableMapOf<String, List<TelegramVideoMessage>>()
 
     private var activeMediaIdForResume: String = ""
     private var activeStreamUrlForResume: String = ""
@@ -360,9 +361,12 @@ class MainActivity : AppCompatActivity() {
                     val streamInfo = telegramStreamCache[item.id]
                     val titleToPlay = streamInfo?.second ?: item.title
                     val fileName = item.originalFileName.ifBlank { titleToPlay }
+                    val groupParts = telegramGroupPartsCache[item.id]
                     val groupInfo = telegramGroupCache[item.id]
 
-                    if (groupInfo != null) {
+                    if (groupParts != null && groupParts.size > 1) {
+                        showGroupPartsSelectionDialog(item, groupParts, titleToPlay)
+                    } else if (groupInfo != null) {
                         CoroutineScope(Dispatchers.Main).launch {
                             val cleanTitle = titleToPlay.removePrefix("📦 ")
                             val freshUrl = TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second)
@@ -1078,6 +1082,7 @@ class MainActivity : AppCompatActivity() {
                                 val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
                                 telegramStreamCache[key] = Pair(url, group.baseName)
                                 telegramGroupCache[key] = Pair(group.parts.map { Pair(it.chatId, it.messageId) }, partSizes)
+                                telegramGroupPartsCache[key] = group.parts
                                 val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
                                     TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
                                 } else ""
@@ -1195,6 +1200,7 @@ class MainActivity : AppCompatActivity() {
                                 val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
                                 telegramStreamCache[key] = Pair(url, group.baseName)
                                 telegramGroupCache[key] = Pair(group.parts.map { Pair(it.chatId, it.messageId) }, partSizes)
+                                telegramGroupPartsCache[key] = group.parts
                                 val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
                                     TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
                                 } else ""
@@ -1292,6 +1298,7 @@ class MainActivity : AppCompatActivity() {
                                 val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
                                 telegramStreamCache[key] = Pair(url, group.baseName)
                                 telegramGroupCache[key] = Pair(group.parts.map { Pair(it.chatId, it.messageId) }, partSizes)
+                                telegramGroupPartsCache[key] = group.parts
                                 val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
                                     TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
                                 } else ""
@@ -1392,6 +1399,7 @@ class MainActivity : AppCompatActivity() {
                                 val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
                                 telegramStreamCache[key] = Pair(url, group.baseName)
                                 telegramGroupCache[key] = Pair(group.parts.map { Pair(it.chatId, it.messageId) }, partSizes)
+                                telegramGroupPartsCache[key] = group.parts
                                 val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
                                     TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
                                 } else ""
@@ -2516,6 +2524,151 @@ class MainActivity : AppCompatActivity() {
             }
             .show()
         return true
+    }
+
+    private fun showGroupPartsSelectionDialog(item: MediaItem, parts: List<TelegramVideoMessage>, baseName: String) {
+        val scrollView = ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
+        }
+        val cardList = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val cleanTitle = baseName.removePrefix("📦 ").removePrefix("🗄️ ")
+
+        val headerText = TextView(this).apply {
+            text = "📂 $cleanTitle"
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.WHITE)
+            textSize = 15f
+        }
+        cardList.addView(headerText)
+
+        val subHeaderText = TextView(this).apply {
+            text = "This item has ${parts.size} parts. Tap a part to play directly or choose Merged Stream:"
+            UITheme.applyMetadataStyle(this)
+            setPadding(0, 4, 0, 14)
+        }
+        cardList.addView(subHeaderText)
+
+        var dialog: AlertDialog? = null
+
+        // Merged Stream Option
+        val mergedCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = UITheme.createCardShape(this@MainActivity, UITheme.SURFACE, 12, UITheme.STROKE_COLOR, 1)
+            val p = UITheme.dpToPx(this@MainActivity, 12)
+            setPadding(p, p, p, p)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 12))
+            }
+            isClickable = true
+            setOnClickListener {
+                dialog?.dismiss()
+                CoroutineScope(Dispatchers.Main).launch {
+                    val freshIds = parts.map { Pair(it.chatId, it.messageId) }
+                    val sizes = parts.map { it.fileSize }
+                    val freshUrl = TelegramRepository.getFreshMergedMediaUrl(freshIds, cleanTitle, sizes)
+                    val urlToUse = freshUrl ?: item.streamUrl
+                    if (urlToUse.isNotBlank()) {
+                        checkResumeAndSelectPlayer(urlToUse, "📦 $cleanTitle (Merged)", item.posterUrl, item.id, cleanTitle)
+                    }
+                }
+            }
+        }
+        val mergedText = TextView(this).apply {
+            text = "🔗 Stream All Parts Merged (Single Stream)\nTotal Size: ${formatFileSize(parts.sumOf { it.fileSize })}"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 13f
+        }
+        mergedCard.addView(mergedText)
+        cardList.addView(mergedCard)
+
+        val divider = TextView(this).apply {
+            text = "--- Individual Parts (${parts.size}) ---"
+            UITheme.applyMetadataStyle(this)
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 4, 0, 10)
+        }
+        cardList.addView(divider)
+
+        // Individual Parts Options
+        parts.forEachIndexed { index, part ->
+            val partNumStr = String.format("%03d", index + 1)
+            val partTitle = part.fileName.ifBlank { "Part $partNumStr" }
+            val partSize = formatFileSize(part.fileSize)
+
+            val partCard = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 12, UITheme.STROKE_COLOR)
+                val p = UITheme.dpToPx(this@MainActivity, 10)
+                setPadding(p, p, p, p)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 6))
+                }
+                isClickable = true
+                setOnClickListener {
+                    dialog?.dismiss()
+                    CoroutineScope(Dispatchers.Main).launch {
+                        val freshUrl = TelegramRepository.getFreshMediaUrl(part.chatId, part.messageId)
+                        if (freshUrl != null && freshUrl.isNotBlank()) {
+                            checkResumeAndSelectPlayer(freshUrl, partTitle, item.posterUrl, "single_${part.chatId}_${part.messageId}", part.fileName)
+                        } else {
+                            Toast.makeText(this@MainActivity, "Media link expired", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+
+            val iconText = TextView(this).apply {
+                text = "▶ Part ${index + 1}"
+                UITheme.applyCardTitleStyle(this)
+                textSize = 13f
+                setTextColor(Color.parseColor(UITheme.PRIMARY))
+                setPadding(0, 0, 12, 0)
+            }
+            partCard.addView(iconText)
+
+            val partInfo = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val pTitle = TextView(this).apply {
+                text = partTitle
+                UITheme.applyCardTitleStyle(this)
+                textSize = 13f
+            }
+            partInfo.addView(pTitle)
+
+            val pSub = TextView(this).apply {
+                text = "Size: $partSize"
+                UITheme.applyMetadataStyle(this)
+                textSize = 11f
+            }
+            partInfo.addView(pSub)
+
+            partCard.addView(partInfo)
+            cardList.addView(partCard)
+        }
+
+        scrollView.addView(cardList)
+
+        dialog = AlertDialog.Builder(this)
+            .setView(scrollView)
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        dialog.show()
+        val metrics = resources.displayMetrics
+        val w = (metrics.widthPixels * 0.92).toInt()
+        val h = (metrics.heightPixels * 0.82).toInt()
+        dialog.window?.setLayout(w, h)
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.parseColor(UITheme.BACKGROUND)))
     }
 
     private fun showTelegramChatPicker() {
