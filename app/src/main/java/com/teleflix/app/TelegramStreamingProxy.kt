@@ -270,6 +270,36 @@ object TelegramStreamingProxy {
                     ?.substringAfter("=")?.split(",")?.mapNotNull { it.toLongOrNull() }
                 urlSize = mergedSizes?.sum() ?: 0L
                 fileId = mergedFileIds?.firstOrNull()
+            } else if (path.startsWith("/playlist/")) {
+                val segment = path.substringAfter("/playlist/").substringBefore("?")
+                val slashParts = segment.split("/", limit = 2)
+                val fIds = slashParts[0].split(",").mapNotNull { it.toIntOrNull() }
+                
+                val output = socket.getOutputStream()
+                val m3uBuilder = StringBuilder()
+                m3uBuilder.append("#EXTM3U\r\n")
+                m3uBuilder.append("#EXT-X-VERSION:3\r\n")
+                m3uBuilder.append("#EXT-X-MEDIA-SEQUENCE:0\r\n")
+                m3uBuilder.append("#EXT-X-ALLOW-CACHE:YES\r\n")
+                
+                fIds.forEachIndexed { idx, id ->
+                    val partUrl = "http://127.0.0.1:$port/file/$id/part${idx + 1}.mkv?token=$authToken"
+                    m3uBuilder.append("#EXTINF:-1, Part ${idx + 1}\r\n")
+                    m3uBuilder.append("$partUrl\r\n")
+                }
+                m3uBuilder.append("#EXT-X-ENDLIST\r\n")
+
+                val body = m3uBuilder.toString().toByteArray(Charsets.UTF_8)
+                val headers = "HTTP/1.1 200 OK\r\n" +
+                        "Content-Type: application/vnd.apple.mpegurl\r\n" +
+                        "Content-Length: ${body.size}\r\n" +
+                        "Access-Control-Allow-Origin: *\r\n" +
+                        "Connection: close\r\n\r\n"
+
+                output.write(headers.toByteArray())
+                output.write(body)
+                output.flush()
+                return
             } else if (path.startsWith("/zip/")) {
                 val segment = path.substringAfter("/zip/").substringBefore("?")
                 val slashParts = segment.split("/", limit = 2)
@@ -980,6 +1010,13 @@ object TelegramStreamingProxy {
         val szs = sizes.joinToString(",")
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
         return "http://127.0.0.1:$port/merged/$ids/$encodedName?sizes=$szs&token=$authToken"
+    }
+
+    fun getPlaylistUrl(fileIds: List<Int>, fileName: String): String {
+        ensureRunning()
+        val ids = fileIds.joinToString(",")
+        val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
+        return "http://127.0.0.1:$port/playlist/$ids/$encodedName.m3u8?token=$authToken"
     }
 
     fun getZipStreamUrl(fileId: Int, innerFileName: String, zipSize: Long): String {

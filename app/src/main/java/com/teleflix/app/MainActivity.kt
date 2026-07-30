@@ -2555,6 +2555,38 @@ class MainActivity : AppCompatActivity() {
 
         var dialog: AlertDialog? = null
 
+        // Playlist Stream Option (Auto-plays Part 1 -> 2 -> 3 -> 4)
+        val playlistCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = UITheme.createCardShape(this@MainActivity, UITheme.CARD, 12, Color.parseColor(UITheme.PRIMARY), 2)
+            val p = UITheme.dpToPx(this@MainActivity, 12)
+            setPadding(p, p, p, p)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
+            }
+            isClickable = true
+            setOnClickListener {
+                dialog?.dismiss()
+                CoroutineScope(Dispatchers.Main).launch {
+                    val freshIds = parts.map { Pair(it.chatId, it.messageId) }
+                    val freshUrl = TelegramRepository.getFreshPlaylistMediaUrl(freshIds, cleanTitle)
+                    val urlToUse = freshUrl ?: TelegramStreamingProxy.getPlaylistUrl(parts.map { it.fileId }, cleanTitle)
+                    if (urlToUse.isNotBlank()) {
+                        checkResumeAndSelectPlayer(urlToUse, "▶ $cleanTitle (Playlist)", item.posterUrl, item.id, cleanTitle)
+                    }
+                }
+            }
+        }
+        val playlistText = TextView(this).apply {
+            text = "▶ Play All Parts (Playlist Stream)\nAuto-plays Part 1 ➔ Part 2 ➔ Part 3 ➔ Part 4 continuously in VLC/Player"
+            UITheme.applyCardTitleStyle(this)
+            setTextColor(Color.parseColor(UITheme.PRIMARY))
+            textSize = 13f
+        }
+        playlistCard.addView(playlistText)
+        cardList.addView(playlistCard)
+
         // Merged Stream Option
         val mergedCard = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
