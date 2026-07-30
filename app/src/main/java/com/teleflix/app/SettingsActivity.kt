@@ -254,7 +254,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         val channelDesc = TextView(this).apply {
-            text = "Manage Telegram channels to show in your catalog:"
+            text = "Manage Telegram channels to show in your catalog (Enter @channel_name or Channel ID):"
             UITheme.applyMetadataStyle(this)
             setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 10))
         }
@@ -267,7 +267,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         val channelInput = EditText(this).apply {
-            hint = "Enter @channel_name..."
+            hint = "Enter @channel_name or Channel ID..."
             setHintTextColor(Color.parseColor(UITheme.TEXT_SECONDARY))
             setTextColor(Color.WHITE)
             background = UITheme.createInputBackground(this@SettingsActivity)
@@ -1145,15 +1145,16 @@ class SettingsActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
 
+            val isNumericId = ch.username.startsWith("-") || ch.username.toLongOrNull() != null
             val titleView = TextView(this).apply {
-                text = if (ch.title.isNotBlank()) "📢 ${ch.title}" else "📢 ${ch.username}"
+                text = if (isNumericId) "📡 Channel ID: ${ch.username}" else "📢 ${ch.username}"
                 UITheme.applyCardTitleStyle(this)
                 textSize = 14f
             }
             textLayout.addView(titleView)
 
             val subView = TextView(this).apply {
-                text = ch.username
+                text = if (isNumericId) "Private / Unlisted Telegram Channel" else "Public Telegram Channel"
                 UITheme.applyMetadataStyle(this)
             }
             textLayout.addView(subView)
