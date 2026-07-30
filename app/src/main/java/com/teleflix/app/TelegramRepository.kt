@@ -46,6 +46,7 @@ data class TelegramChatInfo(
     val isChannel: Boolean = false,
     val isGroup: Boolean = false,
     val isPrivate: Boolean = false,
+    val isBot: Boolean = false,
     val isArchived: Boolean = false,
     val unreadCount: Int = 0
 )
@@ -275,13 +276,25 @@ object TelegramRepository {
                     var isChannel = false
                     var isGroup = false
                     var isPrivate = false
+                    var isBot = false
+                    var chatUsername: String? = null
 
                     when (val t = chat.type) {
                         is TdApi.ChatTypeSupergroup -> {
                             if (t.isChannel) isChannel = true else isGroup = true
                         }
                         is TdApi.ChatTypeBasicGroup -> isGroup = true
-                        is TdApi.ChatTypePrivate, is TdApi.ChatTypeSecret -> isPrivate = true
+                        is TdApi.ChatTypePrivate -> {
+                            isPrivate = true
+                            try {
+                                val user = TelegramClient.sendRequest(TdApi.GetUser(t.userId)) as? TdApi.User
+                                if (user != null) {
+                                    if (user.type is TdApi.UserTypeBot) isBot = true
+                                    chatUsername = user.usernames?.activeUsernames?.firstOrNull()
+                                }
+                            } catch (_: Exception) {}
+                        }
+                        is TdApi.ChatTypeSecret -> isPrivate = true
                     }
 
                     val photoFileId = chat.photo?.small?.id
@@ -301,11 +314,12 @@ object TelegramRepository {
                         TelegramChatInfo(
                             chatId = chat.id,
                             title = chat.title,
-                            username = null,
+                            username = chatUsername,
                             photoFileId = photoFileId,
                             isChannel = isChannel,
                             isGroup = isGroup,
                             isPrivate = isPrivate,
+                            isBot = isBot,
                             isArchived = isArchived,
                             unreadCount = chat.unreadCount
                         )
@@ -327,13 +341,25 @@ object TelegramRepository {
                     var isChannel = false
                     var isGroup = false
                     var isPrivate = false
+                    var isBot = false
+                    var chatUsername: String? = null
 
                     when (val t = chat.type) {
                         is TdApi.ChatTypeSupergroup -> {
                             if (t.isChannel) isChannel = true else isGroup = true
                         }
                         is TdApi.ChatTypeBasicGroup -> isGroup = true
-                        is TdApi.ChatTypePrivate, is TdApi.ChatTypeSecret -> isPrivate = true
+                        is TdApi.ChatTypePrivate -> {
+                            isPrivate = true
+                            try {
+                                val user = TelegramClient.sendRequest(TdApi.GetUser(t.userId)) as? TdApi.User
+                                if (user != null) {
+                                    if (user.type is TdApi.UserTypeBot) isBot = true
+                                    chatUsername = user.usernames?.activeUsernames?.firstOrNull()
+                                }
+                            } catch (_: Exception) {}
+                        }
+                        is TdApi.ChatTypeSecret -> isPrivate = true
                     }
 
                     val photoFileId = chat.photo?.small?.id
@@ -353,11 +379,12 @@ object TelegramRepository {
                         TelegramChatInfo(
                             chatId = chat.id,
                             title = chat.title,
-                            username = null,
+                            username = chatUsername,
                             photoFileId = photoFileId,
                             isChannel = isChannel,
                             isGroup = isGroup,
                             isPrivate = isPrivate,
+                            isBot = isBot,
                             isArchived = false,
                             unreadCount = chat.unreadCount
                         )

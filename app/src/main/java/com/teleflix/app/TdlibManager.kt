@@ -76,9 +76,7 @@ object TdlibManager {
 
     fun addChannel(context: Context, username: String) {
         var clean = username.trim()
-        if (clean.all { it.isDigit() }) {
-            clean = "-100$clean"
-        } else if (!clean.startsWith("@") && !clean.startsWith("-")) {
+        if (!clean.startsWith("@") && !clean.startsWith("-") && !clean.all { it.isDigit() }) {
             clean = "@$clean"
         }
         
@@ -97,9 +95,7 @@ object TdlibManager {
     fun setChannels(context: Context, channels: List<String>) {
         val cleanList = channels.map { ch ->
             var clean = ch.trim()
-            if (clean.all { it.isDigit() }) {
-                clean = "-100$clean"
-            } else if (!clean.startsWith("@") && !clean.startsWith("-")) {
+            if (!clean.startsWith("@") && !clean.startsWith("-") && !clean.all { it.isDigit() }) {
                 clean = "@$clean"
             }
             clean

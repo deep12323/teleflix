@@ -2659,6 +2659,7 @@ class MainActivity : AppCompatActivity() {
                         infoLayout.addView(titleV)
 
                         val typeBadge = when {
+                            chat.isBot -> "🤖 Bot"
                             chat.isChannel -> "📢 Channel"
                             chat.isGroup -> "👥 Group"
                             chat.isArchived -> "📦 Archived"
