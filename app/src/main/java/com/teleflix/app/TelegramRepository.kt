@@ -326,10 +326,6 @@ object TelegramRepository {
         } catch (_: Exception) { null }
     }
 
-        Log.e(TAG, "Could not resolve channel: $identifier")
-        return null
-    }
-
     suspend fun getChannelTitle(identifier: String): String {
         val isNumeric = identifier.startsWith("-") || identifier.toLongOrNull() != null
         val fallback = if (isNumeric) "Telegram Channel" else identifier
