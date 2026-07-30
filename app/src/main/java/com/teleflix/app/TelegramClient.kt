@@ -149,7 +149,7 @@ object TelegramClient {
         isAutoCleanerRunning = true
         scope.launch {
             while (isActive) {
-                delay(5 * 60 * 1000L) // check every 5 minutes
+                delay(15 * 60 * 1000L) // check every 15 minutes
                 optimizeVideoStorage(512L) // 512MB cap
             }
         }
@@ -161,7 +161,7 @@ object TelegramClient {
             req.size = sizeLimit
             req.ttl = 0
             req.count = 0
-            req.immunityDelay = 60
+            req.immunityDelay = 900 // 15 minutes immunity buffer so active streaming is never interrupted
             req.fileTypes = arrayOf(
                 TdApi.FileTypeDocument(),
                 TdApi.FileTypeVideo(),
