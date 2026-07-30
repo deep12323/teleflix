@@ -64,7 +64,7 @@ object LibraryManager {
         val list = mutableListOf<MediaItem>()
         try {
             val array = JSONArray(jsonStr)
-            for (i in 0 until array.length()) {
+            for (i in (array.length() - 1) downTo 0) {
                 val obj = array.getJSONObject(i)
                 list.add(
                     MediaItem(
