@@ -240,20 +240,29 @@ object TelegramRepository {
         val list = mutableListOf<TelegramChatInfo>()
         val seen = mutableSetOf<Long>()
 
+        // 1. Thoroughly load all chats from Main and Archive chat lists
         val chatLists = listOf(
-            Pair(TdApi.ChatListMain(), false),
-            Pair(TdApi.ChatListArchive(), true)
+            Pair(TdApi.ChatListArchive(), true),
+            Pair(TdApi.ChatListMain(), false)
         )
 
         for (listPair in chatLists) {
             val chatList = listPair.first
             val isArchived = listPair.second
-            try {
-                TelegramClient.sendRequest(TdApi.LoadChats(chatList, 100))
-            } catch (_: Exception) {}
+
+            var loadAttempts = 0
+            while (loadAttempts < 10) {
+                val res = try {
+                    TelegramClient.sendRequest(TdApi.LoadChats(chatList, 100))
+                } catch (_: Exception) { null }
+                if (res is TdApi.Error && res.code == 404) {
+                    break
+                }
+                loadAttempts++
+            }
 
             val chatsObj = (try {
-                TelegramClient.sendRequest(TdApi.GetChats(chatList, 100))
+                TelegramClient.sendRequest(TdApi.GetChats(chatList, 500))
             } catch (_: Exception) { null }) as? TdApi.Chats
 
             if (chatsObj != null) {
@@ -304,6 +313,59 @@ object TelegramRepository {
                 }
             }
         }
+
+        // 2. Also search server for any additional joined chats
+        try {
+            val serverChats = TelegramClient.sendRequest(TdApi.SearchChatsOnServer("", 100)) as? TdApi.Chats
+            if (serverChats != null) {
+                for (id in serverChats.chatIds) {
+                    if (!seen.add(id)) continue
+                    val chat = (try {
+                        TelegramClient.sendRequest(TdApi.GetChat(id))
+                    } catch (_: Exception) { null }) as? TdApi.Chat ?: continue
+
+                    var isChannel = false
+                    var isGroup = false
+                    var isPrivate = false
+
+                    when (val t = chat.type) {
+                        is TdApi.ChatTypeSupergroup -> {
+                            if (t.isChannel) isChannel = true else isGroup = true
+                        }
+                        is TdApi.ChatTypeBasicGroup -> isGroup = true
+                        is TdApi.ChatTypePrivate, is TdApi.ChatTypeSecret -> isPrivate = true
+                    }
+
+                    val photoFileId = chat.photo?.small?.id
+                    if (photoFileId != null && photoFileId > 0) {
+                        runCatching {
+                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = photoFileId
+                                req.priority = 1
+                                req.offset = 0
+                                req.limit = 0
+                                req.synchronous = false
+                            })
+                        }
+                    }
+
+                    list.add(
+                        TelegramChatInfo(
+                            chatId = chat.id,
+                            title = chat.title,
+                            username = null,
+                            photoFileId = photoFileId,
+                            isChannel = isChannel,
+                            isGroup = isGroup,
+                            isPrivate = isPrivate,
+                            isArchived = false,
+                            unreadCount = chat.unreadCount
+                        )
+                    )
+                }
+            }
+        } catch (_: Exception) {}
+
         return list
     }
 

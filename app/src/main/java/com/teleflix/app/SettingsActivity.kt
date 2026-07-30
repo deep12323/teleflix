@@ -28,7 +28,6 @@ class SettingsActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
     private lateinit var authBtn: Button
-    private lateinit var channelContainer: LinearLayout
     private lateinit var apiIdInput: EditText
     private lateinit var apiHashInput: EditText
     private lateinit var apiBox: LinearLayout
@@ -244,85 +243,6 @@ class SettingsActivity : AppCompatActivity() {
         apiBox.addView(saveApiBtn)
 
         loginSettingsContainer.addView(apiBox)
-
-        // 2. Catalogue Channels Section (Collapsible)
-        val channelsSectionContainer = createCollapsibleSection("📡 Catalogue Monitored Channels")
-
-        val channelsCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = UITheme.createCardShape(this@SettingsActivity, UITheme.CARD, 16, UITheme.STROKE_COLOR, 1)
-            val pad = UITheme.dpToPx(this@SettingsActivity, 16)
-            setPadding(pad, pad, pad, pad)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        }
-
-        val channelDesc = TextView(this).apply {
-            text = "Select channels from your Telegram account or enter a channel name/ID below:"
-            UITheme.applyMetadataStyle(this)
-            setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 10))
-        }
-        channelsCard.addView(channelDesc)
-
-        val browseBtn = Button(this).apply {
-            text = "💬 Browse & Select Telegram Channels"
-            textSize = 13f
-            typeface = Typeface.DEFAULT_BOLD
-            background = UITheme.createBadgeDrawable(this@SettingsActivity, UITheme.ACCENT_BLUE, 12)
-            setTextColor(Color.WHITE)
-            val pV = UITheme.dpToPx(this@SettingsActivity, 12)
-            val pH = UITheme.dpToPx(this@SettingsActivity, 16)
-            setPadding(pH, pV, pH, pV)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 12))
-            }
-            setOnClickListener {
-                showTelegramChatPicker()
-            }
-        }
-        channelsCard.addView(browseBtn)
-
-        val addLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 12))
-        }
-
-        val channelInput = EditText(this).apply {
-            hint = "Enter @channel_name or Channel ID..."
-            setHintTextColor(Color.parseColor(UITheme.TEXT_SECONDARY))
-            setTextColor(Color.WHITE)
-            background = UITheme.createInputBackground(this@SettingsActivity)
-            val pV = UITheme.dpToPx(this@SettingsActivity, 10)
-            val pH = UITheme.dpToPx(this@SettingsActivity, 12)
-            setPadding(pH, pV, pH, pV)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(0, 0, UITheme.dpToPx(this@SettingsActivity, 10), 0)
-            }
-        }
-
-        val addBtn = Button(this).apply {
-            text = "Add"
-            textSize = 12f
-            background = UITheme.createBadgeDrawable(this@SettingsActivity, UITheme.PRIMARY, 10)
-            setTextColor(Color.WHITE)
-            setOnClickListener {
-                if (channelInput.text.isNotBlank()) {
-                    TdlibManager.addChannel(this@SettingsActivity, channelInput.text.toString())
-                    channelInput.setText("")
-                    loadChannels()
-                }
-            }
-        }
-
-        addLayout.addView(channelInput)
-        addLayout.addView(addBtn)
-        channelsCard.addView(addLayout)
-
-        channelContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        channelsCard.addView(channelContainer)
-        channelsSectionContainer.addView(channelsCard)
 
         // 3. Video Playback & Preferred Player Section (Collapsible)
         val playbackSectionContainer = createCollapsibleSection("🎬 Video Playback & Internal Player")
@@ -1137,99 +1057,6 @@ class SettingsActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun loadChannels() {
-        channelContainer.removeAllViews()
-        val list = TdlibManager.getChannels(this)
-        if (list.isEmpty()) {
-            val emptyMsg = TextView(this).apply {
-                text = "No Telegram channels monitored yet.\nTap 'Browse & Select Telegram Channels' above to choose from your Telegram account!"
-                UITheme.applyMetadataStyle(this)
-                setPadding(0, UITheme.dpToPx(this@SettingsActivity, 8), 0, UITheme.dpToPx(this@SettingsActivity, 8))
-            }
-            channelContainer.addView(emptyMsg)
-            return
-        }
-        list.forEach { ch ->
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                background = UITheme.createCardShape(this@SettingsActivity, UITheme.SURFACE, 12, UITheme.STROKE_COLOR, 1)
-                val pad = UITheme.dpToPx(this@SettingsActivity, 12)
-                setPadding(pad, pad, pad, pad)
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 8))
-                }
-            }
-
-            val avatarView = ImageView(this).apply {
-                val sz = UITheme.dpToPx(this@SettingsActivity, 40)
-                layoutParams = LinearLayout.LayoutParams(sz, sz).apply {
-                    setMargins(0, 0, UITheme.dpToPx(this@SettingsActivity, 12), 0)
-                }
-                scaleType = ImageView.ScaleType.CENTER_CROP
-            }
-            card.addView(avatarView)
-
-            val textLayout = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-
-            val isNumericId = ch.username.startsWith("-") || ch.username.toLongOrNull() != null
-            val initialDisplayName = if (isNumericId) "Telegram Channel" else ch.username
-
-            val titleView = TextView(this).apply {
-                text = initialDisplayName
-                UITheme.applyCardTitleStyle(this)
-                textSize = 14f
-            }
-            textLayout.addView(titleView)
-
-            val subView = TextView(this).apply {
-                text = ch.username
-                UITheme.applyMetadataStyle(this)
-                textSize = 11f
-            }
-            textLayout.addView(subView)
-
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    val realTitle = TelegramRepository.getChannelTitle(ch.username)
-                    val numericId = ch.username.toLongOrNull() ?: TelegramRepository.getChatId(ch.username)
-                    val photoFileId = if (numericId != null) TelegramRepository.getChatPhotoFileId(numericId) else null
-
-                    withContext(Dispatchers.Main) {
-                        if (realTitle.isNotBlank() && realTitle != ch.username && realTitle.toLongOrNull() == null && !realTitle.startsWith("-")) {
-                            titleView.text = realTitle
-                        }
-                        if (photoFileId != null && photoFileId > 0) {
-                            val thumbUrl = TelegramStreamingProxy.getThumbnailUrl(photoFileId)
-                            com.bumptech.glide.Glide.with(this@SettingsActivity)
-                                .load(thumbUrl)
-                                .circleCrop()
-                                .into(avatarView)
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-
-            val removeBtn = Button(this).apply {
-                text = "Remove"
-                textSize = 11f
-                background = UITheme.createBadgeDrawable(this@SettingsActivity, "#991B1B", 8)
-                setTextColor(Color.WHITE)
-                setOnClickListener {
-                    TdlibManager.removeChannel(this@SettingsActivity, ch.username)
-                    loadChannels()
-                }
-            }
-
-            card.addView(textLayout)
-            card.addView(removeBtn)
-            channelContainer.addView(card)
-        }
-    }
-
     private fun showTelegramChatPicker() {
         val dialogView = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1290,7 +1117,6 @@ class SettingsActivity : AppCompatActivity() {
             .setView(dialogView)
             .setPositiveButton("Save Selected") { _, _ ->
                 TdlibManager.setChannels(this@SettingsActivity, currentMonitored.toList())
-                loadChannels()
                 Toast.makeText(this@SettingsActivity, "Updated monitored channels!", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)

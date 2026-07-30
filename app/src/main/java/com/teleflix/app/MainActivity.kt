@@ -5,9 +5,14 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -60,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var modeToggleButton: TextView
     private lateinit var tabScroll: HorizontalScrollView
     private lateinit var tabRow: LinearLayout
+    private lateinit var fabSelectChats: ImageButton
     private var isTelegramCatalogMode = false
     private var currentOpenChannelId: String? = null
     private var currentOpenTopicId: Int = 0
@@ -448,7 +454,37 @@ class MainActivity : AppCompatActivity() {
         })
 
         rootView.addView(recyclerView)
-        setContentView(rootView)
+
+        val mainContainer = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        mainContainer.addView(rootView)
+
+        fabSelectChats = ImageButton(this).apply {
+            val sz = UITheme.dpToPx(this@MainActivity, 56)
+            val lp = FrameLayout.LayoutParams(sz, sz).apply {
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+                val marginEnd = UITheme.dpToPx(this@MainActivity, 20)
+                val marginBottom = UITheme.dpToPx(this@MainActivity, 24)
+                setMargins(0, 0, marginEnd, marginBottom)
+            }
+            layoutParams = lp
+            setImageResource(android.R.drawable.ic_media_play)
+            setColorFilter(Color.WHITE)
+            background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.PRIMARY, sz / 2)
+            elevation = UITheme.dpToPx(this@MainActivity, 8).toFloat()
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                showTelegramChatPicker()
+            }
+        }
+        mainContainer.addView(fabSelectChats)
+
+        setContentView(mainContainer)
 
         loadInitialCinemeta("movie/top", "Top Movies")
     }
@@ -2471,8 +2507,190 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-            .show()
-        return true
+    private fun showTelegramChatPicker() {
+        val dialogView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
+            val pad = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val titleText = TextView(this).apply {
+            text = "💬 Select Telegram Channels & Chats"
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.WHITE)
+            textSize = 16f
+        }
+        dialogView.addView(titleText)
+
+        val subText = TextView(this).apply {
+            text = "Select channels, groups, or archived chats to display in your catalog."
+            UITheme.applyMetadataStyle(this)
+            setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 12))
+        }
+        dialogView.addView(subText)
+
+        val searchInput = EditText(this).apply {
+            hint = "🔍 Search chats by name..."
+            setHintTextColor(Color.parseColor(UITheme.TEXT_SECONDARY))
+            setTextColor(Color.WHITE)
+            background = UITheme.createInputBackground(this@MainActivity)
+            val pV = UITheme.dpToPx(this@MainActivity, 10)
+            val pH = UITheme.dpToPx(this@MainActivity, 12)
+            setPadding(pH, pV, pH, pV)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 12))
+            }
+        }
+        dialogView.addView(searchInput)
+
+        val loadingIndicator = ProgressBar(this).apply {
+            isIndeterminate = true
+            visibility = android.view.View.VISIBLE
+        }
+        dialogView.addView(loadingIndicator)
+
+        val scrollView = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, UITheme.dpToPx(this@MainActivity, 350))
+            visibility = android.view.View.GONE
+        }
+        val chatListContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        scrollView.addView(chatListContainer)
+        dialogView.addView(scrollView)
+
+        val currentMonitored = TdlibManager.getChannels(this).map { it.username }.toMutableSet()
+
+        var alertDialog: AlertDialog? = null
+        alertDialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setPositiveButton("Save Selected") { _, _ ->
+                TdlibManager.setChannels(this@MainActivity, currentMonitored.toList())
+                if (isTelegramCatalogMode) {
+                    loadTelegramChannelsCatalog()
+                }
+                Toast.makeText(this@MainActivity, "Updated catalog channels!", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        alertDialog.show()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val chats = TelegramRepository.getJoinedChatsInfo()
+            withContext(Dispatchers.Main) {
+                loadingIndicator.visibility = android.view.View.GONE
+                scrollView.visibility = android.view.View.VISIBLE
+
+                fun renderList(filterQuery: String = "") {
+                    chatListContainer.removeAllViews()
+                    val filtered = if (filterQuery.isBlank()) chats else chats.filter {
+                        it.title.contains(filterQuery, ignoreCase = true)
+                    }
+
+                    if (filtered.isEmpty()) {
+                        val empty = TextView(this@MainActivity).apply {
+                            text = "No Telegram chats found."
+                            UITheme.applyMetadataStyle(this)
+                            setPadding(0, 20, 0, 20)
+                        }
+                        chatListContainer.addView(empty)
+                        return
+                    }
+
+                    filtered.forEach { chat ->
+                        val chatKey = chat.chatId.toString()
+                        val isChecked = currentMonitored.contains(chatKey) || (chat.username != null && currentMonitored.contains("@" + chat.username))
+
+                        val row = LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = android.view.Gravity.CENTER_VERTICAL
+                            background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 12, UITheme.STROKE_COLOR)
+                            val p = UITheme.dpToPx(this@MainActivity, 10)
+                            setPadding(p, p, p, p)
+                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 6))
+                            }
+                        }
+
+                        val avatarView = ImageView(this@MainActivity).apply {
+                            val sz = UITheme.dpToPx(this@MainActivity, 40)
+                            layoutParams = LinearLayout.LayoutParams(sz, sz).apply {
+                                setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 10), 0)
+                            }
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                        }
+                        if (chat.photoFileId != null && chat.photoFileId > 0) {
+                            val thumbUrl = TelegramStreamingProxy.getThumbnailUrl(chat.photoFileId)
+                            com.bumptech.glide.Glide.with(this@MainActivity)
+                                .load(thumbUrl)
+                                .circleCrop()
+                                .into(avatarView)
+                        }
+                        row.addView(avatarView)
+
+                        val infoLayout = LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.VERTICAL
+                            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                        }
+
+                        val titleV = TextView(this@MainActivity).apply {
+                            text = chat.title
+                            UITheme.applyCardTitleStyle(this)
+                            textSize = 13f
+                        }
+                        infoLayout.addView(titleV)
+
+                        val typeBadge = when {
+                            chat.isChannel -> "📢 Channel"
+                            chat.isGroup -> "👥 Group"
+                            chat.isArchived -> "📦 Archived"
+                            else -> "💬 Chat"
+                        }
+                        val subV = TextView(this@MainActivity).apply {
+                            text = typeBadge
+                            UITheme.applyMetadataStyle(this)
+                            textSize = 11f
+                        }
+                        infoLayout.addView(subV)
+
+                        row.addView(infoLayout)
+
+                        val checkBox = CheckBox(this@MainActivity).apply {
+                            this.isChecked = isChecked
+                            setOnCheckedChangeListener { _, checked ->
+                                if (checked) {
+                                    currentMonitored.add(chatKey)
+                                } else {
+                                    currentMonitored.remove(chatKey)
+                                    if (chat.username != null) {
+                                        currentMonitored.remove("@" + chat.username)
+                                    }
+                                }
+                            }
+                        }
+                        row.addView(checkBox)
+
+                        row.setOnClickListener {
+                            checkBox.isChecked = !checkBox.isChecked
+                        }
+
+                        chatListContainer.addView(row)
+                    }
+                }
+
+                renderList()
+
+                searchInput.addTextChangedListener(object : android.text.TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                        renderList(s?.toString() ?: "")
+                    }
+                    override fun afterTextChanged(s: android.text.Editable?) {}
+                })
+            }
+        }
     }
 
     override fun onBackPressed() {
