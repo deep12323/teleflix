@@ -255,6 +255,25 @@ class MainActivity : AppCompatActivity() {
             textSize = 14f
             maxLines = 1
             inputType = android.text.InputType.TYPE_CLASS_TEXT
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+            setOnEditorActionListener { _, actionId, event ->
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH ||
+                    (event != null && event.keyCode == android.view.KeyEvent.KEYCODE_ENTER && event.action == android.view.KeyEvent.ACTION_DOWN)) {
+                    val q = text.toString()
+                    if (q.isNotBlank()) {
+                        val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+                        imm?.hideSoftInputFromWindow(windowToken, 0)
+                        if (isTelegramCatalogMode) {
+                            performTelegramSearch(q)
+                        } else {
+                            performSearch(q)
+                        }
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
