@@ -169,25 +169,48 @@ class SettingsActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
 
+        val isConfigured = TdlibManager.isApiCredentialsConfigured(this)
+
         val apiTitle = TextView(this).apply {
-            text = "TDLib API Credentials"
+            text = "🔐 TDLib API Credentials (my.telegram.org)"
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.WHITE)
         }
         apiBox.addView(apiTitle)
 
+        val apiStatusText = TextView(this).apply {
+            text = if (isConfigured) "🟢 API Credentials Configured" else "⚠️ API Credentials Required (Set up from my.telegram.org)"
+            textSize = 12f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor(if (isConfigured) "#10B981" else "#F59E0B"))
+            setPadding(0, 4, 0, 8)
+        }
+        apiBox.addView(apiStatusText)
+
+        val apiDesc = TextView(this).apply {
+            text = "To connect Telegram, enter your free API ID & Hash from my.telegram.org:\n1. Open https://my.telegram.org in your browser\n2. Log in with your phone number\n3. Click 'API development tools' and create an application\n4. Copy your App api_id and App api_hash below:"
+            textSize = 12f
+            setTextColor(Color.parseColor("#9CA3AF"))
+            setPadding(0, 0, 0, 10)
+        }
+        apiBox.addView(apiDesc)
+
+        val currentApiId = TdlibManager.getApiId(this)
         apiIdInput = EditText(this).apply {
-            hint = "API ID (Default: 2040012)"
+            hint = "App api_id (e.g. 12345678)"
             setHintTextColor(Color.parseColor("#6B7280"))
             setTextColor(Color.WHITE)
-            setText(TdlibManager.getApiId(this@SettingsActivity).toString())
+            if (currentApiId > 0) {
+                setText(currentApiId.toString())
+            }
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
             setPadding(16, 12, 16, 12)
         }
         apiBox.addView(apiIdInput)
 
         apiHashInput = EditText(this).apply {
-            hint = "API Hash"
+            hint = "App api_hash (32-character hex)"
             setHintTextColor(Color.parseColor("#6B7280"))
             setTextColor(Color.WHITE)
             setText(TdlibManager.getApiHash(this@SettingsActivity))
@@ -200,12 +223,18 @@ class SettingsActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#10B981"))
             setTextColor(Color.WHITE)
             setOnClickListener {
-                val id = apiIdInput.text.toString().toIntOrNull() ?: 2040012
-                val hash = apiHashInput.text.toString()
+                val id = apiIdInput.text.toString().trim().toIntOrNull()
+                val hash = apiHashInput.text.toString().trim()
+                if (id == null || id <= 0 || hash.isBlank()) {
+                    Toast.makeText(this@SettingsActivity, "Please enter a valid API ID and API Hash from my.telegram.org", Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
+                }
                 TdlibManager.saveApiId(this@SettingsActivity, id)
                 TdlibManager.saveApiHash(this@SettingsActivity, hash)
                 TelegramClient.reset()
                 TelegramClient.initialize(this@SettingsActivity)
+                apiStatusText.text = "🟢 API Credentials Configured"
+                apiStatusText.setTextColor(Color.parseColor("#10B981"))
                 Toast.makeText(this@SettingsActivity, "Credentials Saved & TDLib Reloaded!", Toast.LENGTH_SHORT).show()
             }
         }
@@ -1000,6 +1029,15 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun showPhoneDialog() {
         currentDialog?.dismiss()
+        if (!TdlibManager.isApiCredentialsConfigured(this)) {
+            AlertDialog.Builder(this)
+                .setTitle("API Credentials Required")
+                .setMessage("Please enter your Telegram App API ID and API Hash from https://my.telegram.org in the API Credentials section above before connecting your account.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
         val phoneInput = EditText(this).apply {
             hint = "+1 (555) 019-2834"
             inputType = android.text.InputType.TYPE_CLASS_PHONE

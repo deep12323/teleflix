@@ -91,11 +91,21 @@ object TelegramClient {
     }
 
     private fun sendTdlibParameters(context: Context) {
+        val apiId = TdlibManager.getApiId(context)
+        val apiHash = TdlibManager.getApiHash(context)
+
+        if (apiId <= 0 || apiHash.isBlank()) {
+            _authState.value = TelegramAuthState.Error(
+                "Telegram API Credentials missing. Please enter your API ID and API Hash from https://my.telegram.org in Settings."
+            )
+            return
+        }
+
         val dbDir = File(context.filesDir, "tdlib").absolutePath
         val filesDir = File(context.filesDir, "tdlib_files").absolutePath
         client?.send(TdApi.SetTdlibParameters().also { p ->
-            p.apiId = TdlibManager.getApiId(context)
-            p.apiHash = TdlibManager.getApiHash(context)
+            p.apiId = apiId
+            p.apiHash = apiHash
             p.databaseDirectory = dbDir
             p.filesDirectory = filesDir
             p.databaseEncryptionKey = getOrGenerateDbKey(context)

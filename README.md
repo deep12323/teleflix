@@ -23,9 +23,9 @@ To stream media from your channels or private chats, you need to sign in with yo
 ### Step 1: Open Settings
 Open Teleflix on your phone and tap the **⚙️ Settings** icon in the top right corner.
 
-### Step 2: Set API Credentials (Optional)
-By default, Teleflix includes built-in TDLib credentials (`API_ID` 2040012). If you want to use your own Telegram API credentials:
-1. Go to [my.telegram.org](https://my.telegram.org) and log in with your phone number.
+### Step 2: Set API Credentials (Required for Telegram Login)
+To connect Telegram, you need to provide your own API credentials from [my.telegram.org](https://my.telegram.org):
+1. Go to [my.telegram.org](https://my.telegram.org) in your web browser and log in with your phone number.
 2. Click **API development tools**.
 3. Create an application (App title and short name can be anything).
 4. Copy your **App api_id** and **App api_hash**.

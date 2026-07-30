@@ -25,16 +25,12 @@ object TdlibManager {
     private const val TAG = "TdlibManager"
     private const val PREFS_NAME = "teleflix_tdlib_prefs"
 
-    const val DEFAULT_API_ID = 2040012
-    const val DEFAULT_API_HASH = "b18441a1ed609c10b277028c11e4f4fb"
-
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
     fun getApiId(context: Context): Int {
-        val id = getPrefs(context).getInt("api_id", 0)
-        return if (id != 0) id else DEFAULT_API_ID
+        return getPrefs(context).getInt("api_id", 0)
     }
 
     fun saveApiId(context: Context, apiId: Int) {
@@ -42,12 +38,15 @@ object TdlibManager {
     }
 
     fun getApiHash(context: Context): String {
-        val hash = getPrefs(context).getString("api_hash", "") ?: ""
-        return if (hash.isNotBlank()) hash else DEFAULT_API_HASH
+        return getPrefs(context).getString("api_hash", "") ?: ""
     }
 
     fun saveApiHash(context: Context, apiHash: String) {
-        getPrefs(context).edit().putString("api_hash", apiHash).apply()
+        getPrefs(context).edit().putString("api_hash", apiHash.trim()).apply()
+    }
+
+    fun isApiCredentialsConfigured(context: Context): Boolean {
+        return getApiId(context) > 0 && getApiHash(context).isNotBlank()
     }
 
     fun getUserPhone(context: Context): String {
