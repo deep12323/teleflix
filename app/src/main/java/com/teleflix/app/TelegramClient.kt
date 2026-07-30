@@ -135,51 +135,12 @@ object TelegramClient {
             }
             optimizeStorage()
             updateCacheLimit()
-            startBackgroundVideoCleaner()
         })
     }
 
-    fun updateCacheLimit(limitMb: Long = 256L) {
-        val tdlibLimit = limitMb * 1024L * 1024L
-        client?.send(TdApi.SetOption("storage_max_size", TdApi.OptionValueInteger(tdlibLimit)), null)
-        client?.send(TdApi.SetOption("storage_max_time_from_last_access", TdApi.OptionValueInteger(0L)), null)
-        client?.send(TdApi.SetOption("message_database_max_size", TdApi.OptionValueInteger(30L * 1024L * 1024L)), null)
-        client?.send(TdApi.SetOption("file_database_max_size", TdApi.OptionValueInteger(20L * 1024L * 1024L)), null)
-        client?.send(TdApi.SetOption("chat_info_database_max_size", TdApi.OptionValueInteger(20L * 1024L * 1024L)), null)
-    }
-
-    private fun startBackgroundVideoCleaner() {
-        if (isAutoCleanerRunning) return
-        isAutoCleanerRunning = true
-        scope.launch {
-            while (isActive) {
-                delay(15 * 60 * 1000L) // check every 15 minutes
-                optimizeVideoStorage(256L) // 256MB cap
-            }
-        }
-    }
-
-    private fun optimizeVideoStorage(limitMb: Long) {
-        val sizeLimit = limitMb * 1024L * 1024L
-        client?.send(TdApi.OptimizeStorage().also { req ->
-            req.size = sizeLimit
-            req.ttl = 0
-            req.count = 0
-            req.immunityDelay = 900 // 15 minutes immunity buffer so active streaming is never interrupted
-            req.fileTypes = arrayOf(
-                TdApi.FileTypeDocument(),
-                TdApi.FileTypeVideo(),
-                TdApi.FileTypeVideoNote(),
-                TdApi.FileTypeAudio(),
-                TdApi.FileTypeVoiceNote(),
-                TdApi.FileTypeAnimation(),
-                TdApi.FileTypeUnknown()
-            )
-            req.chatIds = longArrayOf()
-            req.excludeChatIds = longArrayOf()
-            req.returnDeletedFileStatistics = false
-            req.chatLimit = 0
-        }, null)
+    fun updateCacheLimit() {
+        client?.send(TdApi.SetOption("storage_max_size", TdApi.OptionValueInteger(0L)), null)
+        client?.send(TdApi.SetOption("storage_max_files", TdApi.OptionValueInteger(0L)), null)
     }
 
     fun optimizeStorage() {
