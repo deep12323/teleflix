@@ -2580,87 +2580,13 @@ class MainActivity : AppCompatActivity() {
         cardList.addView(headerText)
 
         val subHeaderText = TextView(this).apply {
-            text = "This item has ${parts.size} parts. Tap a part to play directly or choose Merged Stream:"
+            text = "This video has ${parts.size} parts. Select a part to play:"
             UITheme.applyMetadataStyle(this)
             setPadding(0, 4, 0, 14)
         }
         cardList.addView(subHeaderText)
 
         var dialog: AlertDialog? = null
-
-        // Playlist Stream Option (Auto-plays Part 1 -> 2 -> 3 -> 4)
-        val playlistCard = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            background = UITheme.createCardShape(this@MainActivity, UITheme.CARD, 12, UITheme.PRIMARY, 2)
-            val p = UITheme.dpToPx(this@MainActivity, 12)
-            setPadding(p, p, p, p)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
-            }
-            isClickable = true
-            setOnClickListener {
-                dialog?.dismiss()
-                CoroutineScope(Dispatchers.Main).launch {
-                    val freshIds = parts.map { Pair(it.chatId, it.messageId) }
-                    val partDurs = parts.map { it.duration }
-                    val partSzs = parts.map { it.fileSize }
-                    val freshUrl = TelegramRepository.getFreshPlaylistMediaUrl(freshIds, cleanTitle, partDurs, partSzs)
-                    val urlToUse = freshUrl ?: TelegramStreamingProxy.getPlaylistUrl(parts.map { it.fileId }, cleanTitle, partDurs, partSzs)
-                    if (urlToUse.isNotBlank()) {
-                        checkResumeAndSelectPlayer(urlToUse, "▶ $cleanTitle (Playlist)", item.posterUrl, item.id, cleanTitle)
-                    }
-                }
-            }
-        }
-        val playlistText = TextView(this).apply {
-            text = "▶ Play All Parts (Playlist Stream)\nAuto-plays Part 1 ➔ Part 2 ➔ Part 3 ➔ Part 4 continuously in VLC/Player"
-            UITheme.applyCardTitleStyle(this)
-            setTextColor(Color.parseColor(UITheme.PRIMARY))
-            textSize = 13f
-        }
-        playlistCard.addView(playlistText)
-        cardList.addView(playlistCard)
-
-        // Merged Stream Option
-        val mergedCard = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            background = UITheme.createCardShape(this@MainActivity, UITheme.SURFACE, 12, UITheme.STROKE_COLOR, 1)
-            val p = UITheme.dpToPx(this@MainActivity, 12)
-            setPadding(p, p, p, p)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 12))
-            }
-            isClickable = true
-            setOnClickListener {
-                dialog?.dismiss()
-                CoroutineScope(Dispatchers.Main).launch {
-                    val freshIds = parts.map { Pair(it.chatId, it.messageId) }
-                    val sizes = parts.map { it.fileSize }
-                    val freshUrl = TelegramRepository.getFreshMergedMediaUrl(freshIds, cleanTitle, sizes)
-                    val urlToUse = freshUrl ?: item.streamUrl
-                    if (urlToUse.isNotBlank()) {
-                        checkResumeAndSelectPlayer(urlToUse, "📦 $cleanTitle (Merged)", item.posterUrl, item.id, cleanTitle)
-                    }
-                }
-            }
-        }
-        val mergedText = TextView(this).apply {
-            text = "🔗 Stream All Parts Merged (Single Stream)\nTotal Size: ${formatFileSize(parts.sumOf { it.fileSize })}"
-            UITheme.applyCardTitleStyle(this)
-            textSize = 13f
-        }
-        mergedCard.addView(mergedText)
-        cardList.addView(mergedCard)
-
-        val divider = TextView(this).apply {
-            text = "--- Individual Parts (${parts.size}) ---"
-            UITheme.applyMetadataStyle(this)
-            gravity = android.view.Gravity.CENTER
-            setPadding(0, 4, 0, 10)
-        }
-        cardList.addView(divider)
 
         // Individual Parts Options
         parts.forEachIndexed { index, part ->
