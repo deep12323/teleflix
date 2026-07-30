@@ -76,7 +76,9 @@ object TdlibManager {
 
     fun addChannel(context: Context, username: String) {
         var clean = username.trim()
-        if (!clean.startsWith("@") && clean.toLongOrNull() == null) {
+        if (clean.all { it.isDigit() }) {
+            clean = "-100$clean"
+        } else if (!clean.startsWith("@") && !clean.startsWith("-")) {
             clean = "@$clean"
         }
         

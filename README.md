@@ -43,8 +43,8 @@ To connect Telegram, you need to provide your own API credentials from [my.teleg
 1. Go to **Settings → Catalogue Monitored Channels**.
 2. Add channels using either of the following formats:
    - **By Username**: Type the `@channel_username` or `channel_username` (e.g., `@movie_channel`).
-   - **By Channel ID**: For private or unlisted channels without a public `@username`, simply enter the numeric **Channel ID** (e.g., `1234567890`). You do not need to add `-100` first.
-     > *Tip: You can find a private channel ID from a message link (`t.me/c/1234567890/100`) or by forwarding a message to `@userinfobot` / `@getidsbot`.*
+   - **By Channel ID**: For private or unlisted channels without a public `@username`, enter the numeric **Channel ID** with the required Telegram `-100` prefix (e.g., `-1001234567890`).
+     > *Note: Telegram channel IDs require `-100` at the beginning (e.g. `-100` + `1234567890` = `-1001234567890`). If you enter raw digits like `1234567890`, Teleflix automatically prepends `-100` for you.*
 3. Tap **Add Channel**.
 4. Toggle the main screen mode to **💬 Telegram Channels** to view and stream videos directly from your monitored channels!
 
