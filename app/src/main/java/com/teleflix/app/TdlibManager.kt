@@ -174,23 +174,28 @@ object TdlibManager {
             }
         }
 
-        return items.mapNotNull { item ->
+        val resultSources = mutableListOf<StreamSource>()
+        for (item in items) {
             when (item) {
                 is DisplayItem.Group -> {
                     val group = item.group
-                    val freshIds = group.parts.map { it.fileId }
-                    val partSizes = group.parts.map { it.fileSize }
-                    val totalSize = partSizes.sum()
-                    val streamUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
-                    StreamSource(
-                        id = "group_${group.baseName}",
-                        quality = "SPLIT ARCHIVE (${group.parts.size} parts)",
-                        fileName = "🔗 ${group.baseName}",
-                        size = formatBytes(totalSize),
-                        channel = "Telegram Split Pack",
-                        url = streamUrl,
-                        isSplit = true
-                    )
+                    group.parts.forEachIndexed { idx, part ->
+                        val partNumStr = String.format("%03d", idx + 1)
+                        val partTitle = part.fileName.ifBlank { "Part $partNumStr" }
+                        val partSize = formatBytes(part.fileSize)
+                        val streamUrl = TelegramRepository.getStreamUrl(part.fileId, part.fileName, part.fileSize)
+                        resultSources.add(
+                            StreamSource(
+                                id = "single_${part.chatId}_${part.messageId}",
+                                quality = "▶ Part ${idx + 1}",
+                                fileName = "▶ Part ${idx + 1} - $partTitle",
+                                size = partSize,
+                                channel = "Telegram Multi-Part",
+                                url = streamUrl,
+                                isSplit = false
+                            )
+                        )
+                    }
                 }
                 is DisplayItem.Single -> {
                     val msg = item.message
@@ -203,18 +208,21 @@ object TdlibManager {
                     }
                     val qualityTag = extractQualityTag(msg.fileName)
                     val prefix = if (ext == "zip") "🗄️ " else "📺 "
-                    StreamSource(
-                        id = "${msg.chatId}_${msg.messageId}",
-                        quality = if (qualityTag.isNotBlank()) qualityTag else ext.uppercase().ifBlank { "VIDEO" },
-                        fileName = prefix + msg.fileName.ifBlank { "telegram_video.$ext" },
-                        size = sizeStr,
-                        channel = "Telegram Stream",
-                        url = streamUrl,
-                        isZip = (ext == "zip")
+                    resultSources.add(
+                        StreamSource(
+                            id = "${msg.chatId}_${msg.messageId}",
+                            quality = if (qualityTag.isNotBlank()) qualityTag else ext.uppercase().ifBlank { "VIDEO" },
+                            fileName = prefix + msg.fileName.ifBlank { "telegram_video.$ext" },
+                            size = sizeStr,
+                            channel = "Telegram Stream",
+                            url = streamUrl,
+                            isZip = (ext == "zip")
+                        )
                     )
                 }
             }
         }
+        return resultSources
     }
 
     private fun extractQualityTag(name: String): String {
