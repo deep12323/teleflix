@@ -374,7 +374,7 @@ class MainActivity : AppCompatActivity() {
                             Toast.makeText(this@MainActivity, "Loading group parts...", Toast.LENGTH_SHORT).show()
                             CoroutineScope(Dispatchers.Main).launch {
                                 val mediaMessages = withContext(Dispatchers.IO) {
-                                    TelegramRepository.fetchChannelMedia(chatId, limit = 200).first
+                                    TelegramRepository.fetchChannelMedia(chatId.toString(), limit = 200).first
                                 }
                                 val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
                                 val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
