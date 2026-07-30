@@ -428,7 +428,6 @@ class MainActivity : AppCompatActivity() {
                     val currentSpan = spanCount
                     return when (item?.type) {
                         "channel" -> currentSpan
-                        "topic" -> if (currentSpan > 2) 2 else currentSpan
                         else -> 1
                     }
                 }

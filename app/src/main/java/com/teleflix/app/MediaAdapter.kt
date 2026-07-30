@@ -30,7 +30,7 @@ class MediaAdapter(
     override fun getItemViewType(position: Int): Int {
         return when (items[position].type) {
             "channel" -> VIEW_TYPE_CHANNEL
-            "telegram_media", "history_group" -> VIEW_TYPE_TELEGRAM_MEDIA
+            "telegram_media", "history_group", "topic" -> VIEW_TYPE_TELEGRAM_MEDIA
             else -> VIEW_TYPE_DEFAULT
         }
     }
