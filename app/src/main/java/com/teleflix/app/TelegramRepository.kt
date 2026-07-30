@@ -224,12 +224,18 @@ object TelegramRepository {
     }
 
     suspend fun getChannelTitle(identifier: String): String {
-        val chatId = getChatId(identifier) ?: return identifier
+        val isNumeric = identifier.startsWith("-") || identifier.toLongOrNull() != null
+        val fallback = if (isNumeric) "Telegram Channel" else identifier
+        val chatId = getChatId(identifier) ?: return fallback
         return try {
             val chat = TelegramClient.sendRequest(TdApi.GetChat(chatId)) as? TdApi.Chat
-            if (chat != null && chat.title.isNotBlank()) chat.title else identifier
+            if (chat != null && chat.title.isNotBlank() && chat.title.toLongOrNull() == null && !chat.title.startsWith("-")) {
+                chat.title
+            } else {
+                fallback
+            }
         } catch (_: Exception) {
-            identifier
+            fallback
         }
     }
 

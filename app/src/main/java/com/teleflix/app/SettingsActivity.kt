@@ -1145,12 +1145,26 @@ class SettingsActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
 
+            val isNumericId = ch.username.startsWith("-") || ch.username.toLongOrNull() != null
+            val initialDisplayName = if (isNumericId) "Telegram Channel" else ch.username
+
             val titleView = TextView(this).apply {
-                text = ch.username
+                text = initialDisplayName
                 UITheme.applyCardTitleStyle(this)
                 textSize = 14f
             }
             textLayout.addView(titleView)
+
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    val realTitle = TelegramRepository.getChannelTitle(ch.username)
+                    if (realTitle.isNotBlank() && realTitle != ch.username && realTitle.toLongOrNull() == null && !realTitle.startsWith("-")) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            titleView.text = realTitle
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
 
             val removeBtn = Button(this).apply {
                 text = "Remove"
