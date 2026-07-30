@@ -74,9 +74,10 @@ object TelegramClient {
             }
             try {
                 val dbDir = File(context.filesDir, "tdlib")
-                val filesDir = File(context.filesDir, "tdlib_files")
+                val filesDir = File(context.cacheDir, "tdlib_files")
                 if (!dbDir.exists()) dbDir.mkdirs()
                 if (!filesDir.exists()) filesDir.mkdirs()
+                try { File(context.filesDir, "tdlib_files").deleteRecursively() } catch (_: Exception) {}
 
                 client = Client.create(
                     { update -> handleUpdate(context, update) },
@@ -102,7 +103,7 @@ object TelegramClient {
         }
 
         val dbDir = File(context.filesDir, "tdlib").absolutePath
-        val filesDir = File(context.filesDir, "tdlib_files").absolutePath
+        val filesDir = File(context.cacheDir, "tdlib_files").absolutePath
         client?.send(TdApi.SetTdlibParameters().also { p ->
             p.apiId = apiId
             p.apiHash = apiHash
