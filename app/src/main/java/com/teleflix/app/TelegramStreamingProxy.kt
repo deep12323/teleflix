@@ -518,6 +518,7 @@ object TelegramStreamingProxy {
             else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
         }
         val alignedPartOffset = partOffset - (partOffset % (1024 * 1024))
+
         runCatching {
             TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                 req.fileId = partFileId
@@ -528,7 +529,28 @@ object TelegramStreamingProxy {
             })
         }
 
-        return downloadChunk(partFileId, partOffset, chunkSize)
+        // Proactively prefetch the NEXT part when approaching boundary (within 50MB)
+        if (partIndex + 1 < fileIds.size && partRemaining < 50 * 1024 * 1024L) {
+            val nextFileId = fileIds[partIndex + 1]
+            runCatching {
+                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                    req.fileId = nextFileId
+                    req.priority = DOWNLOAD_PRIORITY
+                    req.offset = 0
+                    req.limit = prefetchBytes
+                    req.synchronous = false
+                })
+            }
+        }
+
+        var chunk = downloadChunk(partFileId, partOffset, chunkSize)
+        var retries = 0
+        while ((chunk == null || chunk.isEmpty()) && retries < 5 && running) {
+            kotlinx.coroutines.delay(300)
+            chunk = downloadChunk(partFileId, partOffset, chunkSize)
+            retries++
+        }
+        return chunk
     }
 
     private suspend fun readBufferFromMerged(
@@ -568,6 +590,23 @@ object TelegramStreamingProxy {
         if (ext == "zip") {
             streamZipEntryFromMergedOrSingle(fileIds, sizes, fileName, rangeHeader, output, isHead)
             return
+        }
+
+        val prefetchBytes = when {
+            prefetchSizeMb == -1L -> 0L
+            prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
+            else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
+        }
+        for (fId in fileIds) {
+            runCatching {
+                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                    req.fileId = fId
+                    req.priority = DOWNLOAD_PRIORITY
+                    req.offset = 0
+                    req.limit = prefetchBytes
+                    req.synchronous = false
+                })
+            }
         }
 
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
