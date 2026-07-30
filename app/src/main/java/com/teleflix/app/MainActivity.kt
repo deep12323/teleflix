@@ -2507,6 +2507,10 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+            .show()
+        return true
+    }
+
     private fun showTelegramChatPicker() {
         val dialogView = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

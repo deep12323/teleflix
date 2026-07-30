@@ -866,8 +866,6 @@ class SettingsActivity : AppCompatActivity() {
                 try { cacheSub.text = String.format("Cache: %.1f MB", sizeMb) } catch (_: Exception) {}
             }
         }
-
-        loadChannels()
     }
 
     override fun onStart() {
