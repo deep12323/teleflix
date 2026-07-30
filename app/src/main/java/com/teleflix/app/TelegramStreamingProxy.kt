@@ -558,6 +558,319 @@ object TelegramStreamingProxy {
         return if (bytesRead == totalToRead) buffer else if (bytesRead > 0) buffer.copyOf(bytesRead) else null
     }
 
+    private data class MergedStreamLayout(
+        val headerOffsets: LongArray,
+        val payloadSizes: LongArray,
+        val totalPayloadSize: Long,
+        val innerFileName: String?,
+        val mimeType: String,
+        val isZip: Boolean
+    )
+
+    private fun readVint(buffer: ByteArray, offset: Int): Pair<Long, Int> {
+        var result = 0L
+        var shift = 0
+        var pos = offset
+        while (pos < buffer.size && shift < 63) {
+            val b = buffer[pos].toInt() and 0xFF
+            result = result or ((b and 0x7F).toLong() shl shift)
+            pos++
+            if ((b and 0x80) == 0) break
+            shift += 7
+        }
+        return Pair(result, maxOf(1, pos - offset))
+    }
+
+    private data class RarHeaderResult(val headerSize: Long, val fileName: String?)
+
+    private fun parseRar4Header(buffer: ByteArray): RarHeaderResult {
+        if (buffer.size < 7) return RarHeaderResult(0L, null)
+        var pos = 7
+        var innerName: String? = null
+
+        if (pos + 7 <= buffer.size) {
+            val headType = buffer[pos + 2].toInt() and 0xFF
+            val headSize = (buffer[pos + 5].toInt() and 0xFF) or ((buffer[pos + 6].toInt() and 0xFF) shl 8)
+            if (headType == 0x73 && headSize > 0) {
+                pos += headSize
+            }
+        }
+
+        if (pos + 32 <= buffer.size) {
+            val headType = buffer[pos + 2].toInt() and 0xFF
+            val headFlags = (buffer[pos + 3].toInt() and 0xFF) or ((buffer[pos + 4].toInt() and 0xFF) shl 8)
+            val headSize = (buffer[pos + 5].toInt() and 0xFF) or ((buffer[pos + 6].toInt() and 0xFF) shl 8)
+            val nameSize = (buffer[pos + 26].toInt() and 0xFF) or ((buffer[pos + 27].toInt() and 0xFF) shl 8)
+
+            if (headType == 0x74 && headSize > 0) {
+                val isLarge = (headFlags and 0x0100) != 0
+                val nameOffset = pos + if (isLarge) 34 else 26
+                if (nameOffset + nameSize <= buffer.size && nameSize > 0) {
+                    val rawName = String(buffer, nameOffset, nameSize, Charsets.UTF_8).replace('\\', '/')
+                    innerName = rawName.substringAfterLast('/')
+                }
+                pos += headSize
+            }
+        }
+
+        return RarHeaderResult(pos.toLong(), innerName)
+    }
+
+    private fun parseRar4VolumeHeaderSize(buffer: ByteArray): Long {
+        if (buffer.size < 7) return 0L
+        if (buffer[0] != 0x52.toByte() || buffer[1] != 0x61.toByte() ||
+            buffer[2] != 0x72.toByte() || buffer[3] != 0x21.toByte() ||
+            buffer[4] != 0x1A.toByte() || buffer[5] != 0x07.toByte() ||
+            buffer[6] != 0x00.toByte()
+        ) {
+            return 0L
+        }
+
+        var pos = 7
+        if (pos + 7 <= buffer.size) {
+            val headType = buffer[pos + 2].toInt() and 0xFF
+            val headSize = (buffer[pos + 5].toInt() and 0xFF) or ((buffer[pos + 6].toInt() and 0xFF) shl 8)
+            if (headType == 0x73 && headSize > 0) {
+                pos += headSize
+            }
+        }
+        if (pos + 7 <= buffer.size) {
+            val headType = buffer[pos + 2].toInt() and 0xFF
+            val headSize = (buffer[pos + 5].toInt() and 0xFF) or ((buffer[pos + 6].toInt() and 0xFF) shl 8)
+            if ((headType == 0x74 || headType == 0x7A) && headSize > 0) {
+                pos += headSize
+            }
+        }
+
+        return pos.toLong()
+    }
+
+    private fun parseRar5Header(buffer: ByteArray): RarHeaderResult {
+        if (buffer.size < 8) return RarHeaderResult(0L, null)
+        var pos = 8
+        var innerName: String? = null
+
+        if (pos + 6 <= buffer.size) {
+            pos += 4
+            val (hSize, hSizeLen) = readVint(buffer, pos)
+            pos += hSizeLen + hSize.toInt()
+        }
+
+        if (pos + 6 <= buffer.size) {
+            val fileHeadStart = pos
+            pos += 4
+            val (hSize, hSizeLen) = readVint(buffer, pos)
+            val (hType, _) = readVint(buffer, pos + hSizeLen)
+            if (hType == 2L) {
+                try {
+                    var p = pos + hSizeLen
+                    val (_, tLen) = readVint(buffer, p); p += tLen
+                    val (_, fLen) = readVint(buffer, p); p += fLen
+                    val (_, eLen) = readVint(buffer, p); p += eLen
+                    val (_, dLen) = readVint(buffer, p); p += dLen
+                    val (_, uLen) = readVint(buffer, p); p += uLen
+                    val (_, aLen) = readVint(buffer, p); p += aLen
+                    val (_, mLen) = readVint(buffer, p); p += mLen
+                    val (_, cLen) = readVint(buffer, p); p += cLen
+                    val (_, cmLen) = readVint(buffer, p); p += cmLen
+                    val (_, oLen) = readVint(buffer, p); p += oLen
+                    val (nameLen, nLen) = readVint(buffer, p); p += nLen
+                    if (p + nameLen <= buffer.size && nameLen > 0) {
+                        val rawName = String(buffer, p, nameLen.toInt(), Charsets.UTF_8).replace('\\', '/')
+                        innerName = rawName.substringAfterLast('/')
+                    }
+                } catch (_: Exception) {}
+            }
+            pos = fileHeadStart + 4 + hSizeLen + hSize.toInt()
+        }
+
+        return RarHeaderResult(pos.toLong(), innerName)
+    }
+
+    private fun parseRar5VolumeHeaderSize(buffer: ByteArray): Long {
+        if (buffer.size < 8) return 0L
+        if (buffer[0] != 0x52.toByte() || buffer[1] != 0x61.toByte() ||
+            buffer[2] != 0x72.toByte() || buffer[3] != 0x21.toByte() ||
+            buffer[4] != 0x1A.toByte() || buffer[5] != 0x07.toByte() ||
+            buffer[6] != 0x01.toByte() || buffer[7] != 0x00.toByte()
+        ) {
+            return 0L
+        }
+
+        var pos = 8
+        if (pos + 6 <= buffer.size) {
+            pos += 4
+            val (hSize, hSizeLen) = readVint(buffer, pos)
+            pos += hSizeLen + hSize.toInt()
+        }
+        if (pos + 6 <= buffer.size) {
+            pos += 4
+            val (hSize, hSizeLen) = readVint(buffer, pos)
+            pos += hSizeLen + hSize.toInt()
+        }
+
+        return pos.toLong()
+    }
+
+    private suspend fun analyzeMergedStreamLayout(
+        fileIds: List<Int>,
+        sizes: List<Long>,
+        originalFileName: String?
+    ): MergedStreamLayout {
+        val count = sizes.size
+        val headerOffsets = LongArray(count)
+        val payloadSizes = LongArray(count)
+        var detectedInnerName: String? = null
+        var isZip = false
+
+        val firstHeader = readBufferFromMerged(fileIds, sizes, 0L, minOf(4096, sizes.first().toInt()))
+        if (firstHeader != null && firstHeader.size >= 6) {
+            val isRar4 = firstHeader.size >= 7 &&
+                    firstHeader[0] == 0x52.toByte() && firstHeader[1] == 0x61.toByte() &&
+                    firstHeader[2] == 0x72.toByte() && firstHeader[3] == 0x21.toByte() &&
+                    firstHeader[4] == 0x1A.toByte() && firstHeader[5] == 0x07.toByte() &&
+                    firstHeader[6] == 0x00.toByte()
+
+            val isRar5 = firstHeader.size >= 8 &&
+                    firstHeader[0] == 0x52.toByte() && firstHeader[1] == 0x61.toByte() &&
+                    firstHeader[2] == 0x72.toByte() && firstHeader[3] == 0x21.toByte() &&
+                    firstHeader[4] == 0x1A.toByte() && firstHeader[5] == 0x07.toByte() &&
+                    firstHeader[6] == 0x01.toByte() && firstHeader[7] == 0x00.toByte()
+
+            val is7z = firstHeader.size >= 6 &&
+                    firstHeader[0] == 0x37.toByte() && firstHeader[1] == 0x7A.toByte() &&
+                    firstHeader[2] == 0xBC.toByte() && firstHeader[3] == 0xAF.toByte() &&
+                    firstHeader[4] == 0x27.toByte() && firstHeader[5] == 0x1C.toByte()
+
+            val isZipHeader = firstHeader.size >= 4 &&
+                    firstHeader[0] == 0x50.toByte() && firstHeader[1] == 0x4B.toByte() &&
+                    (firstHeader[2] == 0x03.toByte() || firstHeader[2] == 0x05.toByte() || firstHeader[2] == 0x07.toByte())
+
+            if (isZipHeader) {
+                isZip = true
+            } else if (isRar4) {
+                val rarInfo = parseRar4Header(firstHeader)
+                headerOffsets[0] = rarInfo.headerSize
+                detectedInnerName = rarInfo.fileName
+
+                var partStartOffset = sizes[0]
+                for (i in 1 until count) {
+                    val partHeader = readBufferFromMerged(fileIds, sizes, partStartOffset, minOf(2048, sizes[i].toInt()))
+                    if (partHeader != null) {
+                        headerOffsets[i] = parseRar4VolumeHeaderSize(partHeader)
+                    }
+                    partStartOffset += sizes[i]
+                }
+            } else if (isRar5) {
+                val rar5Info = parseRar5Header(firstHeader)
+                headerOffsets[0] = rar5Info.headerSize
+                detectedInnerName = rar5Info.fileName
+
+                var partStartOffset = sizes[0]
+                for (i in 1 until count) {
+                    val partHeader = readBufferFromMerged(fileIds, sizes, partStartOffset, minOf(2048, sizes[i].toInt()))
+                    if (partHeader != null) {
+                        headerOffsets[i] = parseRar5VolumeHeaderSize(partHeader)
+                    }
+                    partStartOffset += sizes[i]
+                }
+            } else if (is7z) {
+                headerOffsets[0] = 32L
+            }
+        }
+
+        var totalPayload = 0L
+        for (i in 0 until count) {
+            val h = minOf(headerOffsets[i], sizes[i])
+            payloadSizes[i] = maxOf(0L, sizes[i] - h)
+            totalPayload += payloadSizes[i]
+        }
+
+        val effectiveName = detectedInnerName?.takeIf { it.isNotBlank() } ?: originalFileName
+        var ext = effectiveName?.substringAfterLast('.', "")?.lowercase() ?: ""
+        if (ext.matches(Regex("^\\d+$")) || ext == "part" || ext == "rar" || ext == "7z" || ext.startsWith("z")) {
+            val clean = effectiveName?.substringBeforeLast('.', "") ?: ""
+            val ext2 = clean.substringAfterLast('.', "").lowercase()
+            if (ext2.isNotBlank() && ext2 != clean) ext = ext2
+        }
+        var mime = getMimeType(ext)
+        if (mime == "application/octet-stream" || mime.isBlank()) {
+            mime = "video/mp4"
+        }
+
+        return MergedStreamLayout(
+            headerOffsets = headerOffsets,
+            payloadSizes = payloadSizes,
+            totalPayloadSize = if (totalPayload > 0L) totalPayload else sizes.sum(),
+            innerFileName = effectiveName,
+            mimeType = mime,
+            isZip = isZip
+        )
+    }
+
+    private suspend fun readChunkFromMergedLayout(
+        fileIds: List<Int>,
+        sizes: List<Long>,
+        layout: MergedStreamLayout,
+        globalPayloadOffset: Long,
+        limit: Int,
+        metrics: StreamMetrics? = null
+    ): ByteArray? {
+        if (fileIds.isEmpty() || sizes.isEmpty()) return null
+        if (globalPayloadOffset >= layout.totalPayloadSize) return null
+
+        val payloadStartOffsets = LongArray(sizes.size)
+        for (i in 1 until sizes.size) {
+            payloadStartOffsets[i] = payloadStartOffsets[i - 1] + layout.payloadSizes[i - 1]
+        }
+
+        var partIndex = payloadStartOffsets.indexOfLast { it <= globalPayloadOffset }
+        if (partIndex < 0) partIndex = 0
+
+        val partFileId = fileIds[partIndex]
+        val payloadOffsetInPart = globalPayloadOffset - payloadStartOffsets[partIndex]
+        val partPayloadRemaining = layout.payloadSizes[partIndex] - payloadOffsetInPart
+        val chunkSize = minOf(limit.toLong(), partPayloadRemaining).toInt()
+
+        val actualOffsetInPartFile = layout.headerOffsets[partIndex] + payloadOffsetInPart
+
+        val prefetchBytes = when {
+            prefetchSizeMb == -1L -> 0L
+            prefetchSizeMb <= 0L -> chunkSize.toLong()
+            else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
+        }
+        val alignedPartOffset = actualOffsetInPartFile - (actualOffsetInPartFile % (1024 * 1024))
+        runCatching {
+            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                req.fileId = partFileId
+                req.priority = DOWNLOAD_PRIORITY
+                req.offset = alignedPartOffset
+                req.limit = prefetchBytes
+                req.synchronous = false
+            })
+        }
+
+        if (partPayloadRemaining <= 20 * 1024 * 1024L && partIndex + 1 < fileIds.size) {
+            val nextPartFileId = fileIds[partIndex + 1]
+            val nextPrefetchBytes = when {
+                prefetchSizeMb == -1L -> 0L
+                prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
+                else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
+            }
+            runCatching {
+                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                    req.fileId = nextPartFileId
+                    req.priority = DOWNLOAD_PRIORITY
+                    req.offset = layout.headerOffsets[partIndex + 1]
+                    req.limit = nextPrefetchBytes
+                    req.synchronous = false
+                })
+            }
+        }
+
+        return downloadChunk(partFileId, actualOffsetInPartFile, chunkSize, metrics)
+    }
+
     private suspend fun streamMergedFile(
         fileIds: List<Int>,
         sizes: List<Long>,
@@ -566,22 +879,25 @@ object TelegramStreamingProxy {
         output: java.io.OutputStream,
         isHead: Boolean = false
     ) {
-        val totalSize = sizes.sum()
-        if (totalSize <= 0L || fileIds.isEmpty()) {
+        val totalRawSize = sizes.sum()
+        if (totalRawSize <= 0L || fileIds.isEmpty()) {
             output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
             return
         }
 
         var ext = fileName?.substringAfterLast('.', "")?.lowercase() ?: ""
-        if (ext.matches(Regex("^\\d+$")) || ext == "part" || ext.startsWith("z")) {
-            val cleanName = fileName?.substringBeforeLast('.', "") ?: ""
-            ext = cleanName.substringAfterLast('.', "").lowercase()
-        }
-
         if (ext == "zip") {
             streamZipEntryFromMergedOrSingle(fileIds, sizes, fileName, rangeHeader, output, isHead)
             return
         }
+
+        val layout = analyzeMergedStreamLayout(fileIds, sizes, fileName)
+        if (layout.isZip) {
+            streamZipEntryFromMergedOrSingle(fileIds, sizes, fileName, rangeHeader, output, isHead)
+            return
+        }
+
+        val totalSize = layout.totalPayloadSize
 
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
         val start: Long
@@ -596,13 +912,11 @@ object TelegramStreamingProxy {
         }
         val length = end - start + 1
 
-        var mimeType = getMimeType(ext)
-        if (mimeType == "application/octet-stream" || mimeType.isBlank()) {
-            mimeType = "video/mp4"
-        }
+        val mimeType = layout.mimeType
+        val effectiveFileName = layout.innerFileName ?: fileName
+        val safeFileName = effectiveFileName?.replace("\"", "\\\"") ?: "video.mp4"
 
         val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
-        val safeFileName = fileName?.replace("\"", "\\\"") ?: "video.$ext"
         val headers = StringBuilder().apply {
             append("HTTP/1.1 $status\r\n")
             append("Accept-Ranges: bytes\r\n")
@@ -637,7 +951,6 @@ object TelegramStreamingProxy {
         }
         m.logStart()
 
-        // Trigger background download for all parts in the merged file group so TDLib starts fetching them ahead of time
         val prefetchBytes = when {
             prefetchSizeMb == -1L -> 0L
             prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
@@ -668,7 +981,7 @@ object TelegramStreamingProxy {
             var offset = start
             while (offset <= end && running) {
                 val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
-                val bytes = readChunkFromMerged(fileIds, sizes, offset, chunkSize, m)
+                val bytes = readChunkFromMergedLayout(fileIds, sizes, layout, offset, chunkSize, m)
                 if (bytes == null || bytes.isEmpty()) {
                     m.exitReason = "read_timeout_or_empty"
                     break
