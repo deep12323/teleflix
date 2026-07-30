@@ -582,8 +582,8 @@ class SettingsActivity : AppCompatActivity() {
             background = UITheme.createBadgeDrawable(this@SettingsActivity, UITheme.ACCENT_BLUE, 10)
             setTextColor(Color.WHITE)
             setOnClickListener {
-                val sizes = arrayOf("5 MB (Low RAM)", "10 MB", "20 MB (Default)", "50 MB (Smooth 4K)", "100 MB (Ultra Smooth)", "100 GB (Full Buffer)")
-                val values = arrayOf(5L, 10L, 20L, 50L, 100L, 102400L)
+                val sizes = arrayOf("5 MB (Low RAM)", "10 MB", "20 MB", "32 MB (Default)", "50 MB (Smooth 4K)", "100 MB (Ultra Smooth)", "100 GB (Full Buffer)")
+                val values = arrayOf(5L, 10L, 20L, 32L, 50L, 100L, 102400L)
 
                 val scrollView = ScrollView(this@SettingsActivity).apply {
                     setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))

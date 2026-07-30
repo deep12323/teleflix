@@ -635,7 +635,7 @@ object TelegramRepository {
 
     fun getBufferSizeMb(context: Context): Long {
         val prefs = context.getSharedPreferences("teleflix_tdlib_prefs", Context.MODE_PRIVATE)
-        return prefs.getLong("buffer_size_mb", 20L) // Default 20MB
+        return prefs.getLong("buffer_size_mb", 32L) // Default 32MB
     }
 
     fun saveBufferSizeMb(context: Context, limit: Long) {
