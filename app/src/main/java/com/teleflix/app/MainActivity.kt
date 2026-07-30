@@ -415,11 +415,18 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        val gridLayoutManager = GridLayoutManager(this, 2).apply {
+        val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val initialSpan = if (isLandscape) 4 else 2
+        val gridLayoutManager = GridLayoutManager(this, initialSpan).apply {
             spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
                 override fun getSpanSize(position: Int): Int {
                     val item = mediaList.getOrNull(position)
-                    return if (item?.type == "channel") 2 else 1
+                    val currentSpan = spanCount
+                    return when (item?.type) {
+                        "channel" -> currentSpan
+                        "topic" -> if (currentSpan > 2) 2 else currentSpan
+                        else -> 1
+                    }
                 }
             }
         }
@@ -2555,7 +2562,7 @@ class MainActivity : AppCompatActivity() {
         dialogView.addView(loadingIndicator)
 
         val scrollView = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, UITheme.dpToPx(this@MainActivity, 350))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
             visibility = android.view.View.GONE
         }
         val chatListContainer = LinearLayout(this).apply {
@@ -2580,6 +2587,11 @@ class MainActivity : AppCompatActivity() {
             .create()
 
         alertDialog.show()
+        val metrics = resources.displayMetrics
+        val dialogW = (metrics.widthPixels * 0.92).toInt()
+        val dialogH = (metrics.heightPixels * 0.85).toInt()
+        alertDialog.window?.setLayout(dialogW, dialogH)
+        alertDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.parseColor(UITheme.BACKGROUND)))
 
         CoroutineScope(Dispatchers.IO).launch {
             val chats = TelegramRepository.getJoinedChatsInfo()
@@ -2719,6 +2731,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val isLandscape = newConfig.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        (recyclerView.layoutManager as? GridLayoutManager)?.spanCount = if (isLandscape) 4 else 2
+        mediaAdapter?.notifyDataSetChanged()
     }
 
     override fun onDestroy() {
