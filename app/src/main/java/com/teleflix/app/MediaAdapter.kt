@@ -301,8 +301,16 @@ class MediaAdapter(
             val cornerPx = UITheme.dpToPx(context, 16)
             if (refreshedPoster.isNotBlank()) {
                 val defaultPlaceholder = if (item.type == "telegram_media") android.R.drawable.ic_media_play else android.R.drawable.ic_menu_gallery
+                val cacheKey = if (refreshedPoster.contains("/thumbnail/")) {
+                    "thumb_" + refreshedPoster.substringAfter("/thumbnail/").substringBefore("?")
+                } else {
+                    refreshedPoster.substringBefore("?")
+                }
+                val glideUrl = object : com.bumptech.glide.load.model.GlideUrl(refreshedPoster) {
+                    override fun getCacheKey(): String = cacheKey
+                }
                 Glide.with(context)
-                    .load(refreshedPoster)
+                    .load(glideUrl)
                     .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.ALL)
                     .transform(CenterCrop(), RoundedCorners(cornerPx))
                     .placeholder(defaultPlaceholder)
@@ -343,9 +351,9 @@ class MediaAdapter(
 
     private fun bindBookmarkBadge(button: ImageView, isBookmarked: Boolean) {
         if (isBookmarked) {
-            button.setImageResource(R.drawable.ic_bookmark_ribbon_active)
+            button.setImageResource(android.R.drawable.star_big_on)
         } else {
-            button.setImageResource(R.drawable.ic_bookmark_ribbon_inactive)
+            button.setImageResource(android.R.drawable.star_big_off)
         }
     }
 

@@ -61,9 +61,9 @@ object TelegramRepository {
         TelegramStreamingProxy.prefetchSizeMb = getBufferSizeMb(context)
         TelegramStreamingProxy.start()
         
-        // Only wipe old media cache on startup if the user chose "No Cache" (limit <= 1)
-        if (getCacheLimitMb(context) <= 1L) {
-            clearCache(context)
+        // Only wipe old media cache on startup if the user explicitly chose "No Cache" (limit <= 0)
+        if (getCacheLimitMb(context) <= 0L) {
+            clearCache(context, clearPosters = false)
         }
 
         TelegramClient.initialize(context)
@@ -107,7 +107,7 @@ object TelegramRepository {
         return file.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
     }
 
-    private fun clearFolder(dir: File?, preserveDb: Boolean = false) {
+    private fun clearFolder(dir: File?, preserveDb: Boolean = false, preservePosters: Boolean = true) {
         if (dir == null || !dir.exists()) return
         if (!dir.isDirectory) {
             dir.delete()
@@ -115,15 +115,17 @@ object TelegramRepository {
         }
         dir.walkBottomUp().forEach { file ->
             if (file != dir) {
-                if (preserveDb) {
-                    val name = file.name.lowercase()
-                    val parentName = file.parentFile?.name?.lowercase() ?: ""
-                    if (!name.contains("binlog") && !name.contains("sqlite") && !parentName.contains("db")) {
-                        file.delete()
-                    }
-                } else {
-                    file.delete()
+                val name = file.name.lowercase()
+                val path = file.absolutePath.lowercase()
+                val parentName = file.parentFile?.name?.lowercase() ?: ""
+
+                if (preserveDb && (name.contains("binlog") || name.contains("sqlite") || parentName.contains("db"))) {
+                    return@forEach
                 }
+                if (preservePosters && (path.contains("image_manager_disk_cache") || path.contains("glide") || name.contains("poster"))) {
+                    return@forEach
+                }
+                file.delete()
             }
         }
     }
@@ -158,17 +160,17 @@ object TelegramRepository {
         }
     }
 
-    fun clearCache(context: Context) {
+    fun clearCache(context: Context, clearPosters: Boolean = false) {
         try {
             TelegramClient.clearMediaCache(context)
         } catch (_: Exception) {}
         
         try {
-            clearFolder(context.cacheDir, preserveDb = false)
-            clearFolder(context.externalCacheDir, preserveDb = false)
-            clearFolder(File(context.cacheDir, "tdlib_files"), preserveDb = true)
-            clearFolder(File(context.filesDir, "tdlib_files"), preserveDb = true)
-            clearFolder(File(context.filesDir, "tdlib"), preserveDb = true)
+            clearFolder(context.cacheDir, preserveDb = true, preservePosters = !clearPosters)
+            clearFolder(context.externalCacheDir, preserveDb = true, preservePosters = !clearPosters)
+            clearFolder(File(context.cacheDir, "tdlib_files"), preserveDb = true, preservePosters = !clearPosters)
+            clearFolder(File(context.filesDir, "tdlib_files"), preserveDb = true, preservePosters = !clearPosters)
+            clearFolder(File(context.filesDir, "tdlib"), preserveDb = true, preservePosters = !clearPosters)
         } catch (_: Exception) {}
     }
 
@@ -623,7 +625,7 @@ object TelegramRepository {
 
     fun getCacheLimitMb(context: Context): Long {
         val prefs = context.getSharedPreferences("teleflix_tdlib_prefs", Context.MODE_PRIVATE)
-        return prefs.getLong("cache_limit_mb", 1L) // Default to 1MB (No Cache)
+        return prefs.getLong("cache_limit_mb", 2048L) // Default to 2048MB (2GB)
     }
 
     fun saveCacheLimitMb(context: Context, limit: Long) {

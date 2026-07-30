@@ -694,7 +694,7 @@ class SettingsActivity : AppCompatActivity() {
             background = UITheme.createBadgeDrawable(this@SettingsActivity, "#DC2626", 10)
             setTextColor(Color.WHITE)
             setOnClickListener {
-                TelegramRepository.clearCache(this@SettingsActivity)
+                TelegramRepository.clearCache(this@SettingsActivity, clearPosters = true)
                 CoroutineScope(Dispatchers.IO).launch {
                     try { com.bumptech.glide.Glide.get(this@SettingsActivity).clearDiskCache() } catch (_: Exception) {}
                     withContext(Dispatchers.Main) {

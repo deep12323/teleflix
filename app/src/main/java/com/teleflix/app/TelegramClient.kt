@@ -141,7 +141,7 @@ object TelegramClient {
     fun updateCacheLimit(limitMb: Long = 2048L) {
         val tdlibLimit = limitMb * 1024L * 1024L
         client?.send(TdApi.SetOption("storage_max_size", TdApi.OptionValueInteger(tdlibLimit)), null)
-        client?.send(TdApi.SetOption("storage_max_time_from_last_access", TdApi.OptionValueInteger(3600L)), null)
+        client?.send(TdApi.SetOption("storage_max_time_from_last_access", TdApi.OptionValueInteger(0L)), null)
     }
 
     private fun startBackgroundVideoCleaner() {
