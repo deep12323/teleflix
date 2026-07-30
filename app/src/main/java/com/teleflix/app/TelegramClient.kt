@@ -139,10 +139,13 @@ object TelegramClient {
         })
     }
 
-    fun updateCacheLimit(limitMb: Long = 512L) {
+    fun updateCacheLimit(limitMb: Long = 256L) {
         val tdlibLimit = limitMb * 1024L * 1024L
         client?.send(TdApi.SetOption("storage_max_size", TdApi.OptionValueInteger(tdlibLimit)), null)
         client?.send(TdApi.SetOption("storage_max_time_from_last_access", TdApi.OptionValueInteger(0L)), null)
+        client?.send(TdApi.SetOption("message_database_max_size", TdApi.OptionValueInteger(30L * 1024L * 1024L)), null)
+        client?.send(TdApi.SetOption("file_database_max_size", TdApi.OptionValueInteger(20L * 1024L * 1024L)), null)
+        client?.send(TdApi.SetOption("chat_info_database_max_size", TdApi.OptionValueInteger(20L * 1024L * 1024L)), null)
     }
 
     private fun startBackgroundVideoCleaner() {
@@ -151,7 +154,7 @@ object TelegramClient {
         scope.launch {
             while (isActive) {
                 delay(15 * 60 * 1000L) // check every 15 minutes
-                optimizeVideoStorage(512L) // 512MB cap
+                optimizeVideoStorage(256L) // 256MB cap
             }
         }
     }
@@ -204,14 +207,17 @@ object TelegramClient {
     fun clearMediaCacheSync(context: Context) {
         runCatching { optimizeStorage() }
         runCatching {
-            val tdlibFiles = File(context.filesDir, "tdlib_files")
-            if (tdlibFiles.exists()) {
-                tdlibFiles.listFiles()?.forEach { subDir ->
-                    if (subDir.isDirectory && subDir.name.lowercase() != "profile_photos") {
-                        subDir.listFiles()?.forEach { file -> file.delete() }
+            val tdlibDbDir = File(context.filesDir, "tdlib")
+            if (tdlibDbDir.exists()) {
+                tdlibDbDir.listFiles()?.forEach { sub ->
+                    val subName = sub.name.lowercase()
+                    if (sub.isDirectory && subName != "database" && !subName.contains("db")) {
+                        sub.deleteRecursively()
                     }
                 }
             }
+            val filesTdlib = File(context.filesDir, "tdlib_files")
+            if (filesTdlib.exists()) filesTdlib.deleteRecursively()
             val cacheTdlib = File(context.cacheDir, "tdlib_files")
             if (cacheTdlib.exists()) cacheTdlib.deleteRecursively()
         }
