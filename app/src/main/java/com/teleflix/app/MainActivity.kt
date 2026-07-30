@@ -2057,8 +2057,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val isMkv = title.endsWith(".mkv", ignoreCase = true) || streamUrl.lowercase().contains(".mkv")
-        val mimeType = if (isMkv) "video/x-matroska" else "video/*"
+        val isPlaylist = streamUrl.contains("/playlist/") || streamUrl.lowercase().contains(".m3u8") || streamUrl.lowercase().contains(".m3u")
+        val isMkv = !isPlaylist && (title.endsWith(".mkv", ignoreCase = true) || streamUrl.lowercase().contains(".mkv"))
+        val mimeType = when {
+            isPlaylist -> "application/vnd.apple.mpegurl"
+            isMkv -> "video/x-matroska"
+            else -> "video/*"
+        }
 
         val baseIntent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(Uri.parse(streamUrl), mimeType)
