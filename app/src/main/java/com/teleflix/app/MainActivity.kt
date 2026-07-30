@@ -364,7 +364,15 @@ class MainActivity : AppCompatActivity() {
                     val groupParts = telegramGroupPartsCache[item.id]
                     val groupInfo = telegramGroupCache[item.id]
 
-                    if (groupParts != null && groupParts.size > 1) {
+                    val isZipMedia = item.title.lowercase().contains(".zip") || fileName.lowercase().contains(".zip") || item.id.startsWith("zip_")
+                    if (isZipMedia) {
+                        val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                        if (backupUrl.isNotBlank()) {
+                            checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                        } else {
+                            Toast.makeText(this@MainActivity, "ZIP media link unavailable", Toast.LENGTH_SHORT).show()
+                        }
+                    } else if (groupParts != null && groupParts.size > 1) {
                         showGroupPartsSelectionDialog(item, groupParts, titleToPlay)
                     } else if (item.id.startsWith("group_")) {
                         val rest = item.id.removePrefix("group_")
@@ -1828,7 +1836,8 @@ class MainActivity : AppCompatActivity() {
                         setOnClickListener {
                             streamDialog.dismiss()
                             val parts = telegramGroupPartsCache[stream.id]
-                            if (stream.isSplit || stream.id.startsWith("group_")) {
+                            val isZipFile = stream.isZip || stream.fileName.lowercase().contains(".zip")
+                            if ((stream.isSplit || stream.id.startsWith("group_")) && !isZipFile) {
                                 val cleanName = stream.fileName.removePrefix("📦 ").removePrefix("🔗 ").trim()
                                 val mediaItem = MediaItem(
                                     id = stream.id,

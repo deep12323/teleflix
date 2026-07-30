@@ -182,21 +182,40 @@ object TdlibManager {
                     val group = item.group
                     val totalSize = group.parts.sumOf { it.fileSize }
                     val firstPart = group.parts.first()
-                    val groupId = "group_${firstPart.chatId}_${group.baseName}"
-                    TelegramRepository.groupPartsCache[groupId] = group.parts
-                    val firstStreamUrl = TelegramRepository.getStreamUrl(firstPart.fileId, firstPart.fileName, firstPart.fileSize)
-                    resultSources.add(
-                        StreamSource(
-                            id = groupId,
-                            quality = "SPLIT PACK (${group.parts.size} Parts)",
-                            fileName = "📦 ${group.baseName}",
-                            size = formatBytes(totalSize),
-                            channel = "Telegram Multi-Part",
-                            url = firstStreamUrl,
-                            isSplit = true,
-                            chatId = firstPart.chatId
+                    val isZipGroup = group.baseName.lowercase().contains(".zip") || group.parts.any { it.fileName.lowercase().contains(".zip") }
+
+                    if (isZipGroup) {
+                        val zipUrl = TelegramRepository.getZipStreamUrl(firstPart.fileId, group.baseName, totalSize)
+                        resultSources.add(
+                            StreamSource(
+                                id = "zip_${firstPart.chatId}_${firstPart.messageId}",
+                                quality = "🗄️ ZIP",
+                                fileName = "🗄️ ${group.baseName}",
+                                size = formatBytes(totalSize),
+                                channel = "Telegram Stream",
+                                url = zipUrl,
+                                isZip = true,
+                                isSplit = false,
+                                chatId = firstPart.chatId
+                            )
                         )
-                    )
+                    } else {
+                        val groupId = "group_${firstPart.chatId}_${group.baseName}"
+                        TelegramRepository.groupPartsCache[groupId] = group.parts
+                        val firstStreamUrl = TelegramRepository.getStreamUrl(firstPart.fileId, firstPart.fileName, firstPart.fileSize)
+                        resultSources.add(
+                            StreamSource(
+                                id = groupId,
+                                quality = "SPLIT PACK (${group.parts.size} Parts)",
+                                fileName = "📦 ${group.baseName}",
+                                size = formatBytes(totalSize),
+                                channel = "Telegram Multi-Part",
+                                url = firstStreamUrl,
+                                isSplit = true,
+                                chatId = firstPart.chatId
+                            )
+                        )
+                    }
                 }
                 is DisplayItem.Single -> {
                     val msg = item.message
