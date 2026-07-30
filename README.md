@@ -64,4 +64,7 @@ The compiled APK will be created at:
 
 ## License & Disclaimer
 
-Teleflix is for personal media access. Ensure you have the rights to stream content from channels you access.
+This project is licensed under the [MIT License](file:///root/teleflix-android-app/LICENSE). See the [LICENSE](file:///root/teleflix-android-app/LICENSE) file for details.
+
+*Disclaimer: Teleflix is for personal media access. Ensure you have the rights to stream content from channels you access.*
+
