@@ -1145,19 +1145,12 @@ class SettingsActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
 
-            val isNumericId = ch.username.startsWith("-") || ch.username.toLongOrNull() != null
             val titleView = TextView(this).apply {
-                text = if (isNumericId) "📡 Monitored Private Channel" else "📢 ${ch.username}"
+                text = ch.username
                 UITheme.applyCardTitleStyle(this)
                 textSize = 14f
             }
             textLayout.addView(titleView)
-
-            val subView = TextView(this).apply {
-                text = if (isNumericId) "Private / Unlisted Telegram Channel" else "Public Telegram Channel"
-                UITheme.applyMetadataStyle(this)
-            }
-            textLayout.addView(subView)
 
             val removeBtn = Button(this).apply {
                 text = "Remove"

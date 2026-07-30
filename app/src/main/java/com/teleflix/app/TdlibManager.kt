@@ -71,12 +71,7 @@ object TdlibManager {
         val list = raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         if (list.isEmpty()) return emptyList()
 
-        return list.map { u ->
-            val isChannelId = u.startsWith("-") || u.toLongOrNull() != null
-            val displayTitle = if (isChannelId) "Monitored Private Channel" else "Channel $u"
-            val subText = if (isChannelId) "Private / Unlisted Channel" else "Monitored Channel"
-            TelegramChannel(u, displayTitle, subText)
-        }
+        return list.map { u -> TelegramChannel(u, u, "") }
     }
 
     fun addChannel(context: Context, username: String) {
