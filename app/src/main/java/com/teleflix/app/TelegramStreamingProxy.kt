@@ -29,6 +29,7 @@ object TelegramStreamingProxy {
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
     private val activeStreamRequests = java.util.concurrent.ConcurrentHashMap<Int, MutableSet<String>>()
+    private val latestActiveStreamReqId = java.util.concurrent.ConcurrentHashMap<Int, String>()
     private val activeFileJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
     private val activeDownloadWindows = java.util.concurrent.ConcurrentHashMap<Int, Pair<Long, Long>>()
     private val lastDownloadRequestOffset = java.util.concurrent.ConcurrentHashMap<Int, Long>()
@@ -85,6 +86,11 @@ object TelegramStreamingProxy {
         val lastTime = lastDownloadRequestTime[fileId] ?: 0L
 
         val isOffsetJump = lastOffset != null && Math.abs(offset - lastOffset) > 1_000_000L
+
+        // Prevent thrashing TDLib with rapid CancelDownloadFile calls on offset jumps within 300ms
+        if (isOffsetJump && (now - lastTime) < 300L) {
+            return
+        }
 
         // Strict rate limit: never issue DownloadFile for the exact same offset more than once per 1,500ms
         // unless force=true or offset jumped
@@ -325,11 +331,12 @@ object TelegramStreamingProxy {
 
     private suspend fun streamFile(fileId: Int, fileName: String?, rangeHeader: String?, output: java.io.OutputStream, urlSize: Long, isHead: Boolean = false) {
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
-        val jobKey = "${fileId}_${rangeStart ?: 0}"
+        val jobKey = "file_$fileId"
         val currentJob = kotlin.coroutines.coroutineContext[Job]
         if (currentJob != null) {
             val oldJob = activeFileJobs.put(jobKey, currentJob)
             if (oldJob != null && oldJob != currentJob && oldJob.isActive) {
+                TeleflixLogger.log(TAG, "Cancelling previous stream job for fileId=$fileId due to new request $jobKey")
                 oldJob.cancel()
             }
         }
@@ -377,6 +384,7 @@ object TelegramStreamingProxy {
             )
             metrics = m
             activeStreamRequests.getOrPut(fileId) { java.util.concurrent.ConcurrentHashMap.newKeySet<String>() }.add(m.reqId)
+            latestActiveStreamReqId[fileId] = m.reqId
             m.logStart()
 
             if (start >= totalSize || start > end) {
@@ -455,6 +463,9 @@ object TelegramStreamingProxy {
             }
             val reqId = metrics?.reqId
             if (reqId != null) {
+                if (latestActiveStreamReqId[fileId] == reqId) {
+                    latestActiveStreamReqId.remove(fileId)
+                }
                 val reqSet = activeStreamRequests[fileId]
                 reqSet?.remove(reqId)
                 if (reqSet == null || reqSet.isEmpty()) {
@@ -941,6 +952,7 @@ object TelegramStreamingProxy {
 
         for (fId in fileIds) {
             activeStreamRequests.getOrPut(fId) { java.util.concurrent.ConcurrentHashMap.newKeySet<String>() }.add(m.reqId)
+            latestActiveStreamReqId[fId] = m.reqId
         }
         m.logStart()
 
@@ -996,6 +1008,9 @@ object TelegramStreamingProxy {
                 activeFileJobs.remove(groupKey, currentJob)
             }
             for (fId in fileIds) {
+                if (latestActiveStreamReqId[fId] == m.reqId) {
+                    latestActiveStreamReqId.remove(fId)
+                }
                 val reqSet = activeStreamRequests[fId]
                 reqSet?.remove(m.reqId)
                 if (reqSet == null || reqSet.isEmpty()) {
@@ -1438,12 +1453,28 @@ object TelegramStreamingProxy {
         limit: Int,
         metrics: StreamMetrics? = null
     ): ByteArray? {
+        if (metrics != null) {
+            val latestReqId = latestActiveStreamReqId[fileId]
+            if (latestReqId != null && latestReqId != metrics.reqId) {
+                TeleflixLogger.log(TAG, "downloadChunk: reqId=${metrics.reqId} for fileId=$fileId superseded by $latestReqId")
+                metrics.exitReason = "superseded"
+                return null
+            }
+        }
         val chunkStartMs = System.currentTimeMillis()
         val timeoutMs = if (metrics?.requestType == "seek_probe") 3_000L else DOWNLOAD_TIMEOUT_MS
         val dataBytes = withTimeoutOrNull(timeoutMs) {
             var attempts = 0
             var consecutiveGetFileErrors = 0
             while (attempts < 2000 && running) {
+                if (metrics != null) {
+                    val latestReqId = latestActiveStreamReqId[fileId]
+                    if (latestReqId != null && latestReqId != metrics.reqId) {
+                        TeleflixLogger.log(TAG, "downloadChunk loop: reqId=${metrics.reqId} for fileId=$fileId superseded by $latestReqId")
+                        metrics.exitReason = "superseded"
+                        return@withTimeoutOrNull null
+                    }
+                }
                 val readRes = try {
                     val lockStart = System.currentTimeMillis()
                     getFileMutex(fileId).withLock {
