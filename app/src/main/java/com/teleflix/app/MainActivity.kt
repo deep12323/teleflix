@@ -366,6 +366,35 @@ class MainActivity : AppCompatActivity() {
 
                     if (groupParts != null && groupParts.size > 1) {
                         showGroupPartsSelectionDialog(item, groupParts, titleToPlay)
+                    } else if (item.id.startsWith("group_")) {
+                        val rest = item.id.removePrefix("group_")
+                        val chatId = rest.substringBefore("_").toLongOrNull()
+                        val baseName = rest.substringAfter("_")
+                        if (chatId != null && chatId != 0L) {
+                            Toast.makeText(this@MainActivity, "Loading group parts...", Toast.LENGTH_SHORT).show()
+                            CoroutineScope(Dispatchers.Main).launch {
+                                val mediaMessages = withContext(Dispatchers.IO) {
+                                    TelegramRepository.getTelegramChannelMedia(chatId, limit = 200)
+                                }
+                                val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+                                val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
+                                    .find { it.group.baseName.equals(baseName, ignoreCase = true) }
+                                if (matchGroup != null && matchGroup.group.parts.isNotEmpty()) {
+                                    telegramGroupPartsCache[item.id] = matchGroup.group.parts
+                                    showGroupPartsSelectionDialog(item, matchGroup.group.parts, titleToPlay)
+                                } else {
+                                    val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                                    if (backupUrl.isNotBlank()) {
+                                        checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                                    }
+                                }
+                            }
+                        } else {
+                            val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                            if (backupUrl.isNotBlank()) {
+                                checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                            }
+                        }
                     } else if (groupInfo != null) {
                         CoroutineScope(Dispatchers.Main).launch {
                             val cleanTitle = titleToPlay.removePrefix("📦 ")
