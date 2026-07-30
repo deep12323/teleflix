@@ -966,9 +966,10 @@ object TelegramRepository {
      * Returns a pair of (grouped split files, remaining individual files).
      */
     fun groupSplitFiles(messages: List<TelegramVideoMessage>): Pair<List<SplitFileGroup>, List<TelegramVideoMessage>> {
-        val splitPattern = Regex("""^(.+?)\.(\d{2,4})$""")  // matches file.001, file.02, file.0001
-        val partPattern = Regex("""^(.+?)\.part(\d+)(\.[a-zA-Z0-9]+)?$""", RegexOption.IGNORE_CASE)  // matches file.part1.rar, file.part01.zip, file.part1.mkv
-        val zPattern = Regex("""^(.+?)\.z(\d{2,3})$""", RegexOption.IGNORE_CASE) // matches file.z01, file.z02
+        val splitPattern = Regex("""^(.+?)\.(\d{1,4})$""")  // matches file.001, file.02, file.1, file.2
+        val partPattern = Regex("""^(.+?)[\._\s-]*(?:part|pt|cd)[\._\s-]*(\d{1,4})(\.[a-zA-Z0-9]+)?$""", RegexOption.IGNORE_CASE)  // matches file.part1.rar, file part1.mkv, file-pt1.mp4
+        val parenPattern = Regex("""^(.+?)[\._\s-]*\((?:part|pt)?\s*(\d{1,4})\)(\.[a-zA-Z0-9]+)?$""", RegexOption.IGNORE_CASE)  // matches file (1).mkv, file (part 1).mkv
+        val zPattern = Regex("""^(.+?)\.z(\d{1,3})$""", RegexOption.IGNORE_CASE) // matches file.z01, file.z1
         
         val groups = mutableMapOf<String, MutableList<Pair<Int, TelegramVideoMessage>>>()
         val singles = mutableListOf<TelegramVideoMessage>()
@@ -977,6 +978,7 @@ object TelegramRepository {
             val name = msg.fileName
             val splitMatch = splitPattern.find(name)
             val partMatch = partPattern.find(name)
+            val parenMatch = parenPattern.find(name)
             val zMatch = zPattern.find(name)
             
             when {
@@ -989,6 +991,17 @@ object TelegramRepository {
                     val rawBase = partMatch.groupValues[1]
                     val partNum = partMatch.groupValues[2].toIntOrNull() ?: 0
                     val extSuffix = partMatch.groupValues.getOrNull(3) ?: ""
+                    val baseName = if (extSuffix.isNotBlank() && !rawBase.endsWith(extSuffix, ignoreCase = true)) {
+                        "$rawBase$extSuffix"
+                    } else {
+                        rawBase
+                    }
+                    groups.getOrPut(baseName) { mutableListOf() }.add(partNum to msg)
+                }
+                parenMatch != null -> {
+                    val rawBase = parenMatch.groupValues[1]
+                    val partNum = parenMatch.groupValues[2].toIntOrNull() ?: 0
+                    val extSuffix = parenMatch.groupValues.getOrNull(3) ?: ""
                     val baseName = if (extSuffix.isNotBlank() && !rawBase.endsWith(extSuffix, ignoreCase = true)) {
                         "$rawBase$extSuffix"
                     } else {
@@ -1021,8 +1034,30 @@ object TelegramRepository {
                 totalSize = sorted.sumOf { it.fileSize }
             ))
         }
+
+        // Fallback: group remaining singles that share the exact same clean base title
+        val duplicateTitleGroups = mutableMapOf<String, MutableList<TelegramVideoMessage>>()
+        val remainingSingles = mutableListOf<TelegramVideoMessage>()
+        for (s in singles) {
+            val cleanTitle = s.fileName.substringBeforeLast('.', s.fileName).lowercase().trim()
+            duplicateTitleGroups.getOrPut(cleanTitle) { mutableListOf() }.add(s)
+        }
+        for ((_, list) in duplicateTitleGroups) {
+            if (list.size >= 2) {
+                val base = list.first().fileName.substringBeforeLast('.', list.first().fileName)
+                val ext = list.first().fileName.substringAfterLast('.', "")
+                val fullName = if (ext.isNotBlank()) "$base.$ext" else base
+                splitGroups.add(SplitFileGroup(
+                    baseName = fullName,
+                    parts = list.sortedBy { it.messageId },
+                    totalSize = list.sumOf { it.fileSize }
+                ))
+            } else {
+                remainingSingles.addAll(list)
+            }
+        }
         
-        return splitGroups to singles
+        return splitGroups to remainingSingles
     }
 
     /**

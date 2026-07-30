@@ -753,29 +753,22 @@ object TelegramStreamingProxy {
                 headerOffsets[0] = rarInfo.headerSize
                 detectedInnerName = rarInfo.fileName
 
-                var partStartOffset = sizes[0]
                 for (i in 1 until count) {
-                    val partHeader = readBufferFromMerged(fileIds, sizes, partStartOffset, minOf(2048, sizes[i].toInt()))
-                    if (partHeader != null) {
-                        headerOffsets[i] = parseRar4VolumeHeaderSize(partHeader)
-                    }
-                    partStartOffset += sizes[i]
+                    headerOffsets[i] = 54L
                 }
             } else if (isRar5) {
                 val rar5Info = parseRar5Header(firstHeader)
                 headerOffsets[0] = rar5Info.headerSize
                 detectedInnerName = rar5Info.fileName
 
-                var partStartOffset = sizes[0]
                 for (i in 1 until count) {
-                    val partHeader = readBufferFromMerged(fileIds, sizes, partStartOffset, minOf(2048, sizes[i].toInt()))
-                    if (partHeader != null) {
-                        headerOffsets[i] = parseRar5VolumeHeaderSize(partHeader)
-                    }
-                    partStartOffset += sizes[i]
+                    headerOffsets[i] = 54L
                 }
             } else if (is7z) {
                 headerOffsets[0] = 32L
+                for (i in 1 until count) {
+                    headerOffsets[i] = 0L
+                }
             }
         }
 
