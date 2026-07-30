@@ -73,8 +73,8 @@ object TdlibManager {
 
         return list.map { u ->
             val isChannelId = u.startsWith("-") || u.toLongOrNull() != null
-            val displayTitle = if (isChannelId) "Channel ID: $u" else "Channel $u"
-            val subText = if (isChannelId) "Numeric Channel ID" else "Monitored Channel"
+            val displayTitle = if (isChannelId) "Monitored Private Channel" else "Channel $u"
+            val subText = if (isChannelId) "Private / Unlisted Channel" else "Monitored Channel"
             TelegramChannel(u, displayTitle, subText)
         }
     }

@@ -1147,7 +1147,7 @@ class SettingsActivity : AppCompatActivity() {
 
             val isNumericId = ch.username.startsWith("-") || ch.username.toLongOrNull() != null
             val titleView = TextView(this).apply {
-                text = if (isNumericId) "📡 Channel ID: ${ch.username}" else "📢 ${ch.username}"
+                text = if (isNumericId) "📡 Monitored Private Channel" else "📢 ${ch.username}"
                 UITheme.applyCardTitleStyle(this)
                 textSize = 14f
             }
