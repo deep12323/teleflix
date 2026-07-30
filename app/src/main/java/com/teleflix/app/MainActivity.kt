@@ -2558,7 +2558,7 @@ class MainActivity : AppCompatActivity() {
         val playlistCard = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            background = UITheme.createCardShape(this@MainActivity, UITheme.CARD, 12, Color.parseColor(UITheme.PRIMARY), 2)
+            background = UITheme.createCardShape(this@MainActivity, UITheme.CARD, 12, UITheme.PRIMARY, 2)
             val p = UITheme.dpToPx(this@MainActivity, 12)
             setPadding(p, p, p, p)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
