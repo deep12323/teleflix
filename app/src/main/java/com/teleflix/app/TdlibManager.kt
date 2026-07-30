@@ -18,7 +18,8 @@ data class StreamSource(
     val channel: String,
     val url: String,
     val isSplit: Boolean = false,
-    val isZip: Boolean = false
+    val isZip: Boolean = false,
+    val chatId: Long = 0L
 )
 
 object TdlibManager {
@@ -179,23 +180,23 @@ object TdlibManager {
             when (item) {
                 is DisplayItem.Group -> {
                     val group = item.group
-                    group.parts.forEachIndexed { idx, part ->
-                        val partNumStr = String.format("%03d", idx + 1)
-                        val partTitle = part.fileName.ifBlank { "Part $partNumStr" }
-                        val partSize = formatBytes(part.fileSize)
-                        val streamUrl = TelegramRepository.getStreamUrl(part.fileId, part.fileName, part.fileSize)
-                        resultSources.add(
-                            StreamSource(
-                                id = "single_${part.chatId}_${part.messageId}",
-                                quality = "▶ Part ${idx + 1}",
-                                fileName = "▶ Part ${idx + 1} - $partTitle",
-                                size = partSize,
-                                channel = "Telegram Multi-Part",
-                                url = streamUrl,
-                                isSplit = false
-                            )
+                    val totalSize = group.parts.sumOf { it.fileSize }
+                    val firstPart = group.parts.first()
+                    val groupId = "group_${firstPart.chatId}_${group.baseName}"
+                    telegramGroupPartsCache[groupId] = group.parts
+                    val firstStreamUrl = TelegramRepository.getStreamUrl(firstPart.fileId, firstPart.fileName, firstPart.fileSize)
+                    resultSources.add(
+                        StreamSource(
+                            id = groupId,
+                            quality = "SPLIT PACK (${group.parts.size} Parts)",
+                            fileName = "📦 ${group.baseName}",
+                            size = formatBytes(totalSize),
+                            channel = "Telegram Multi-Part",
+                            url = firstStreamUrl,
+                            isSplit = true,
+                            chatId = firstPart.chatId
                         )
-                    }
+                    )
                 }
                 is DisplayItem.Single -> {
                     val msg = item.message

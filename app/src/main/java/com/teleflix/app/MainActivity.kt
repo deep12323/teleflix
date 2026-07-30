@@ -1827,7 +1827,43 @@ class MainActivity : AppCompatActivity() {
                         isFocusable = true
                         setOnClickListener {
                             streamDialog.dismiss()
-                            checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, stream.id, stream.fileName)
+                            val parts = telegramGroupPartsCache[stream.id]
+                            if (stream.isSplit || stream.id.startsWith("group_")) {
+                                val cleanName = stream.fileName.removePrefix("📦 ").removePrefix("🔗 ").trim()
+                                val mediaItem = MediaItem(
+                                    id = stream.id,
+                                    title = cleanName,
+                                    posterUrl = posterUrl,
+                                    year = stream.size,
+                                    rating = stream.quality,
+                                    overview = "Multi-part video pack: $cleanName",
+                                    type = "telegram_media",
+                                    streamUrl = stream.url
+                                )
+                                if (parts != null && parts.isNotEmpty()) {
+                                    showGroupPartsSelectionDialog(mediaItem, parts, cleanName)
+                                } else if (stream.chatId != 0L) {
+                                    Toast.makeText(this@MainActivity, "Loading group parts...", Toast.LENGTH_SHORT).show()
+                                    CoroutineScope(Dispatchers.Main).launch {
+                                        val mediaMessages = withContext(Dispatchers.IO) {
+                                            TelegramRepository.fetchChannelMedia(stream.chatId.toString(), limit = 200).first
+                                        }
+                                        val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+                                        val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
+                                            .find { it.group.baseName.equals(cleanName, ignoreCase = true) }
+                                        if (matchGroup != null && matchGroup.group.parts.isNotEmpty()) {
+                                            telegramGroupPartsCache[stream.id] = matchGroup.group.parts
+                                            showGroupPartsSelectionDialog(mediaItem, matchGroup.group.parts, cleanName)
+                                        } else {
+                                            checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, stream.id, stream.fileName)
+                                        }
+                                    }
+                                } else {
+                                    checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, stream.id, stream.fileName)
+                                }
+                            } else {
+                                checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, stream.id, stream.fileName)
+                            }
                         }
                     }
 
