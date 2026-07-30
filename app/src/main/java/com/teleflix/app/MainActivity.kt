@@ -2569,8 +2569,10 @@ class MainActivity : AppCompatActivity() {
                 dialog?.dismiss()
                 CoroutineScope(Dispatchers.Main).launch {
                     val freshIds = parts.map { Pair(it.chatId, it.messageId) }
-                    val freshUrl = TelegramRepository.getFreshPlaylistMediaUrl(freshIds, cleanTitle)
-                    val urlToUse = freshUrl ?: TelegramStreamingProxy.getPlaylistUrl(parts.map { it.fileId }, cleanTitle)
+                    val partDurs = parts.map { it.duration }
+                    val partSzs = parts.map { it.fileSize }
+                    val freshUrl = TelegramRepository.getFreshPlaylistMediaUrl(freshIds, cleanTitle, partDurs, partSzs)
+                    val urlToUse = freshUrl ?: TelegramStreamingProxy.getPlaylistUrl(parts.map { it.fileId }, cleanTitle, partDurs, partSzs)
                     if (urlToUse.isNotBlank()) {
                         checkResumeAndSelectPlayer(urlToUse, "▶ $cleanTitle (Playlist)", item.posterUrl, item.id, cleanTitle)
                     }

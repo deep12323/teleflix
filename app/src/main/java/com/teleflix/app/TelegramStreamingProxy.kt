@@ -274,17 +274,37 @@ object TelegramStreamingProxy {
                 val segment = path.substringAfter("/playlist/").substringBefore("?")
                 val slashParts = segment.split("/", limit = 2)
                 val fIds = slashParts[0].split(",").mapNotNull { it.toIntOrNull() }
+                val queryStr = path.substringAfter("?", "")
+                val durations = queryStr.split("&").find { it.startsWith("durations=") }
+                    ?.substringAfter("=")?.split(",")?.mapNotNull { it.toIntOrNull() }
+                val sizes = queryStr.split("&").find { it.startsWith("sizes=") }
+                    ?.substringAfter("=")?.split(",")?.mapNotNull { it.toLongOrNull() }
+
+                val maxDur = fIds.indices.maxOfOrNull { idx ->
+                    val dur = durations?.getOrNull(idx) ?: 0
+                    if (dur > 0) dur else {
+                        val sz = sizes?.getOrNull(idx) ?: 0L
+                        if (sz > 0L) (sz / 1_500_000L).toInt().coerceAtLeast(60) else 1800
+                    }
+                } ?: 3600
                 
                 val output = socket.getOutputStream()
                 val m3uBuilder = StringBuilder()
                 m3uBuilder.append("#EXTM3U\r\n")
                 m3uBuilder.append("#EXT-X-VERSION:3\r\n")
+                m3uBuilder.append("#EXT-X-PLAYLIST-TYPE:VOD\r\n")
+                m3uBuilder.append("#EXT-X-TARGETDURATION:$maxDur\r\n")
                 m3uBuilder.append("#EXT-X-MEDIA-SEQUENCE:0\r\n")
                 m3uBuilder.append("#EXT-X-ALLOW-CACHE:YES\r\n")
                 
                 fIds.forEachIndexed { idx, id ->
+                    val durSec = durations?.getOrNull(idx) ?: 0
+                    val validDur = if (durSec > 0) durSec else {
+                        val sz = sizes?.getOrNull(idx) ?: 0L
+                        if (sz > 0L) (sz / 1_500_000L).toInt().coerceAtLeast(60) else 1800
+                    }
                     val partUrl = "http://127.0.0.1:$port/file/$id/part${idx + 1}.mkv?token=$authToken"
-                    m3uBuilder.append("#EXTINF:-1, Part ${idx + 1}\r\n")
+                    m3uBuilder.append("#EXTINF:$validDur.0, Part ${idx + 1}\r\n")
                     m3uBuilder.append("$partUrl\r\n")
                 }
                 m3uBuilder.append("#EXT-X-ENDLIST\r\n")
@@ -1012,11 +1032,13 @@ object TelegramStreamingProxy {
         return "http://127.0.0.1:$port/merged/$ids/$encodedName?sizes=$szs&token=$authToken"
     }
 
-    fun getPlaylistUrl(fileIds: List<Int>, fileName: String): String {
+    fun getPlaylistUrl(fileIds: List<Int>, fileName: String, durations: List<Int> = emptyList(), sizes: List<Long> = emptyList()): String {
         ensureRunning()
         val ids = fileIds.joinToString(",")
+        val durs = durations.joinToString(",")
+        val szs = sizes.joinToString(",")
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        return "http://127.0.0.1:$port/playlist/$ids/$encodedName.m3u8?token=$authToken"
+        return "http://127.0.0.1:$port/playlist/$ids/$encodedName.m3u8?durations=$durs&sizes=$szs&token=$authToken"
     }
 
     fun getZipStreamUrl(fileId: Int, innerFileName: String, zipSize: Long): String {

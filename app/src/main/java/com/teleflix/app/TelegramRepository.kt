@@ -1326,8 +1326,8 @@ object TelegramRepository {
         }
     }
 
-    fun getPlaylistStreamUrl(fileIds: List<Int>, fileName: String): String =
-        TelegramStreamingProxy.getPlaylistUrl(fileIds, fileName)
+    fun getPlaylistStreamUrl(fileIds: List<Int>, fileName: String, durations: List<Int> = emptyList(), sizes: List<Long> = emptyList()): String =
+        TelegramStreamingProxy.getPlaylistUrl(fileIds, fileName, durations, sizes)
 
     suspend fun getFreshMergedMediaUrl(parts: List<Pair<Long, Long>>, baseName: String, partSizes: List<Long>): String? = withContext(Dispatchers.IO) {
         try {
@@ -1343,14 +1343,14 @@ object TelegramRepository {
         }
     }
 
-    suspend fun getFreshPlaylistMediaUrl(parts: List<Pair<Long, Long>>, baseName: String): String? = withContext(Dispatchers.IO) {
+    suspend fun getFreshPlaylistMediaUrl(parts: List<Pair<Long, Long>>, baseName: String, partDurations: List<Int> = emptyList(), partSizes: List<Long> = emptyList()): String? = withContext(Dispatchers.IO) {
         try {
             val freshFileIds = mutableListOf<Int>()
             for ((chatId, messageId) in parts) {
                 val fId = getFreshFileId(chatId, messageId) ?: return@withContext null
                 freshFileIds.add(fId)
             }
-            getPlaylistStreamUrl(freshFileIds, baseName)
+            getPlaylistStreamUrl(freshFileIds, baseName, partDurations, partSizes)
         } catch (e: Exception) {
             android.util.Log.e("TelegramRepository", "Failed to refresh playlist media URL for $baseName: ${e.message}")
             null
