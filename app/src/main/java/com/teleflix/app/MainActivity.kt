@@ -1319,7 +1319,7 @@ class MainActivity : AppCompatActivity() {
                                 val key = "group_${firstMsg.chatId}_${group.baseName}"
                                 val freshIds = group.parts.map { it.fileId }
                                 val partSizes = group.parts.map { it.fileSize }
-                                val totalSizeMb = group.totalSize / (1024 * 1024)
+                                val formattedSize = formatFileSize(group.totalSize)
                                 val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
                                 telegramStreamCache[key] = Pair(url, group.baseName)
                                 telegramGroupCache[key] = Pair(group.parts.map { Pair(it.chatId, it.messageId) }, partSizes)
@@ -1331,9 +1331,9 @@ class MainActivity : AppCompatActivity() {
                                         id = key,
                                         title = "📦 ${group.baseName}",
                                         posterUrl = thumbUrl,
-                                        year = "${totalSizeMb} MB",
+                                        year = formattedSize,
                                         rating = "📦 Split Pack (${group.parts.size} parts)",
-                                        overview = "Merged Telegram Split/ZIP Archive (${group.parts.size} split files combined into a single continuous stream).",
+                                        overview = "Merged Telegram Split/ZIP Archive (${group.parts.size} split files combined into a single continuous stream). Total size: $formattedSize.",
                                         type = "telegram_media",
                                         streamUrl = url
                                     )
@@ -1343,7 +1343,7 @@ class MainActivity : AppCompatActivity() {
                                 val msg = dItem.message
                                 val key = "${msg.chatId}_${msg.messageId}"
                                 val ext = msg.fileName.substringAfterLast('.', "").lowercase()
-                                val sizeMb = msg.fileSize / (1024 * 1024)
+                                val formattedSize = formatFileSize(msg.fileSize)
                                 val url = if (ext == "zip" && msg.fileSize > 1_000_000) {
                                     TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
                                 } else {
@@ -1364,9 +1364,9 @@ class MainActivity : AppCompatActivity() {
                                         id = key,
                                         title = if (ext == "zip") "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
                                         posterUrl = thumbUrl,
-                                        year = "${sizeMb} MB",
+                                        year = formattedSize,
                                         rating = badge,
-                                        overview = msg.caption.ifBlank { "Telegram Search Match: ${msg.fileName}\nSize: $sizeMb MB" },
+                                        overview = msg.caption.ifBlank { "Telegram Search Match: ${msg.fileName}\nSize: $formattedSize" },
                                         type = "telegram_media",
                                         streamUrl = url
                                     )
