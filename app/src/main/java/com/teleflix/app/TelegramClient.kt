@@ -138,7 +138,7 @@ object TelegramClient {
         })
     }
 
-    fun updateCacheLimit(limitMb: Long = 2048L) {
+    fun updateCacheLimit(limitMb: Long = 512L) {
         val tdlibLimit = limitMb * 1024L * 1024L
         client?.send(TdApi.SetOption("storage_max_size", TdApi.OptionValueInteger(tdlibLimit)), null)
         client?.send(TdApi.SetOption("storage_max_time_from_last_access", TdApi.OptionValueInteger(0L)), null)
@@ -149,8 +149,8 @@ object TelegramClient {
         isAutoCleanerRunning = true
         scope.launch {
             while (isActive) {
-                delay(30 * 60 * 1000L) // every 30 minutes
-                optimizeVideoStorage(2048L) // 2GB cap
+                delay(5 * 60 * 1000L) // check every 5 minutes
+                optimizeVideoStorage(512L) // 512MB cap
             }
         }
     }
@@ -161,12 +161,15 @@ object TelegramClient {
             req.size = sizeLimit
             req.ttl = 0
             req.count = 0
-            req.immunityDelay = 1800
+            req.immunityDelay = 60
             req.fileTypes = arrayOf(
+                TdApi.FileTypeDocument(),
                 TdApi.FileTypeVideo(),
                 TdApi.FileTypeVideoNote(),
                 TdApi.FileTypeAudio(),
-                TdApi.FileTypeVoiceNote()
+                TdApi.FileTypeVoiceNote(),
+                TdApi.FileTypeAnimation(),
+                TdApi.FileTypeUnknown()
             )
             req.chatIds = longArrayOf()
             req.excludeChatIds = longArrayOf()
@@ -182,10 +185,13 @@ object TelegramClient {
             req.count = 0
             req.immunityDelay = 0
             req.fileTypes = arrayOf(
+                TdApi.FileTypeDocument(),
                 TdApi.FileTypeVideo(),
                 TdApi.FileTypeVideoNote(),
                 TdApi.FileTypeAudio(),
-                TdApi.FileTypeVoiceNote()
+                TdApi.FileTypeVoiceNote(),
+                TdApi.FileTypeAnimation(),
+                TdApi.FileTypeUnknown()
             )
             req.chatIds = longArrayOf()
             req.excludeChatIds = longArrayOf()
@@ -197,6 +203,16 @@ object TelegramClient {
     fun clearMediaCache(context: Context) {
         scope.launch {
             runCatching { optimizeStorage() }
+            runCatching {
+                val tdlibFiles = File(context.filesDir, "tdlib_files")
+                if (tdlibFiles.exists()) {
+                    tdlibFiles.listFiles()?.forEach { subDir ->
+                        if (subDir.isDirectory && subDir.name.lowercase() != "profile_photos") {
+                            subDir.listFiles()?.forEach { file -> file.delete() }
+                        }
+                    }
+                }
+            }
         }
     }
 
