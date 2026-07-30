@@ -77,7 +77,6 @@ class MainActivity : AppCompatActivity() {
     private var lastTelegramFromMessageId: Long = 0L
     private val telegramStreamCache = mutableMapOf<String, Pair<String, String>>()
     private val telegramGroupCache = mutableMapOf<String, Pair<List<Pair<Long, Long>>, List<Long>>>()
-    private var allGenreCache = listOf<MediaItem>()
 
     private var activeMediaIdForResume: String = ""
     private var activeStreamUrlForResume: String = ""
@@ -654,7 +653,12 @@ class MainActivity : AppCompatActivity() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val url = URL("https://v3-cinemeta.strem.io/catalog/$catalogId.json")
+                val urlString = if (catalogId.contains("genre=")) {
+                    "https://v3-cinemeta.strem.io/catalog/$catalogId&skip=0.json"
+                } else {
+                    "https://v3-cinemeta.strem.io/catalog/$catalogId.json"
+                }
+                val url = URL(urlString)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 8000
@@ -667,16 +671,8 @@ class MainActivity : AppCompatActivity() {
 
                 withContext(Dispatchers.Main) {
                     mediaList.clear()
-                    if (catalogId.contains("genre=")) {
-                        allGenreCache = results
-                        val initialBatch = allGenreCache.take(30)
-                        mediaList.addAll(initialBatch)
-                        hasMoreItems = allGenreCache.size > 30
-                    } else {
-                        allGenreCache = emptyList()
-                        mediaList.addAll(results)
-                        hasMoreItems = results.size >= 20
-                    }
+                    mediaList.addAll(results)
+                    hasMoreItems = results.size >= 10
                     mediaAdapter?.notifyDataSetChanged()
                     loadingText.visibility = android.view.View.GONE
                     isLoadingMore = false
@@ -694,21 +690,8 @@ class MainActivity : AppCompatActivity() {
     private fun loadMoreCinemeta() {
         if (isLoadingMore || !hasMoreItems || isInSearchMode) return
 
-        if (selectedCategory.contains("genre=")) {
-            isLoadingMore = true
-            val currentCount = mediaList.size
-            val nextBatch = allGenreCache.drop(currentCount).take(30)
-            if (nextBatch.isNotEmpty()) {
-                mediaList.addAll(nextBatch)
-                mediaAdapter?.notifyItemRangeInserted(currentCount, nextBatch.size)
-            }
-            hasMoreItems = mediaList.size < allGenreCache.size
-            isLoadingMore = false
-            return
-        }
-
         isLoadingMore = true
-        currentSkip += 100  // Cinemeta steps pagination by 100 items
+        currentSkip += if (selectedCategory.contains("genre=")) 50 else 100
 
         loadingText.text = "Loading more $selectedLabel..."
         loadingText.visibility = android.view.View.VISIBLE
@@ -717,7 +700,12 @@ class MainActivity : AppCompatActivity() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val url = URL("https://v3-cinemeta.strem.io/catalog/$selectedCategory/skip=$currentSkip.json")
+                val urlString = if (selectedCategory.contains("genre=")) {
+                    "https://v3-cinemeta.strem.io/catalog/$selectedCategory&skip=$currentSkip.json"
+                } else {
+                    "https://v3-cinemeta.strem.io/catalog/$selectedCategory/skip=$currentSkip.json"
+                }
+                val url = URL(urlString)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 8000
