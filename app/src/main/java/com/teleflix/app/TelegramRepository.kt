@@ -38,6 +38,18 @@ data class ZipFileEntry(
     val innerFileName: String  // will be discovered during streaming
 )
 
+data class TelegramChatInfo(
+    val chatId: Long,
+    val title: String,
+    val username: String? = null,
+    val photoFileId: Int? = null,
+    val isChannel: Boolean = false,
+    val isGroup: Boolean = false,
+    val isPrivate: Boolean = false,
+    val isArchived: Boolean = false,
+    val unreadCount: Int = 0
+)
+
 object TelegramRepository {
     private const val TAG = "TelegramRepository"
 
@@ -220,6 +232,99 @@ object TelegramRepository {
         } catch (e: Exception) {
             Log.w(TAG, "SearchChatsOnServer failed for $username: ${e.message}")
         }
+
+        return null
+    }
+
+    suspend fun getJoinedChatsInfo(): List<TelegramChatInfo> {
+        val list = mutableListOf<TelegramChatInfo>()
+        val seen = mutableSetOf<Long>()
+
+        val chatLists = listOf(
+            Pair(TdApi.ChatListMain(), false),
+            Pair(TdApi.ChatListArchive(), true)
+        )
+
+        for (listPair in chatLists) {
+            val chatList = listPair.first
+            val isArchived = listPair.second
+            try {
+                TelegramClient.sendRequest(TdApi.LoadChats(chatList, 100))
+            } catch (_: Exception) {}
+
+            val chatsObj = (try {
+                TelegramClient.sendRequest(TdApi.GetChats(chatList, 100))
+            } catch (_: Exception) { null }) as? TdApi.Chats
+
+            if (chatsObj != null) {
+                for (id in chatsObj.chatIds) {
+                    if (!seen.add(id)) continue
+                    val chat = (try {
+                        TelegramClient.sendRequest(TdApi.GetChat(id))
+                    } catch (_: Exception) { null }) as? TdApi.Chat ?: continue
+
+                    var isChannel = false
+                    var isGroup = false
+                    var isPrivate = false
+
+                    when (val t = chat.type) {
+                        is TdApi.ChatTypeSupergroup -> {
+                            if (t.isChannel) isChannel = true else isGroup = true
+                        }
+                        is TdApi.ChatTypeBasicGroup -> isGroup = true
+                        is TdApi.ChatTypePrivate, is TdApi.ChatTypeSecret -> isPrivate = true
+                    }
+
+                    val photoFileId = chat.photo?.small?.id
+                    if (photoFileId != null && photoFileId > 0) {
+                        runCatching {
+                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = photoFileId
+                                req.priority = 1
+                                req.offset = 0
+                                req.limit = 0
+                                req.synchronous = false
+                            })
+                        }
+                    }
+
+                    list.add(
+                        TelegramChatInfo(
+                            chatId = chat.id,
+                            title = chat.title,
+                            username = null,
+                            photoFileId = photoFileId,
+                            isChannel = isChannel,
+                            isGroup = isGroup,
+                            isPrivate = isPrivate,
+                            isArchived = isArchived,
+                            unreadCount = chat.unreadCount
+                        )
+                    )
+                }
+            }
+        }
+        return list
+    }
+
+    suspend fun getChatPhotoFileId(chatId: Long): Int? {
+        return try {
+            val chat = TelegramClient.sendRequest(TdApi.GetChat(chatId)) as? TdApi.Chat
+            val photoFileId = chat?.photo?.small?.id
+            if (photoFileId != null && photoFileId > 0) {
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        req.fileId = photoFileId
+                        req.priority = 1
+                        req.offset = 0
+                        req.limit = 0
+                        req.synchronous = false
+                    })
+                }
+            }
+            photoFileId
+        } catch (_: Exception) { null }
+    }
 
         Log.e(TAG, "Could not resolve channel: $identifier")
         return null

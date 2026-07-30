@@ -912,10 +912,17 @@ class MainActivity : AppCompatActivity() {
             }
             val channelItems = channels.map { ch ->
                 val realTitle = TelegramRepository.getChannelTitle(ch)
+                val numericId = ch.toLongOrNull() ?: TelegramRepository.getChatId(ch)
+                val photoFileId = if (numericId != null) TelegramRepository.getChatPhotoFileId(numericId) else null
+                val poster = if (photoFileId != null && photoFileId > 0) {
+                    TelegramStreamingProxy.getThumbnailUrl(photoFileId)
+                } else {
+                    "https://cdn-icons-png.flaticon.com/512/2111/2111646.png"
+                }
                 MediaItem(
                     id = ch,
                     title = realTitle,
-                    posterUrl = "https://cdn-icons-png.flaticon.com/512/2111/2111646.png",
+                    posterUrl = poster,
                     year = "Channel",
                     rating = "💬 Telegram",
                     overview = "Tap to view video and audio content in $realTitle.",

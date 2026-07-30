@@ -94,6 +94,19 @@ object TdlibManager {
         getPrefs(context).edit().putString("custom_channels", current.joinToString(",")).apply()
     }
 
+    fun setChannels(context: Context, channels: List<String>) {
+        val cleanList = channels.map { ch ->
+            var clean = ch.trim()
+            if (clean.all { it.isDigit() }) {
+                clean = "-100$clean"
+            } else if (!clean.startsWith("@") && !clean.startsWith("-")) {
+                clean = "@$clean"
+            }
+            clean
+        }.distinct()
+        getPrefs(context).edit().putString("custom_channels", cleanList.joinToString(",")).apply()
+    }
+
     // Resolves video streams across ALL joined Telegram channels, groups, and chats exactly like the Cloudstream extension
     suspend fun resolveStreams(title: String, season: Int? = null, episode: Int? = null): List<StreamSource> {
         val rawTitle = title.trim()
