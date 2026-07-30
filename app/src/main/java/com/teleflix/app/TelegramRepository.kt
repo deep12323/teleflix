@@ -1174,11 +1174,6 @@ object TelegramRepository {
         
         for (msg in messages) {
             val name = msg.fileName
-            val isZipFile = name.lowercase().endsWith(".zip") || name.lowercase().contains(".zip.")
-            if (isZipFile) {
-                singles.add(msg)
-                continue
-            }
             val splitMatch = splitPattern.find(name)
             val partMatch = partPattern.find(name)
             val parenMatch = parenPattern.find(name)
@@ -1238,11 +1233,11 @@ object TelegramRepository {
             ))
         }
 
-        // Fallback: group remaining singles that share the exact same clean base title (excluding ZIPs)
+        // Fallback: group remaining singles that share the exact same clean base title (excluding standalone ZIPs)
         val duplicateTitleGroups = mutableMapOf<String, MutableList<TelegramVideoMessage>>()
         val remainingSingles = mutableListOf<TelegramVideoMessage>()
         for (s in singles) {
-            if (s.fileName.lowercase().endsWith(".zip") || s.fileName.lowercase().contains(".zip.")) {
+            if (s.fileName.lowercase().endsWith(".zip")) {
                 remainingSingles.add(s)
                 continue
             }
