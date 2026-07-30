@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="26dp"
+    android:height="38dp"
+    android:viewportWidth="24"
+    android:viewportHeight="36">
+
+    <!-- Translucent Dark Bookmark Ribbon Body -->
+    <path
+        android:fillColor="#B00F0F17"
+        android:strokeColor="#66FFFFFF"
+        android:strokeWidth="1.2"
+        android:pathData="M2,0 L22,0 L22,34 L12,26 L2,34 Z" />
+
+    <!-- Star outline inside ribbon -->
+    <path
+        android:fillColor="#88FFFFFF"
+        android:pathData="M12,5 L13.6,8.8 L17.5,9.2 L14.5,11.8 L15.8,16 L12,13.5 L8.2,16 L9.5,11.8 L6.5,9.2 L10.4,8.8 Z" />
+</vector>

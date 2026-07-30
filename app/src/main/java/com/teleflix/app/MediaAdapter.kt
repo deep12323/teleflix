@@ -42,7 +42,7 @@ class MediaAdapter(
         val yearText: TextView? = null,
         val overviewText: TextView? = null,
         val iconText: TextView? = null,
-        val bookmarkBadge: TextView? = null
+        val bookmarkButton: ImageView? = null
     ) : RecyclerView.ViewHolder(layout)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -143,23 +143,21 @@ class MediaAdapter(
                     setBackgroundColor(Color.parseColor(UITheme.SURFACE))
                 }
 
-                val bookmarkBadge = TextView(context).apply {
-                    textSize = 12f
-                    gravity = Gravity.CENTER
-                    setPadding(dp(7), dp(4), dp(7), dp(4))
+                val bookmarkButton = ImageView(context).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
                     layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.WRAP_CONTENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT
+                        dp(26),
+                        dp(38)
                     ).apply {
                         gravity = Gravity.TOP or Gravity.END
-                        setMargins(0, dp(6), dp(6), 0)
+                        setMargins(0, 0, dp(10), 0)
                     }
                     isClickable = true
                     isFocusable = true
                 }
 
                 posterFrame.addView(posterView)
-                posterFrame.addView(bookmarkBadge)
+                posterFrame.addView(bookmarkButton)
 
                 val textContainer = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
@@ -192,7 +190,7 @@ class MediaAdapter(
                 card.addView(posterFrame)
                 card.addView(textContainer)
 
-                return ViewHolder(card, posterView, titleView, yearView, overviewView, bookmarkBadge = bookmarkBadge)
+                return ViewHolder(card, posterView, titleView, yearView, overviewView, bookmarkButton = bookmarkButton)
             }
 
             else -> {
@@ -225,23 +223,21 @@ class MediaAdapter(
                     setBackgroundColor(Color.parseColor(UITheme.SURFACE))
                 }
 
-                val bookmarkBadge = TextView(context).apply {
-                    textSize = 12f
-                    gravity = Gravity.CENTER
-                    setPadding(dp(7), dp(4), dp(7), dp(4))
+                val bookmarkButton = ImageView(context).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
                     layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.WRAP_CONTENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT
+                        dp(28),
+                        dp(42)
                     ).apply {
                         gravity = Gravity.TOP or Gravity.END
-                        setMargins(0, dp(8), dp(8), 0)
+                        setMargins(0, 0, dp(12), 0)
                     }
                     isClickable = true
                     isFocusable = true
                 }
 
                 posterFrame.addView(posterView)
-                posterFrame.addView(bookmarkBadge)
+                posterFrame.addView(bookmarkButton)
 
                 val textContainer = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
@@ -273,7 +269,7 @@ class MediaAdapter(
                 card.addView(posterFrame)
                 card.addView(textContainer)
 
-                return ViewHolder(card, posterView, titleView, yearView, overviewView, bookmarkBadge = bookmarkBadge)
+                return ViewHolder(card, posterView, titleView, yearView, overviewView, bookmarkButton = bookmarkButton)
             }
         }
     }
@@ -317,23 +313,23 @@ class MediaAdapter(
             }
         }
 
-        if (holder.bookmarkBadge != null) {
+        if (holder.bookmarkButton != null) {
             if (item.type == "channel" || item.id == "watch_history") {
-                holder.bookmarkBadge.visibility = View.GONE
+                holder.bookmarkButton.visibility = View.GONE
             } else {
-                holder.bookmarkBadge.visibility = View.VISIBLE
+                holder.bookmarkButton.visibility = View.VISIBLE
                 val isBookmarked = LibraryManager.isBookmarked(context, item.id)
-                bindBookmarkBadge(holder.bookmarkBadge, isBookmarked, context)
+                bindBookmarkBadge(holder.bookmarkButton, isBookmarked)
 
-                holder.bookmarkBadge.setOnClickListener {
+                holder.bookmarkButton.setOnClickListener {
                     val nowBookmarked = LibraryManager.toggleBookmark(context, item)
-                    bindBookmarkBadge(holder.bookmarkBadge, nowBookmarked, context)
+                    bindBookmarkBadge(holder.bookmarkButton, nowBookmarked)
                     val toastMsg = if (nowBookmarked) {
                         "Saved '${item.title}' to Library 📚"
                     } else {
                         "Removed '${item.title}' from Library"
                     }
-                    Toast.makeText(context, toastMsg, Toast.SHORT).show()
+                    Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
                     onBookmarkToggle?.invoke(item, nowBookmarked)
                 }
             }
@@ -345,15 +341,11 @@ class MediaAdapter(
         }
     }
 
-    private fun bindBookmarkBadge(badge: TextView, isBookmarked: Boolean, context: android.content.Context) {
+    private fun bindBookmarkBadge(button: ImageView, isBookmarked: Boolean) {
         if (isBookmarked) {
-            badge.text = "🔖⭐"
-            badge.setTextColor(Color.parseColor("#FFC107"))
-            badge.background = UITheme.createCardShape(context, "#E60F0F17", 10, "#FFC107", 2)
+            button.setImageResource(R.drawable.ic_bookmark_ribbon_active)
         } else {
-            badge.text = "🔖"
-            badge.setTextColor(Color.parseColor("#B0FFFFFF"))
-            badge.background = UITheme.createCardShape(context, "#80000000", 10, "#44FFFFFF", 1)
+            button.setImageResource(R.drawable.ic_bookmark_ribbon_inactive)
         }
     }
 
