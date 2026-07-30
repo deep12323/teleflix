@@ -200,19 +200,25 @@ object TelegramClient {
         }, null)
     }
 
-    fun clearMediaCache(context: Context) {
-        scope.launch {
-            runCatching { optimizeStorage() }
-            runCatching {
-                val tdlibFiles = File(context.filesDir, "tdlib_files")
-                if (tdlibFiles.exists()) {
-                    tdlibFiles.listFiles()?.forEach { subDir ->
-                        if (subDir.isDirectory && subDir.name.lowercase() != "profile_photos") {
-                            subDir.listFiles()?.forEach { file -> file.delete() }
-                        }
+    fun clearMediaCacheSync(context: Context) {
+        runCatching { optimizeStorage() }
+        runCatching {
+            val tdlibFiles = File(context.filesDir, "tdlib_files")
+            if (tdlibFiles.exists()) {
+                tdlibFiles.listFiles()?.forEach { subDir ->
+                    if (subDir.isDirectory && subDir.name.lowercase() != "profile_photos") {
+                        subDir.listFiles()?.forEach { file -> file.delete() }
                     }
                 }
             }
+            val cacheTdlib = File(context.cacheDir, "tdlib_files")
+            if (cacheTdlib.exists()) cacheTdlib.deleteRecursively()
+        }
+    }
+
+    fun clearMediaCache(context: Context) {
+        scope.launch {
+            clearMediaCacheSync(context)
         }
     }
 

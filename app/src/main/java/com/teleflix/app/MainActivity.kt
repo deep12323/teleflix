@@ -3011,8 +3011,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         if (isFinishing) {
+            try { TelegramClient.clearMediaCacheSync(this) } catch (_: Exception) {}
+        }
+        super.onDestroy()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level == TRIM_MEMORY_COMPLETE || level == TRIM_MEMORY_MODERATE) {
             try { TelegramClient.clearMediaCache(this) } catch (_: Exception) {}
         }
     }
