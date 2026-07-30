@@ -2601,11 +2601,69 @@ class MainActivity : AppCompatActivity() {
 
                 fun renderList(filterQuery: String = "") {
                     chatListContainer.removeAllViews()
+
+                    // Render any unmatched / custom saved entries (e.g. legacy/corrupted IDs like -1008092263340) at the top so user can delete them easily
+                    val unmatched = currentMonitored.filter { item ->
+                        val cleanItem = item.trim()
+                        val cleanNo100 = cleanItem.removePrefix("-100")
+                        chats.none { chat ->
+                            val cId = chat.chatId.toString()
+                            cId == cleanItem || cId == cleanNo100 || "-100$cId" == cleanItem ||
+                                    (chat.username != null && ("@" + chat.username).equals(cleanItem, ignoreCase = true))
+                        }
+                    }
+
+                    if (unmatched.isNotEmpty() && filterQuery.isBlank()) {
+                        val header = TextView(this@MainActivity).apply {
+                            text = "⚠️ Custom / Legacy Saved Entries (${unmatched.size}):"
+                            UITheme.applySectionTitleStyle(this)
+                            textSize = 12f
+                            setTextColor(Color.parseColor("#F59E0B"))
+                            setPadding(0, 4, 0, 8)
+                        }
+                        chatListContainer.addView(header)
+
+                        unmatched.forEach { item ->
+                            val row = LinearLayout(this@MainActivity).apply {
+                                orientation = LinearLayout.HORIZONTAL
+                                gravity = android.view.Gravity.CENTER_VERTICAL
+                                background = UITheme.createCardShape(this@MainActivity, UITheme.SURFACE, 10, UITheme.STROKE_COLOR, 1)
+                                val p = UITheme.dpToPx(this@MainActivity, 8)
+                                setPadding(p, p, p, p)
+                                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                                    setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 6))
+                                }
+                            }
+
+                            val itemText = TextView(this@MainActivity).apply {
+                                text = "Entry: $item"
+                                UITheme.applyMetadataStyle(this)
+                                textSize = 12f
+                                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                            }
+                            row.addView(itemText)
+
+                            val removeBtn = Button(this@MainActivity).apply {
+                                text = "🗑 Remove"
+                                textSize = 11f
+                                background = UITheme.createBadgeDrawable(this@MainActivity, "#991B1B", 8)
+                                setTextColor(Color.WHITE)
+                                setOnClickListener {
+                                    currentMonitored.remove(item)
+                                    TdlibManager.setChannels(this@MainActivity, currentMonitored.toList())
+                                    renderList(filterQuery)
+                                }
+                            }
+                            row.addView(removeBtn)
+                            chatListContainer.addView(row)
+                        }
+                    }
+
                     val filtered = if (filterQuery.isBlank()) chats else chats.filter {
                         it.title.contains(filterQuery, ignoreCase = true)
                     }
 
-                    if (filtered.isEmpty()) {
+                    if (filtered.isEmpty() && unmatched.isEmpty()) {
                         val empty = TextView(this@MainActivity).apply {
                             text = "No Telegram chats found."
                             UITheme.applyMetadataStyle(this)
@@ -2617,7 +2675,11 @@ class MainActivity : AppCompatActivity() {
 
                     filtered.forEach { chat ->
                         val chatKey = chat.chatId.toString()
-                        val isChecked = currentMonitored.contains(chatKey) || (chat.username != null && currentMonitored.contains("@" + chat.username))
+                        val chatKeyNo100 = chatKey.removePrefix("-100")
+                        val isChecked = currentMonitored.contains(chatKey) ||
+                                currentMonitored.contains(chatKeyNo100) ||
+                                currentMonitored.contains("-100$chatKey") ||
+                                (chat.username != null && currentMonitored.contains("@" + chat.username))
 
                         val row = LinearLayout(this@MainActivity).apply {
                             orientation = LinearLayout.HORIZONTAL
@@ -2681,6 +2743,8 @@ class MainActivity : AppCompatActivity() {
                                     currentMonitored.add(chatKey)
                                 } else {
                                     currentMonitored.remove(chatKey)
+                                    currentMonitored.remove(chatKeyNo100)
+                                    currentMonitored.remove("-100$chatKey")
                                     if (chat.username != null) {
                                         currentMonitored.remove("@" + chat.username)
                                     }

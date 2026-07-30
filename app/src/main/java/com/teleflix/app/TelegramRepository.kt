@@ -195,22 +195,26 @@ object TelegramRepository {
         }
 
         clean.toLongOrNull()?.let { numericId ->
-            // For raw numeric IDs, ensure TDLib has the chat loaded in its local cache.
-            // Without this, archived or unloaded chats will fail on SearchChatMessages.
             try {
-                TelegramClient.sendRequest(TdApi.GetChat(numericId))
+                val chat = TelegramClient.sendRequest(TdApi.GetChat(numericId)) as? TdApi.Chat
+                if (chat != null) return numericId
             } catch (e: Exception) {
-                Log.w(TAG, "GetChat failed for $numericId, trying to open: ${e.message}")
+                if (clean.startsWith("-100")) {
+                    val botId = clean.removePrefix("-100").toLongOrNull()
+                    if (botId != null) {
+                        try {
+                            val botChat = TelegramClient.sendRequest(TdApi.GetChat(botId)) as? TdApi.Chat
+                            if (botChat != null) return botId
+                        } catch (_: Exception) {}
+                    }
+                }
                 // Try loading archive chats in case they haven't been loaded yet
                 try {
                     TelegramClient.sendRequest(TdApi.LoadChats(TdApi.ChatListArchive(), 100))
                 } catch (_: Exception) {}
-                // Retry after loading
                 try {
                     TelegramClient.sendRequest(TdApi.GetChat(numericId))
-                } catch (e2: Exception) {
-                    Log.e(TAG, "GetChat still failed for $numericId after loading archive: ${e2.message}")
-                }
+                } catch (_: Exception) {}
             }
             return numericId
         }
