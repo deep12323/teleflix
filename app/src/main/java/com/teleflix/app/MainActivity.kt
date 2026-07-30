@@ -83,7 +83,7 @@ class MainActivity : AppCompatActivity() {
     private var lastTelegramFromMessageId: Long = 0L
     private val telegramStreamCache = mutableMapOf<String, Pair<String, String>>()
     private val telegramGroupCache = mutableMapOf<String, Pair<List<Pair<Long, Long>>, List<Long>>>()
-    private val telegramGroupPartsCache = mutableMapOf<String, List<TelegramVideoMessage>>()
+    private val telegramGroupPartsCache get() = TelegramRepository.groupPartsCache
 
     private var activeMediaIdForResume: String = ""
     private var activeStreamUrlForResume: String = ""

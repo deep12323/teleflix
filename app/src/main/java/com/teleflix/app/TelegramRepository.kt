@@ -54,6 +54,8 @@ data class TelegramChatInfo(
 object TelegramRepository {
     private const val TAG = "TelegramRepository"
 
+    val groupPartsCache = java.util.concurrent.ConcurrentHashMap<String, List<TelegramVideoMessage>>()
+
     private var appContext: Context? = null
 
     val authState: StateFlow<TelegramAuthState> = TelegramClient.authState

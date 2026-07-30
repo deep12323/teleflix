@@ -183,7 +183,7 @@ object TdlibManager {
                     val totalSize = group.parts.sumOf { it.fileSize }
                     val firstPart = group.parts.first()
                     val groupId = "group_${firstPart.chatId}_${group.baseName}"
-                    telegramGroupPartsCache[groupId] = group.parts
+                    TelegramRepository.groupPartsCache[groupId] = group.parts
                     val firstStreamUrl = TelegramRepository.getStreamUrl(firstPart.fileId, firstPart.fileName, firstPart.fileSize)
                     resultSources.add(
                         StreamSource(
