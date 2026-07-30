@@ -2666,7 +2666,9 @@ class MainActivity : AppCompatActivity() {
                     CoroutineScope(Dispatchers.Main).launch {
                         val freshUrl = TelegramRepository.getFreshMediaUrl(part.chatId, part.messageId)
                         if (freshUrl != null && freshUrl.isNotBlank()) {
-                            checkResumeAndSelectPlayer(freshUrl, partTitle, item.posterUrl, "single_${part.chatId}_${part.messageId}", part.fileName)
+                            val groupId = if (item.id.startsWith("group_")) item.id else "group_${part.chatId}_$cleanTitle"
+                            telegramGroupPartsCache[groupId] = parts
+                            checkResumeAndSelectPlayer(freshUrl, "📦 $cleanTitle", item.posterUrl, groupId, part.fileName)
                         } else {
                             Toast.makeText(this@MainActivity, "Media link expired", Toast.LENGTH_SHORT).show()
                         }
