@@ -481,7 +481,8 @@ object TelegramStreamingProxy {
         fileIds: List<Int>,
         sizes: List<Long>,
         globalOffset: Long,
-        limit: Int
+        limit: Int,
+        metrics: StreamMetrics? = null
     ): ByteArray? {
         if (fileIds.isEmpty() || sizes.isEmpty()) return null
         val totalSize = sizes.sum()
@@ -516,7 +517,26 @@ object TelegramStreamingProxy {
             })
         }
 
-        return downloadChunk(partFileId, partOffset, chunkSize)
+        // Prefetch next part if we are within 20MB of the boundary of the current part
+        if (partRemaining <= 20 * 1024 * 1024L && partIndex + 1 < fileIds.size) {
+            val nextPartFileId = fileIds[partIndex + 1]
+            val nextPrefetchBytes = when {
+                prefetchSizeMb == -1L -> 0L
+                prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
+                else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
+            }
+            runCatching {
+                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                    req.fileId = nextPartFileId
+                    req.priority = DOWNLOAD_PRIORITY
+                    req.offset = 0
+                    req.limit = nextPrefetchBytes
+                    req.synchronous = false
+                })
+            }
+        }
+
+        return downloadChunk(partFileId, partOffset, chunkSize, metrics)
     }
 
     private suspend fun readBufferFromMerged(
@@ -552,7 +572,12 @@ object TelegramStreamingProxy {
             return
         }
 
-        val ext = fileName?.substringAfterLast('.', "")?.lowercase() ?: ""
+        var ext = fileName?.substringAfterLast('.', "")?.lowercase() ?: ""
+        if (ext.matches(Regex("^\\d+$")) || ext == "part" || ext.startsWith("z")) {
+            val cleanName = fileName?.substringBeforeLast('.', "") ?: ""
+            ext = cleanName.substringAfterLast('.', "").lowercase()
+        }
+
         if (ext == "zip") {
             streamZipEntryFromMergedOrSingle(fileIds, sizes, fileName, rangeHeader, output, isHead)
             return
@@ -571,7 +596,10 @@ object TelegramStreamingProxy {
         }
         val length = end - start + 1
 
-        val mimeType = getMimeType(ext)
+        var mimeType = getMimeType(ext)
+        if (mimeType == "application/octet-stream" || mimeType.isBlank()) {
+            mimeType = "video/mp4"
+        }
 
         val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
         val safeFileName = fileName?.replace("\"", "\\\"") ?: "video.$ext"
@@ -584,24 +612,90 @@ object TelegramStreamingProxy {
             }
             append("Content-Type: $mimeType\r\n")
             append("Content-Disposition: inline; filename=\"$safeFileName\"\r\n")
-            append("Connection: close\r\n\r\n")
+            append("Connection: keep-alive\r\n")
+            append("Keep-Alive: timeout=60, max=1000\r\n\r\n")
         }.toString()
 
-        output.write(headers.toByteArray())
-        output.flush()
-
-        if (isHead) {
-            return
+        val groupKey = "merged_${fileIds.joinToString("_")}"
+        val currentJob = kotlin.coroutines.coroutineContext[Job]
+        if (currentJob != null) {
+            val oldJob = activeFileJobs.put(groupKey, currentJob)
+            if (oldJob != null && oldJob != currentJob && oldJob.isActive) {
+                oldJob.cancel()
+            }
         }
 
-        var offset = start
-        while (offset <= end && running) {
-            val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
-            val bytes = readChunkFromMerged(fileIds, sizes, offset, chunkSize)
-            if (bytes == null || bytes.isEmpty()) break
-            output.write(bytes)
+        val m = StreamMetrics(
+            fileId = fileIds.first(),
+            rangeHeader = rangeHeader,
+            startOffset = start,
+            totalSize = totalSize
+        )
+
+        for (fId in fileIds) {
+            activeStreamRequests.getOrPut(fId) { java.util.concurrent.ConcurrentHashMap.newKeySet<String>() }.add(m.reqId)
+        }
+        m.logStart()
+
+        // Trigger background download for all parts in the merged file group so TDLib starts fetching them ahead of time
+        val prefetchBytes = when {
+            prefetchSizeMb == -1L -> 0L
+            prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
+            else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
+        }
+        for (fId in fileIds) {
+            runCatching {
+                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                    req.fileId = fId
+                    req.priority = DOWNLOAD_PRIORITY
+                    req.offset = 0
+                    req.limit = prefetchBytes
+                    req.synchronous = false
+                })
+            }
+        }
+
+        try {
+            output.write(headers.toByteArray())
             output.flush()
-            offset += bytes.size
+
+            if (isHead) {
+                m.exitReason = "head_request"
+                m.logEnd()
+                return
+            }
+
+            var offset = start
+            while (offset <= end && running) {
+                val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
+                val bytes = readChunkFromMerged(fileIds, sizes, offset, chunkSize, m)
+                if (bytes == null || bytes.isEmpty()) {
+                    m.exitReason = "read_timeout_or_empty"
+                    break
+                }
+                try {
+                    output.write(bytes)
+                    output.flush()
+                    offset += bytes.size
+                    m.totalBytesServed += bytes.size
+                    m.chunksOk++
+                } catch (e: Exception) {
+                    m.exitReason = "client_disconnect"
+                    break
+                }
+            }
+            m.logEnd()
+        } finally {
+            if (currentJob != null) {
+                activeFileJobs.remove(groupKey, currentJob)
+            }
+            for (fId in fileIds) {
+                val reqSet = activeStreamRequests[fId]
+                reqSet?.remove(m.reqId)
+                if (reqSet == null || reqSet.isEmpty()) {
+                    activeStreamRequests.remove(fId)
+                }
+            }
         }
     }
 

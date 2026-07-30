@@ -967,7 +967,7 @@ object TelegramRepository {
      */
     fun groupSplitFiles(messages: List<TelegramVideoMessage>): Pair<List<SplitFileGroup>, List<TelegramVideoMessage>> {
         val splitPattern = Regex("""^(.+?)\.(\d{2,4})$""")  // matches file.001, file.02, file.0001
-        val partPattern = Regex("""^(.+?)\.part(\d+)(?:\.[a-zA-Z0-9]+)?$""", RegexOption.IGNORE_CASE)  // matches file.part1.rar, file.part01.zip
+        val partPattern = Regex("""^(.+?)\.part(\d+)(\.[a-zA-Z0-9]+)?$""", RegexOption.IGNORE_CASE)  // matches file.part1.rar, file.part01.zip, file.part1.mkv
         val zPattern = Regex("""^(.+?)\.z(\d{2,3})$""", RegexOption.IGNORE_CASE) // matches file.z01, file.z02
         
         val groups = mutableMapOf<String, MutableList<Pair<Int, TelegramVideoMessage>>>()
@@ -986,8 +986,14 @@ object TelegramRepository {
                     groups.getOrPut(baseName) { mutableListOf() }.add(partNum to msg)
                 }
                 partMatch != null -> {
-                    val baseName = partMatch.groupValues[1]
+                    val rawBase = partMatch.groupValues[1]
                     val partNum = partMatch.groupValues[2].toIntOrNull() ?: 0
+                    val extSuffix = partMatch.groupValues.getOrNull(3) ?: ""
+                    val baseName = if (extSuffix.isNotBlank() && !rawBase.endsWith(extSuffix, ignoreCase = true)) {
+                        "$rawBase$extSuffix"
+                    } else {
+                        rawBase
+                    }
                     groups.getOrPut(baseName) { mutableListOf() }.add(partNum to msg)
                 }
                 zMatch != null -> {
