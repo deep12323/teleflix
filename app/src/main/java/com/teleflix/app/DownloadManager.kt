@@ -673,16 +673,6 @@ object DownloadManager {
         }
     }
 
-    private fun extractFileIdFromMessage(msg: TdApi.Message?): Int? {
-        if (msg == null) return null
-        return when (val content = msg.content) {
-            is TdApi.MessageVideo -> content.video.video.id
-            is TdApi.MessageDocument -> content.document.document.id
-            is TdApi.MessageAudio -> content.audio.audio.id
-            else -> null
-        }
-    }
-
     fun pauseDownload(context: Context, downloadId: String) {
         synchronized(downloadsMap) {
             val item = downloadsMap[downloadId] ?: return
