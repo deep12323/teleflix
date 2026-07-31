@@ -143,6 +143,12 @@ object TelegramClient {
         client?.send(TdApi.SetOption("download_files_in_background", TdApi.OptionValueBoolean(true)), null)
         client?.send(TdApi.SetOption("online", TdApi.OptionValueBoolean(true)), null)
         client?.send(TdApi.SetOption("max_download_file_size", TdApi.OptionValueInteger(50000000000L)), null)
+        client?.send(TdApi.SetOption("prefer_ipv6", TdApi.OptionValueBoolean(false)), null)
+    }
+
+    fun deleteFile(fileId: Int) {
+        if (fileId <= 0) return
+        client?.send(TdApi.DeleteFile(fileId), null)
     }
 
     fun optimizeStorage() {
