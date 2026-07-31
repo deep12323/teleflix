@@ -378,7 +378,7 @@ object DownloadManager {
     private suspend fun processSinglePartDownloadStep(context: Context, item: DownloadItem, now: Long) {
         var currentFileId = item.fileId
 
-        if (item.chatId != 0L && item.messageId != 0L) {
+        if (currentFileId == 0 && item.chatId != 0L && item.messageId != 0L) {
             try {
                 val msg = TelegramClient.sendRequest(TdApi.GetMessage(item.chatId, item.messageId)) as? TdApi.Message
                 val refreshedId = extractFileIdFromMessage(msg)
@@ -421,17 +421,21 @@ object DownloadManager {
                 }
 
                 if (!fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
-                    try {
-                        val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = currentFileId
-                            req.priority = 32
-                            req.offset = 0
-                            req.limit = 0
-                            req.synchronous = false
-                        })
-                        TeleflixLogger.log(TAG, "DownloadFile request sent for fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
-                    } catch (e: Exception) {
-                        TeleflixLogger.log(TAG, "Failed DownloadFile request for $currentFileId: ${e.message}", isError = true)
+                    val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
+                    if (now - lastRetry > 10000L) {
+                        lastDownloadRetryTimeMap[currentFileId] = now
+                        try {
+                            val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = currentFileId
+                                req.priority = 32
+                                req.offset = 0
+                                req.limit = 0
+                                req.synchronous = false
+                            })
+                            TeleflixLogger.log(TAG, "DownloadFile request sent for fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
+                        } catch (e: Exception) {
+                            TeleflixLogger.log(TAG, "Failed DownloadFile request for $currentFileId: ${e.message}", isError = true)
+                        }
                     }
                 }
             } else {
@@ -549,20 +553,23 @@ object DownloadManager {
                         }
                     }
                 } else if (!fileObj.local.isDownloadingActive) {
-                    try {
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = partFileId
-                            req.priority = 32
-                            req.offset = 0
-                            req.limit = 0
-                            req.synchronous = false
-                        })
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
+                    val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
+                    if (now - lastRetry > 10000L) {
+                        lastDownloadRetryTimeMap[partFileId] = now
+                        try {
+                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = partFileId
+                                req.priority = 32
+                                req.offset = 0
+                                req.limit = 0
+                                req.synchronous = false
+                            })
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
+                        }
                     }
                 }
 
-                saveToPrefs(context)
                 updateFlow()
             } else {
                 Log.e(TAG, "Multipart item ${item.id} part index $idx cannot resolve valid fileId. Marking FAILED.")
