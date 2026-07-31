@@ -154,7 +154,9 @@ object DownloadManager {
     }
 
     private fun updateFlow() {
-        _downloadsFlow.value = downloadsMap.values.toList().sortedByDescending { it.addedTime }
+        _downloadsFlow.value = synchronized(downloadsMap) {
+            downloadsMap.values.map { it.copy() }.sortedByDescending { it.addedTime }
+        }
     }
 
     fun getStorageMode(context: Context): String {
