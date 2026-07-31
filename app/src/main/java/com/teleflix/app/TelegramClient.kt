@@ -141,6 +141,9 @@ object TelegramClient {
     fun updateCacheLimit() {
         client?.send(TdApi.SetOption("storage_max_size", TdApi.OptionValueInteger(0L)), null)
         client?.send(TdApi.SetOption("storage_max_files", TdApi.OptionValueInteger(0L)), null)
+        client?.send(TdApi.SetOption("download_files_in_background", TdApi.OptionValueBoolean(true)), null)
+        client?.send(TdApi.SetOption("online", TdApi.OptionValueBoolean(true)), null)
+        client?.send(TdApi.SetOption("max_download_file_size", TdApi.OptionValueInteger(50000000000L)), null)
     }
 
     fun optimizeStorage() {
