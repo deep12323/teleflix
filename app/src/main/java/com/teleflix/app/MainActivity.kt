@@ -3089,7 +3089,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        if (isFinishing) {
+        if (isFinishing && !DownloadManager.hasActiveDownloads()) {
             try { TelegramClient.clearMediaCacheSync(this) } catch (_: Exception) {}
         }
         super.onDestroy()
@@ -3097,7 +3097,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level == TRIM_MEMORY_COMPLETE || level == TRIM_MEMORY_MODERATE) {
+        if ((level == TRIM_MEMORY_COMPLETE || level == TRIM_MEMORY_MODERATE) && !DownloadManager.hasActiveDownloads()) {
             try { TelegramClient.clearMediaCache(this) } catch (_: Exception) {}
         }
     }
