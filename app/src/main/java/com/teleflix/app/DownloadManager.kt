@@ -31,6 +31,7 @@ object DownloadManager {
     val downloadsFlow: StateFlow<List<DownloadItem>> = _downloadsFlow.asStateFlow()
 
     private var lastSpeedCalcTime = System.currentTimeMillis()
+    private var lastSpeedCalcTimeMap = HashMap<String, Long>()
     private var lastDownloadedBytesMap = HashMap<String, Long>()
     private var lastDownloadRetryTimeMap = HashMap<Int, Long>()
     private var downloadLoopJob: Job? = null
@@ -239,14 +240,19 @@ object DownloadManager {
 
             // Request TDLib to start downloading file
             if (fileId != 0) {
+                lastDownloadRetryTimeMap[fileId] = System.currentTimeMillis()
                 CoroutineScope(Dispatchers.IO).launch {
-                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                        req.fileId = fileId
-                        req.priority = 32
-                        req.offset = 0
-                        req.limit = 0
-                        req.synchronous = false
-                    })
+                    try {
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = fileId
+                            req.priority = 32
+                            req.offset = 0
+                            req.limit = 0
+                            req.synchronous = false
+                        })
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed initial DownloadFile request for $fileId", e)
+                    }
                 }
             }
 
@@ -312,6 +318,24 @@ object DownloadManager {
             saveToPrefs(context)
             updateFlow()
 
+            val firstFileId = firstPart?.fileId ?: 0
+            if (firstFileId != 0) {
+                lastDownloadRetryTimeMap[firstFileId] = System.currentTimeMillis()
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = firstFileId
+                            req.priority = 32
+                            req.offset = 0
+                            req.limit = 0
+                            req.synchronous = false
+                        })
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed initial DownloadFile for multipart first part $firstFileId", e)
+                    }
+                }
+            }
+
             TeleflixDownloadService.start(context)
             startDownloadLoop(context)
 
@@ -329,42 +353,60 @@ object DownloadManager {
                 }
 
                 val now = System.currentTimeMillis()
-                val timeDiff = (now - lastSpeedCalcTime).coerceAtLeast(1)
-
                 for (item in activeItems) {
                     try {
                         if (item.isMultiPart) {
-                            processMultiPartDownloadStep(appContext, item, now, timeDiff)
+                            processMultiPartDownloadStep(appContext, item, now)
                         } else {
-                            processSinglePartDownloadStep(appContext, item, now, timeDiff)
+                            processSinglePartDownloadStep(appContext, item, now)
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error in download loop for item ${item.id}", e)
                     }
-                }
-
-                if (timeDiff >= 1000) {
-                    lastSpeedCalcTime = now
                 }
                 delay(1000)
             }
         }
     }
 
-    private suspend fun processSinglePartDownloadStep(context: Context, item: DownloadItem, now: Long, timeDiff: Long) {
+    private suspend fun processSinglePartDownloadStep(context: Context, item: DownloadItem, now: Long) {
         var currentFileId = item.fileId
 
         if (currentFileId == 0 && item.chatId != 0L && item.messageId != 0L) {
-            val msg = TelegramClient.sendRequest(TdApi.GetMessage(item.chatId, item.messageId)) as? TdApi.Message
-            val refreshedId = extractFileIdFromMessage(msg)
-            if (refreshedId != null && refreshedId != 0) {
-                currentFileId = refreshedId
-                item.fileId = refreshedId
+            try {
+                val msg = TelegramClient.sendRequest(TdApi.GetMessage(item.chatId, item.messageId)) as? TdApi.Message
+                val refreshedId = extractFileIdFromMessage(msg)
+                if (refreshedId != null && refreshedId != 0) {
+                    currentFileId = refreshedId
+                    item.fileId = refreshedId
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error fetching message for download item ${item.id}", e)
             }
         }
 
         if (currentFileId != 0) {
-            val fileObj = TelegramClient.sendRequest(TdApi.GetFile(currentFileId)) as? TdApi.File
+            var fileObj: TdApi.File? = try {
+                TelegramClient.sendRequest(TdApi.GetFile(currentFileId)) as? TdApi.File
+            } catch (e: Exception) {
+                Log.w(TAG, "GetFile failed for $currentFileId: ${e.message}, attempting refresh...")
+                null
+            }
+
+            if (fileObj == null && item.chatId != 0L && item.messageId != 0L) {
+                try {
+                    val msg = TelegramClient.sendRequest(TdApi.GetMessage(item.chatId, item.messageId)) as? TdApi.Message
+                    val refreshedId = extractFileIdFromMessage(msg)
+                    if (refreshedId != null && refreshedId != 0) {
+                        currentFileId = refreshedId
+                        item.fileId = refreshedId
+                        fileObj = TelegramClient.sendRequest(TdApi.GetFile(currentFileId)) as? TdApi.File
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Refresh after GetFile failure failed for ${item.id}", e)
+                }
+            }
+
             if (fileObj != null) {
                 withContext(Dispatchers.Main) {
                     onFileUpdate(context, fileObj)
@@ -372,8 +414,26 @@ object DownloadManager {
 
                 if (!fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
                     val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
-                    if (now - lastRetry > 5000L) {
+                    if (now - lastRetry > 2000L) {
                         lastDownloadRetryTimeMap[currentFileId] = now
+                        try {
+                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = currentFileId
+                                req.priority = 32
+                                req.offset = 0
+                                req.limit = 0
+                                req.synchronous = false
+                            })
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed DownloadFile request for $currentFileId", e)
+                        }
+                    }
+                }
+            } else {
+                val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
+                if (now - lastRetry > 2000L) {
+                    lastDownloadRetryTimeMap[currentFileId] = now
+                    try {
                         TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                             req.fileId = currentFileId
                             req.priority = 32
@@ -381,28 +441,22 @@ object DownloadManager {
                             req.limit = 0
                             req.synchronous = false
                         })
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed DownloadFile retry for $currentFileId", e)
                     }
                 }
-            } else {
-                val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
-                if (now - lastRetry > 5000L) {
-                    lastDownloadRetryTimeMap[currentFileId] = now
-                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                        req.fileId = currentFileId
-                        req.priority = 32
-                        req.offset = 0
-                        req.limit = 0
-                        req.synchronous = false
-                    })
-                }
             }
+        } else {
+            Log.e(TAG, "Download item ${item.id} has invalid fileId=0 and cannot be refreshed. Marking FAILED.")
+            item.status = DownloadStatus.FAILED
+            saveToPrefs(context)
+            updateFlow()
         }
     }
 
-    private suspend fun processMultiPartDownloadStep(context: Context, item: DownloadItem, now: Long, timeDiff: Long) {
+    private suspend fun processMultiPartDownloadStep(context: Context, item: DownloadItem, now: Long) {
         val idx = item.currentPartIndex
         if (idx >= item.partFileIds.size) {
-            // All parts finished, perform fast binary concatenation merge!
             finalizeMultiPartMerge(context, item)
             return
         }
@@ -412,26 +466,56 @@ object DownloadManager {
         val messageId = item.partMessageIds.getOrNull(idx) ?: 0L
 
         if (partFileId == 0 && chatId != 0L && messageId != 0L) {
-            val msg = TelegramClient.sendRequest(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message
-            val refreshedId = extractFileIdFromMessage(msg)
-            if (refreshedId != null && refreshedId != 0) {
-                partFileId = refreshedId
-                item.partFileIds[idx] = refreshedId
-                item.fileId = refreshedId
+            try {
+                val msg = TelegramClient.sendRequest(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message
+                val refreshedId = extractFileIdFromMessage(msg)
+                if (refreshedId != null && refreshedId != 0) {
+                    partFileId = refreshedId
+                    item.partFileIds[idx] = refreshedId
+                    item.fileId = refreshedId
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error fetching part message for download item ${item.id}", e)
             }
         }
 
         if (partFileId != 0) {
-            val fileObj = TelegramClient.sendRequest(TdApi.GetFile(partFileId)) as? TdApi.File
+            var fileObj: TdApi.File? = try {
+                TelegramClient.sendRequest(TdApi.GetFile(partFileId)) as? TdApi.File
+            } catch (e: Exception) {
+                Log.w(TAG, "GetFile failed for part $partFileId: ${e.message}, attempting refresh...")
+                null
+            }
+
+            if (fileObj == null && chatId != 0L && messageId != 0L) {
+                try {
+                    val msg = TelegramClient.sendRequest(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message
+                    val refreshedId = extractFileIdFromMessage(msg)
+                    if (refreshedId != null && refreshedId != 0) {
+                        partFileId = refreshedId
+                        item.partFileIds[idx] = refreshedId
+                        item.fileId = refreshedId
+                        fileObj = TelegramClient.sendRequest(TdApi.GetFile(partFileId)) as? TdApi.File
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Refresh after GetFile failure failed for part ${item.id}", e)
+                }
+            }
+
             if (fileObj != null) {
                 val sumCompletedParts = item.partFileSizes.take(idx).sum()
                 val currentPartDownloaded = fileObj.local.downloadedSize
                 item.downloadedBytes = sumCompletedParts + currentPartDownloaded
 
-                val lastBytes = lastDownloadedBytesMap[item.id] ?: item.downloadedBytes
-                val bytesDiff = (item.downloadedBytes - lastBytes).coerceAtLeast(0)
-                item.speedBytesPerSec = (bytesDiff * 1000) / timeDiff
-                lastDownloadedBytesMap[item.id] = item.downloadedBytes
+                val lastCalcTime = lastSpeedCalcTimeMap[item.id] ?: 0L
+                if (now - lastCalcTime >= 1000L) {
+                    val lastBytes = lastDownloadedBytesMap[item.id] ?: item.downloadedBytes
+                    val bytesDiff = (item.downloadedBytes - lastBytes).coerceAtLeast(0)
+                    val elapsed = (now - lastCalcTime).coerceAtLeast(1)
+                    item.speedBytesPerSec = (bytesDiff * 1000) / elapsed
+                    lastDownloadedBytesMap[item.id] = item.downloadedBytes
+                    lastSpeedCalcTimeMap[item.id] = now
+                }
 
                 val tdlibPath = fileObj.local?.path ?: ""
 
@@ -444,7 +528,6 @@ object DownloadManager {
                         }
                     }
 
-                    // Advance to next part!
                     item.currentPartIndex++
                     saveToPrefs(context)
                     updateFlow()
@@ -454,29 +537,42 @@ object DownloadManager {
                     } else {
                         val nextFileId = item.partFileIds.getOrNull(item.currentPartIndex) ?: 0
                         if (nextFileId != 0) {
+                            try {
+                                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                    req.fileId = nextFileId
+                                    req.priority = 32
+                                    req.offset = 0
+                                    req.limit = 0
+                                    req.synchronous = false
+                                })
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed DownloadFile for next part $nextFileId", e)
+                            }
+                        }
+                    }
+                } else if (!fileObj.local.isDownloadingActive) {
+                    val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
+                    if (now - lastRetry > 2000L) {
+                        lastDownloadRetryTimeMap[partFileId] = now
+                        try {
                             TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = nextFileId
+                                req.fileId = partFileId
                                 req.priority = 32
                                 req.offset = 0
                                 req.limit = 0
                                 req.synchronous = false
                             })
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
                         }
-                    }
-                } else if (!fileObj.local.isDownloadingActive) {
-                    val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
-                    if (now - lastRetry > 5000L) {
-                        lastDownloadRetryTimeMap[partFileId] = now
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = partFileId
-                            req.priority = 32
-                            req.offset = 0
-                            req.limit = 0
-                            req.synchronous = false
-                        })
                     }
                 }
 
+                saveToPrefs(context)
+                updateFlow()
+            } else {
+                Log.e(TAG, "Multipart item ${item.id} part index $idx cannot resolve valid fileId. Marking FAILED.")
+                item.status = DownloadStatus.FAILED
                 saveToPrefs(context)
                 updateFlow()
             }
@@ -551,7 +647,9 @@ object DownloadManager {
                 CoroutineScope(Dispatchers.IO).launch {
                     val activeId = if (item.isMultiPart) item.partFileIds.getOrNull(item.currentPartIndex) ?: item.fileId else item.fileId
                     if (activeId != 0) {
-                        TelegramClient.sendRequest(TdApi.CancelDownloadFile(activeId, false))
+                        try {
+                            TelegramClient.sendRequest(TdApi.CancelDownloadFile(activeId, false))
+                        } catch (_: Exception) {}
                     }
                 }
             }
@@ -568,14 +666,17 @@ object DownloadManager {
 
                 val activeId = if (item.isMultiPart) item.partFileIds.getOrNull(item.currentPartIndex) ?: item.fileId else item.fileId
                 if (activeId != 0) {
+                    lastDownloadRetryTimeMap[activeId] = System.currentTimeMillis()
                     CoroutineScope(Dispatchers.IO).launch {
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = activeId
-                            req.priority = 32
-                            req.offset = 0
-                            req.limit = 0
-                            req.synchronous = false
-                        })
+                        try {
+                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = activeId
+                                req.priority = 32
+                                req.offset = 0
+                                req.limit = 0
+                                req.synchronous = false
+                            })
+                        } catch (_: Exception) {}
                     }
                 }
                 TeleflixDownloadService.start(context)
@@ -593,7 +694,9 @@ object DownloadManager {
             CoroutineScope(Dispatchers.IO).launch {
                 val activeId = if (item.isMultiPart) item.partFileIds.getOrNull(item.currentPartIndex) ?: item.fileId else item.fileId
                 if (activeId != 0) {
-                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(activeId, true))
+                    try {
+                        TelegramClient.sendRequest(TdApi.CancelDownloadFile(activeId, true))
+                    } catch (_: Exception) {}
                 }
                 val f = File(item.localPath)
                 if (f.exists()) f.delete()
@@ -628,7 +731,6 @@ object DownloadManager {
         synchronized(downloadsMap) {
             var updated = false
             val now = System.currentTimeMillis()
-            val timeDiff = (now - lastSpeedCalcTime).coerceAtLeast(1)
 
             for (item in downloadsMap.values) {
                 if (!item.isMultiPart && (item.fileId == file.id || (item.fileId == 0 && file.id != 0))) {
@@ -643,10 +745,15 @@ object DownloadManager {
                         item.totalBytes = file.size
                     }
 
-                    val lastBytes = lastDownloadedBytesMap[item.id] ?: item.downloadedBytes
-                    val bytesDiff = (item.downloadedBytes - lastBytes).coerceAtLeast(0)
-                    item.speedBytesPerSec = (bytesDiff * 1000) / timeDiff
-                    lastDownloadedBytesMap[item.id] = item.downloadedBytes
+                    val lastCalcTime = lastSpeedCalcTimeMap[item.id] ?: 0L
+                    if (now - lastCalcTime >= 1000L) {
+                        val lastBytes = lastDownloadedBytesMap[item.id] ?: item.downloadedBytes
+                        val bytesDiff = (item.downloadedBytes - lastBytes).coerceAtLeast(0)
+                        val elapsed = (now - lastCalcTime).coerceAtLeast(1)
+                        item.speedBytesPerSec = (bytesDiff * 1000) / elapsed
+                        lastDownloadedBytesMap[item.id] = item.downloadedBytes
+                        lastSpeedCalcTimeMap[item.id] = now
+                    }
 
                     val tdlibPath = file.local?.path ?: ""
 
@@ -675,10 +782,6 @@ object DownloadManager {
                     }
                     updated = true
                 }
-            }
-
-            if (timeDiff >= 1000) {
-                lastSpeedCalcTime = now
             }
 
             if (updated) {

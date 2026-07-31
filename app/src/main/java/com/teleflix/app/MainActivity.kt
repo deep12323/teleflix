@@ -3126,13 +3126,14 @@ class MainActivity : AppCompatActivity() {
         if (fileId != null && fileId != 0) {
             val cleanFileName = stream.fileName.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
             val fileName = if (cleanFileName.contains(".")) cleanFileName else "$displayTitle.mp4"
+            val messageId = stream.id.split("_").getOrNull(1)?.toLongOrNull() ?: 0L
             val item = DownloadManager.startDownload(
                 context = this,
                 title = displayTitle,
                 fileName = fileName,
                 fileId = fileId,
                 chatId = stream.chatId,
-                messageId = 0L,
+                messageId = messageId,
                 posterUrl = posterUrl
             )
             Toast.makeText(this, "Started downloading '$displayTitle' 📥", Toast.LENGTH_SHORT).show()
