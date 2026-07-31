@@ -456,7 +456,7 @@ object DownloadManager {
                     onFileUpdate(context, fileObj)
                 }
 
-                if (!fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
+                if (!fileObj.local.canBeDownloaded && !fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
                     val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
                     if (now - lastRetry > 5000L) {
                         lastDownloadRetryTimeMap[currentFileId] = now
@@ -468,7 +468,7 @@ object DownloadManager {
                                 req.limit = 0
                                 req.synchronous = false
                             })
-                            TeleflixLogger.log(TAG, "Re-issued DownloadFile for inactive fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
+                            TeleflixLogger.log(TAG, "Re-issued DownloadFile for unqueued fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
                         } catch (e: Exception) {
                             TeleflixLogger.log(TAG, "Failed DownloadFile request for $currentFileId: ${e.message}", isError = true)
                         }
@@ -588,7 +588,7 @@ object DownloadManager {
                             }
                         }
                     }
-                } else if (!fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
+                } else if (!fileObj.local.canBeDownloaded && !fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
                     val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
                     if (now - lastRetry > 5000L) {
                         lastDownloadRetryTimeMap[partFileId] = now
@@ -605,7 +605,6 @@ object DownloadManager {
                         }
                     }
                 }
-
                 updateFlow()
             } else {
                 Log.e(TAG, "Multipart item ${item.id} part index $idx cannot resolve valid fileId. Marking FAILED.")
@@ -613,6 +612,18 @@ object DownloadManager {
                 saveToPrefs(context)
                 updateFlow()
             }
+        }
+    }
+
+    private fun extractFileIdFromMessage(msg: TdApi.Message?): Int? {
+        if (msg == null) return null
+        return when (val content = msg.content) {
+            is TdApi.MessageVideo -> content.video.video.id
+            is TdApi.MessageDocument -> content.document.document.id
+            is TdApi.MessageAudio -> content.audio.audio.id
+            is TdApi.MessageVoiceNote -> content.voiceNote.voiceNote.id
+            is TdApi.MessageAnimation -> content.animation.animation.id
+            else -> null
         }
     }
 
