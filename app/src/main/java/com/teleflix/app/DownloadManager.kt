@@ -514,7 +514,11 @@ object DownloadManager {
 
                 val tdlibPath = fileObj.local?.path ?: ""
 
-                if (fileObj.local.isDownloadingCompleted || (fileObj.size > 0 && fileObj.local.downloadedSize >= fileObj.size)) {
+                val expectedPartSize = item.partFileSizes.getOrNull(idx) ?: 0L
+                val isPartDone = fileObj.local.isDownloadingCompleted || 
+                    (expectedPartSize > 0 && fileObj.local.downloadedSize >= expectedPartSize)
+
+                if (isPartDone) {
                     if (tdlibPath.isNotBlank()) {
                         val partTempFile = getPartTempFile(context, item.id, idx)
                         val source = File(tdlibPath)
@@ -730,10 +734,9 @@ object DownloadManager {
                     }
 
                     item.downloadedBytes = file.local.downloadedSize
-                    if (file.expectedSize > 0) {
-                        item.totalBytes = file.expectedSize
-                    } else if (file.size > 0) {
-                        item.totalBytes = file.size
+                    val reportedSize = if (file.expectedSize > 0) file.expectedSize else if (file.size > 0) file.size else 0L
+                    if (reportedSize > item.totalBytes || item.totalBytes == 0L) {
+                        item.totalBytes = reportedSize
                     }
 
                     val lastCalcTime = lastSpeedCalcTimeMap[item.id] ?: 0L
@@ -748,12 +751,14 @@ object DownloadManager {
 
                     val tdlibPath = file.local?.path ?: ""
 
-                    if (file.local.isDownloadingCompleted || (file.size > 0 && file.local.downloadedSize >= file.size)) {
+                    val isCompleted = file.local.isDownloadingCompleted || 
+                        (item.totalBytes > 0 && file.local.downloadedSize >= item.totalBytes)
+
+                    if (isCompleted) {
                         item.status = DownloadStatus.COMPLETED
-                        item.downloadedBytes = if (file.size > 0) file.size else item.downloadedBytes
-                        item.totalBytes = if (file.size > 0) file.size else item.totalBytes
+                        if (item.totalBytes > 0) item.downloadedBytes = item.totalBytes
                         item.speedBytesPerSec = 0L
-                        TeleflixLogger.log(TAG, "Download COMPLETED for '${item.title}': size=${item.totalBytes} bytes")
+                        TeleflixLogger.log(TAG, "Download COMPLETED for '${item.title}': downloaded=${item.downloadedBytes}/${item.totalBytes} bytes")
 
                         if (tdlibPath.isNotBlank()) {
                             try {
