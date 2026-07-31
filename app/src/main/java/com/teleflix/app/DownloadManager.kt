@@ -103,6 +103,47 @@ object DownloadManager {
         _downloadsFlow.value = downloadsMap.values.toList().sortedByDescending { it.addedTime }
     }
 
+    fun getStorageMode(context: Context): String {
+        return getPrefs(context).getString("storage_mode", "app_storage") ?: "app_storage"
+    }
+
+    fun setStorageMode(context: Context, mode: String) {
+        getPrefs(context).edit().putString("storage_mode", mode).apply()
+    }
+
+    fun getCustomPath(context: Context): String {
+        return getPrefs(context).getString("custom_storage_path", "") ?: ""
+    }
+
+    fun setCustomPath(context: Context, path: String) {
+        getPrefs(context).edit().putString("custom_storage_path", path.trim()).apply()
+    }
+
+    fun getActiveDownloadsDir(context: Context): File {
+        val mode = getStorageMode(context)
+        val dir = when (mode) {
+            "public_downloads" -> {
+                val pubDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Teleflix")
+                if (!pubDir.exists()) pubDir.mkdirs()
+                if (pubDir.exists()) pubDir else null
+            }
+            "custom" -> {
+                val pathStr = getCustomPath(context)
+                if (pathStr.isNotBlank()) {
+                    val customDir = File(pathStr)
+                    if (!customDir.exists()) customDir.mkdirs()
+                    if (customDir.exists()) customDir else null
+                } else null
+            }
+            else -> null
+        }
+        return dir ?: (context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir)
+    }
+
+    fun getFormattedActivePath(context: Context): String {
+        return getActiveDownloadsDir(context).absolutePath
+    }
+
     fun startDownload(
         context: Context,
         title: String,
@@ -121,7 +162,7 @@ object DownloadManager {
                 return existing
             }
 
-            val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+            val downloadsDir = getActiveDownloadsDir(context)
             val destFile = File(downloadsDir, fileName.ifBlank { "video_$fileId.mp4" })
 
             val item = DownloadItem(

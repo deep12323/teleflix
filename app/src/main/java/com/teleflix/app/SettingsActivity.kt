@@ -244,6 +244,155 @@ class SettingsActivity : AppCompatActivity() {
 
         loginSettingsContainer.addView(apiBox)
 
+        // 2. Download Location & Storage Section (Collapsible)
+        val downloadSettingsContainer = createCollapsibleSection("📥 Download Location & Storage")
+
+        val downloadBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = UITheme.createCardShape(this@SettingsActivity, UITheme.CARD, 16, UITheme.STROKE_COLOR, 1)
+            val pad = UITheme.dpToPx(this@SettingsActivity, 16)
+            setPadding(pad, pad, pad, pad)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+
+        val dlTitle = TextView(this).apply {
+            text = "Video Download Save Path"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 15f
+        }
+        downloadBox.addView(dlTitle)
+
+        val activePathSub = TextView(this).apply {
+            UITheme.applyMetadataStyle(this)
+            setPadding(0, UITheme.dpToPx(this@SettingsActivity, 4), 0, UITheme.dpToPx(this@SettingsActivity, 12))
+        }
+        fun updateActivePathText() {
+            activePathSub.text = "Current Save Path:\n${DownloadManager.getFormattedActivePath(this@SettingsActivity)}"
+        }
+        updateActivePathText()
+        downloadBox.addView(activePathSub)
+
+        val curMode = DownloadManager.getStorageMode(this)
+
+        val optAppStorage = TextView(this).apply {
+            text = "📁 App Private Storage (Default)\n/Android/data/com.teleflix.app/files/Download"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 13f
+            val isCur = curMode == "app_storage"
+            background = UITheme.createRippleCardShape(this@SettingsActivity, if (isCur) UITheme.SURFACE else UITheme.CARD, 14, if (isCur) UITheme.PRIMARY else UITheme.STROKE_COLOR)
+            setTextColor(if (isCur) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
+            val pV = UITheme.dpToPx(this@SettingsActivity, 12)
+            val pH = UITheme.dpToPx(this@SettingsActivity, 14)
+            setPadding(pH, pV, pH, pV)
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 8))
+            }
+        }
+
+        val optPublicStorage = TextView(this).apply {
+            text = "📂 Public Downloads Directory\n/sdcard/Download/Teleflix"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 13f
+            val isCur = curMode == "public_downloads"
+            background = UITheme.createRippleCardShape(this@SettingsActivity, if (isCur) UITheme.SURFACE else UITheme.CARD, 14, if (isCur) UITheme.PRIMARY else UITheme.STROKE_COLOR)
+            setTextColor(if (isCur) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
+            val pV = UITheme.dpToPx(this@SettingsActivity, 12)
+            val pH = UITheme.dpToPx(this@SettingsActivity, 14)
+            setPadding(pH, pV, pH, pV)
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 8))
+            }
+        }
+
+        val optCustomStorage = TextView(this).apply {
+            text = "🛠️ Custom Directory Location\nEnter your own folder path"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 13f
+            val isCur = curMode == "custom"
+            background = UITheme.createRippleCardShape(this@SettingsActivity, if (isCur) UITheme.SURFACE else UITheme.CARD, 14, if (isCur) UITheme.PRIMARY else UITheme.STROKE_COLOR)
+            setTextColor(if (isCur) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
+            val pV = UITheme.dpToPx(this@SettingsActivity, 12)
+            val pH = UITheme.dpToPx(this@SettingsActivity, 14)
+            setPadding(pH, pV, pH, pV)
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 8))
+            }
+        }
+
+        val customPathInputLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (curMode == "custom") android.view.View.VISIBLE else android.view.View.GONE
+            setPadding(0, UITheme.dpToPx(this@SettingsActivity, 6), 0, 0)
+        }
+
+        val customPathEdit = EditText(this).apply {
+            hint = "/storage/emulated/0/Movies/Teleflix"
+            setHintTextColor(Color.parseColor("#6B7280"))
+            setTextColor(Color.WHITE)
+            setText(DownloadManager.getCustomPath(this@SettingsActivity))
+            background = UITheme.createInputBackground(this@SettingsActivity)
+            val pV = UITheme.dpToPx(this@SettingsActivity, 10)
+            val pH = UITheme.dpToPx(this@SettingsActivity, 12)
+            setPadding(pH, pV, pH, pV)
+        }
+
+        val saveCustomPathBtn = Button(this).apply {
+            text = "Save Custom Storage Path"
+            setBackgroundColor(Color.parseColor("#10B981"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                val inputPath = customPathEdit.text.toString().trim()
+                if (inputPath.isBlank()) {
+                    Toast.makeText(this@SettingsActivity, "Please enter a valid path", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                DownloadManager.setCustomPath(this@SettingsActivity, inputPath)
+                DownloadManager.setStorageMode(this@SettingsActivity, "custom")
+                updateActivePathText()
+                Toast.makeText(this@SettingsActivity, "Saved custom storage location!", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        customPathInputLayout.addView(customPathEdit)
+        customPathInputLayout.addView(saveCustomPathBtn)
+
+        fun updateModeSelection(newMode: String) {
+            DownloadManager.setStorageMode(this@SettingsActivity, newMode)
+            updateActivePathText()
+
+            val isApp = newMode == "app_storage"
+            val isPub = newMode == "public_downloads"
+            val isCust = newMode == "custom"
+
+            optAppStorage.background = UITheme.createRippleCardShape(this@SettingsActivity, if (isApp) UITheme.SURFACE else UITheme.CARD, 14, if (isApp) UITheme.PRIMARY else UITheme.STROKE_COLOR)
+            optAppStorage.setTextColor(if (isApp) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
+
+            optPublicStorage.background = UITheme.createRippleCardShape(this@SettingsActivity, if (isPub) UITheme.SURFACE else UITheme.CARD, 14, if (isPub) UITheme.PRIMARY else UITheme.STROKE_COLOR)
+            optPublicStorage.setTextColor(if (isPub) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
+
+            optCustomStorage.background = UITheme.createRippleCardShape(this@SettingsActivity, if (isCust) UITheme.SURFACE else UITheme.CARD, 14, if (isCust) UITheme.PRIMARY else UITheme.STROKE_COLOR)
+            optCustomStorage.setTextColor(if (isCust) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
+
+            customPathInputLayout.visibility = if (isCust) android.view.View.VISIBLE else android.view.View.GONE
+        }
+
+        optAppStorage.setOnClickListener { updateModeSelection("app_storage") }
+        optPublicStorage.setOnClickListener { updateModeSelection("public_downloads") }
+        optCustomStorage.setOnClickListener { updateModeSelection("custom") }
+
+        downloadBox.addView(optAppStorage)
+        downloadBox.addView(optPublicStorage)
+        downloadBox.addView(optCustomStorage)
+        downloadBox.addView(customPathInputLayout)
+
+        downloadSettingsContainer.addView(downloadBox)
+
         // 3. Video Playback & Preferred Player Section (Collapsible)
         val playbackSectionContainer = createCollapsibleSection("🎬 Video Playback & Internal Player")
 
