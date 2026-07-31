@@ -21,7 +21,14 @@ data class DownloadItem(
     var downloadedBytes: Long = 0L,  // Downloaded bytes so far
     var speedBytesPerSec: Long = 0L, // Current download speed
     var status: DownloadStatus = DownloadStatus.QUEUED,
-    val addedTime: Long = System.currentTimeMillis()
+    val addedTime: Long = System.currentTimeMillis(),
+    val isMultiPart: Boolean = false,
+    val partFileIds: MutableList<Int> = mutableListOf(),
+    val partChatIds: MutableList<Long> = mutableListOf(),
+    val partMessageIds: MutableList<Long> = mutableListOf(),
+    val partFileSizes: MutableList<Long> = mutableListOf(),
+    val partFileNames: MutableList<String> = mutableListOf(),
+    var currentPartIndex: Int = 0
 ) {
     val progressPercent: Int
         get() = if (totalBytes > 0) ((downloadedBytes * 100) / totalBytes).toInt().coerceIn(0, 100) else 0

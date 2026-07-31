@@ -2663,14 +2663,65 @@ class MainActivity : AppCompatActivity() {
         }
         cardList.addView(headerText)
 
+        val totalSize = parts.sumOf { it.fileSize }
+        val totalSizeStr = formatFileSize(totalSize)
+
         val subHeaderText = TextView(this).apply {
-            text = "This video has ${parts.size} parts. Select a part to play:"
+            text = "This video has ${parts.size} parts (Total: $totalSizeStr). Select an option:"
             UITheme.applyMetadataStyle(this)
             setPadding(0, 4, 0, 14)
         }
         cardList.addView(subHeaderText)
 
         var dialog: AlertDialog? = null
+
+        // Combined Download Option Card
+        val downloadCombinedCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = UITheme.createRippleCardShape(this@MainActivity, UITheme.SURFACE, 14, UITheme.PRIMARY)
+            val p = UITheme.dpToPx(this@MainActivity, 12)
+            setPadding(p, p, p, p)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 12))
+            }
+            isClickable = true
+            setOnClickListener {
+                dialog?.dismiss()
+                DownloadManager.startMultiPartDownload(this@MainActivity, cleanTitle, baseName, parts, item.posterUrl)
+                Toast.makeText(this@MainActivity, "Started downloading full combined video ($totalSizeStr) 📥", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        val dlIcon = TextView(this).apply {
+            text = "⚡ 📥"
+            textSize = 18f
+            setPadding(0, 0, 12, 0)
+        }
+        downloadCombinedCard.addView(dlIcon)
+
+        val dlInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val dlTitle = TextView(this).apply {
+            text = "Download Full Combined Video"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 14f
+            setTextColor(Color.WHITE)
+        }
+        dlInfo.addView(dlTitle)
+
+        val dlSub = TextView(this).apply {
+            text = "Combines all ${parts.size} parts into a single file ($totalSizeStr)"
+            UITheme.applyMetadataStyle(this)
+            setTextColor(Color.parseColor(UITheme.PRIMARY))
+        }
+        dlInfo.addView(dlSub)
+        downloadCombinedCard.addView(dlInfo)
+
+        cardList.addView(downloadCombinedCard)
 
         // Individual Parts Options
         parts.forEachIndexed { index, part ->
@@ -3090,10 +3141,186 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showGroupDownloadOptionsDialog(item: MediaItem, parts: List<TelegramVideoMessage>, cleanTitle: String) {
+        val totalSize = parts.sumOf { it.fileSize }
+        val totalSizeStr = formatFileSize(totalSize)
+
+        val scrollView = ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
+        }
+        val cardList = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val headerText = TextView(this).apply {
+            text = "📥 Download Multi-Part Video"
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.WHITE)
+            textSize = 15f
+        }
+        cardList.addView(headerText)
+
+        val subHeaderText = TextView(this).apply {
+            text = "'$cleanTitle' has ${parts.size} parts (Total: $totalSizeStr)."
+            UITheme.applyMetadataStyle(this)
+            setPadding(0, 4, 0, 14)
+        }
+        cardList.addView(subHeaderText)
+
+        var dialog: AlertDialog? = null
+
+        // Option 1: Download & Combine All Parts
+        val optCombine = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = UITheme.createRippleCardShape(this@MainActivity, UITheme.SURFACE, 14, UITheme.PRIMARY)
+            val p = UITheme.dpToPx(this@MainActivity, 12)
+            setPadding(p, p, p, p)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 10))
+            }
+            isClickable = true
+            setOnClickListener {
+                dialog?.dismiss()
+                DownloadManager.startMultiPartDownload(this@MainActivity, cleanTitle, item.originalFileName.ifBlank { cleanTitle }, parts, item.posterUrl)
+                Toast.makeText(this@MainActivity, "Started downloading & combining '$cleanTitle' 📥", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        val icon1 = TextView(this).apply { text = "⚡"; textSize = 18f; setPadding(0, 0, 12, 0) }
+        optCombine.addView(icon1)
+
+        val info1 = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val t1 = TextView(this).apply { text = "Combine & Save as 1 Video File"; UITheme.applyCardTitleStyle(this); textSize = 14f; setTextColor(Color.WHITE) }
+        val s1 = TextView(this).apply { text = "Downloads all ${parts.size} parts and merges into single file ($totalSizeStr)"; UITheme.applyMetadataStyle(this); setTextColor(Color.parseColor(UITheme.PRIMARY)) }
+        info1.addView(t1); info1.addView(s1)
+        optCombine.addView(info1)
+        cardList.addView(optCombine)
+
+        // Option 2: Download All Parts Separately
+        val optSep = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 14, UITheme.STROKE_COLOR)
+            val p = UITheme.dpToPx(this@MainActivity, 12)
+            setPadding(p, p, p, p)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 14))
+            }
+            isClickable = true
+            setOnClickListener {
+                dialog?.dismiss()
+                parts.forEachIndexed { idx, part ->
+                    val partTitle = "${cleanTitle} (Part ${idx + 1})"
+                    val fileName = part.fileName.ifBlank { "${cleanTitle}_part${idx + 1}.mp4" }
+                    DownloadManager.startDownload(this@MainActivity, partTitle, fileName, part.fileId, part.chatId, part.messageId, item.posterUrl, part.fileSize)
+                }
+                Toast.makeText(this@MainActivity, "Started downloading ${parts.size} separate parts 📥", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        val icon2 = TextView(this).apply { text = "📂"; textSize = 18f; setPadding(0, 0, 12, 0) }
+        optSep.addView(icon2)
+
+        val info2 = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val t2 = TextView(this).apply { text = "Download All Parts Separately"; UITheme.applyCardTitleStyle(this); textSize = 14f; setTextColor(Color.WHITE) }
+        val s2 = TextView(this).apply { text = "Saves ${parts.size} individual files to your Downloads folder"; UITheme.applyMetadataStyle(this); setTextColor(Color.parseColor(UITheme.TEXT_SECONDARY)) }
+        info2.addView(t2); info2.addView(s2)
+        optSep.addView(info2)
+        cardList.addView(optSep)
+
+        // Parts Header
+        val partsTitle = TextView(this).apply {
+            text = "Or Select Specific Part to Download:"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 13f
+            setPadding(0, 0, 0, 8)
+        }
+        cardList.addView(partsTitle)
+
+        parts.forEachIndexed { index, part ->
+            val partTitle = part.fileName.ifBlank { "Part ${index + 1}" }
+            val partSize = formatFileSize(part.fileSize)
+
+            val partCard = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 12, UITheme.STROKE_COLOR)
+                val p = UITheme.dpToPx(this@MainActivity, 10)
+                setPadding(p, p, p, p)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 6))
+                }
+                isClickable = true
+                setOnClickListener {
+                    dialog?.dismiss()
+                    DownloadManager.startDownload(this@MainActivity, "${cleanTitle} - ${partTitle}", partTitle, part.fileId, part.chatId, part.messageId, item.posterUrl, part.fileSize)
+                    Toast.makeText(this@MainActivity, "Started downloading ${partTitle} 📥", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            val iconText = TextView(this).apply {
+                text = "📥 Part ${index + 1}"
+                UITheme.applyCardTitleStyle(this)
+                textSize = 13f
+                setTextColor(Color.parseColor(UITheme.PRIMARY))
+                setPadding(0, 0, 12, 0)
+            }
+            partCard.addView(iconText)
+
+            val partInfo = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val pTitle = TextView(this).apply {
+                text = partTitle
+                UITheme.applyCardTitleStyle(this)
+                textSize = 13f
+                setTextColor(Color.WHITE)
+            }
+            partInfo.addView(pTitle)
+
+            val pSub = TextView(this).apply {
+                text = partSize
+                UITheme.applyMetadataStyle(this)
+            }
+            partInfo.addView(pSub)
+
+            partCard.addView(partInfo)
+            cardList.addView(partCard)
+        }
+
+        scrollView.addView(cardList)
+        dialog = AlertDialog.Builder(this)
+            .setView(scrollView)
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.show()
+    }
+
     private fun handleDownloadItem(item: MediaItem) {
         if (item.type == "channel") {
             Toast.makeText(this, "Select a video inside the channel to download", Toast.LENGTH_SHORT).show()
             return
+        }
+
+        val cachedParts = telegramGroupPartsCache[item.id]
+        val cleanTitle = item.title.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
+        if (item.id.startsWith("group_") || (cachedParts != null && cachedParts.size > 1)) {
+            val parts = cachedParts ?: emptyList()
+            if (parts.isNotEmpty()) {
+                showGroupDownloadOptionsDialog(item, parts, cleanTitle)
+                return
+            }
         }
 
         if (item.type == "telegram_media") {

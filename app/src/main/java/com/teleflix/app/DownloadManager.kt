@@ -8,16 +8,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.drinkless.tdlib.TdApi
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 
 object DownloadManager {
     private const val TAG = "DownloadManager"
@@ -55,6 +57,34 @@ object DownloadManager {
                         val statusStr = obj.optString("status", DownloadStatus.QUEUED.name)
                         val status = runCatching { DownloadStatus.valueOf(statusStr) }.getOrDefault(DownloadStatus.QUEUED)
                         
+                        val isMultiPart = obj.optBoolean("isMultiPart", false)
+                        val partFileIds = mutableListOf<Int>()
+                        val partChatIds = mutableListOf<Long>()
+                        val partMessageIds = mutableListOf<Long>()
+                        val partFileSizes = mutableListOf<Long>()
+                        val partFileNames = mutableListOf<String>()
+
+                        val pfArr = obj.optJSONArray("partFileIds")
+                        if (pfArr != null) {
+                            for (j in 0 until pfArr.length()) partFileIds.add(pfArr.getInt(j))
+                        }
+                        val pcArr = obj.optJSONArray("partChatIds")
+                        if (pcArr != null) {
+                            for (j in 0 until pcArr.length()) partChatIds.add(pcArr.getLong(j))
+                        }
+                        val pmArr = obj.optJSONArray("partMessageIds")
+                        if (pmArr != null) {
+                            for (j in 0 until pmArr.length()) partMessageIds.add(pmArr.getLong(j))
+                        }
+                        val psArr = obj.optJSONArray("partFileSizes")
+                        if (psArr != null) {
+                            for (j in 0 until psArr.length()) partFileSizes.add(psArr.getLong(j))
+                        }
+                        val fnArr = obj.optJSONArray("partFileNames")
+                        if (fnArr != null) {
+                            for (j in 0 until fnArr.length()) partFileNames.add(fnArr.getString(j))
+                        }
+
                         val item = DownloadItem(
                             id = obj.getString("id"),
                             title = obj.getString("title"),
@@ -67,7 +97,14 @@ object DownloadManager {
                             totalBytes = obj.optLong("totalBytes", 0L),
                             downloadedBytes = obj.optLong("downloadedBytes", 0L),
                             status = if (status == DownloadStatus.DOWNLOADING) DownloadStatus.PAUSED else status,
-                            addedTime = obj.optLong("addedTime", System.currentTimeMillis())
+                            addedTime = obj.optLong("addedTime", System.currentTimeMillis()),
+                            isMultiPart = isMultiPart,
+                            partFileIds = partFileIds,
+                            partChatIds = partChatIds,
+                            partMessageIds = partMessageIds,
+                            partFileSizes = partFileSizes,
+                            partFileNames = partFileNames,
+                            currentPartIndex = obj.optInt("currentPartIndex", 0)
                         )
                         downloadsMap[item.id] = item
                     }
@@ -97,6 +134,13 @@ object DownloadManager {
                         put("downloadedBytes", item.downloadedBytes)
                         put("status", item.status.name)
                         put("addedTime", item.addedTime)
+                        put("isMultiPart", item.isMultiPart)
+                        put("currentPartIndex", item.currentPartIndex)
+                        put("partFileIds", JSONArray(item.partFileIds))
+                        put("partChatIds", JSONArray(item.partChatIds))
+                        put("partMessageIds", JSONArray(item.partMessageIds))
+                        put("partFileSizes", JSONArray(item.partFileSizes))
+                        put("partFileNames", JSONArray(item.partFileNames))
                     }
                     array.put(obj)
                 }
@@ -213,6 +257,67 @@ object DownloadManager {
         }
     }
 
+    fun startMultiPartDownload(
+        context: Context,
+        title: String,
+        baseName: String,
+        parts: List<TelegramVideoMessage>,
+        posterUrl: String = ""
+    ): DownloadItem {
+        val firstPart = parts.firstOrNull()
+        val downloadId = "group_${firstPart?.chatId}_${firstPart?.messageId}_${parts.size}"
+        
+        synchronized(downloadsMap) {
+            val existing = downloadsMap[downloadId]
+            if (existing != null && existing.status == DownloadStatus.COMPLETED && File(existing.localPath).exists()) {
+                return existing
+            }
+
+            val cleanTitle = title.removePrefix("📦 ").removePrefix("🗄️ ").trim()
+            val cleanBaseName = baseName.removePrefix("📦 ").removePrefix("🗄️ ").trim()
+
+            val ext = if (cleanBaseName.contains(".")) cleanBaseName.substringAfterLast('.') else "mkv"
+            val rawName = if (cleanBaseName.contains(".")) cleanBaseName.substringBeforeLast('.') else cleanBaseName
+            val destFileName = "$rawName.$ext"
+
+            val downloadsDir = getActiveDownloadsDir(context)
+            val destFile = File(downloadsDir, destFileName)
+
+            val totalSize = parts.sumOf { it.fileSize }
+
+            val item = DownloadItem(
+                id = downloadId,
+                title = "$cleanTitle (Combined Video)",
+                fileName = destFileName,
+                fileId = firstPart?.fileId ?: 0,
+                chatId = firstPart?.chatId ?: 0L,
+                messageId = firstPart?.messageId ?: 0L,
+                posterUrl = posterUrl,
+                localPath = destFile.absolutePath,
+                totalBytes = totalSize,
+                downloadedBytes = 0L,
+                status = DownloadStatus.DOWNLOADING,
+                addedTime = System.currentTimeMillis(),
+                isMultiPart = true,
+                partFileIds = parts.map { it.fileId }.toMutableList(),
+                partChatIds = parts.map { it.chatId }.toMutableList(),
+                partMessageIds = parts.map { it.messageId }.toMutableList(),
+                partFileSizes = parts.map { it.fileSize }.toMutableList(),
+                partFileNames = parts.map { it.fileName }.toMutableList(),
+                currentPartIndex = 0
+            )
+
+            downloadsMap[downloadId] = item
+            saveToPrefs(context)
+            updateFlow()
+
+            TeleflixDownloadService.start(context)
+            startDownloadLoop(context)
+
+            return item
+        }
+    }
+
     private fun startDownloadLoop(context: Context) {
         if (downloadLoopJob?.isActive == true) return
         val appContext = context.applicationContext
@@ -222,51 +327,191 @@ object DownloadManager {
                     downloadsMap.values.filter { it.status == DownloadStatus.DOWNLOADING }
                 }
 
+                val now = System.currentTimeMillis()
+                val timeDiff = (now - lastSpeedCalcTime).coerceAtLeast(1)
+
                 for (item in activeItems) {
                     try {
-                        var currentFileId = item.fileId
-
-                        // Refresh message if fileId is zero
-                        if (currentFileId == 0 && item.chatId != 0L && item.messageId != 0L) {
-                            val msg = TelegramClient.sendRequest(TdApi.GetMessage(item.chatId, item.messageId)) as? TdApi.Message
-                            val refreshedId = extractFileIdFromMessage(msg)
-                            if (refreshedId != null && refreshedId != 0) {
-                                currentFileId = refreshedId
-                                item.fileId = refreshedId
-                            }
-                        }
-
-                        if (currentFileId != 0) {
-                            val fileObj = TelegramClient.sendRequest(TdApi.GetFile(currentFileId)) as? TdApi.File
-                            if (fileObj != null) {
-                                withContext(Dispatchers.Main) {
-                                    onFileUpdate(appContext, fileObj)
-                                }
-
-                                if (!fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
-                                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                        req.fileId = currentFileId
-                                        req.priority = 32
-                                        req.offset = 0
-                                        req.limit = 0
-                                        req.synchronous = false
-                                    })
-                                }
-                            } else {
-                                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                    req.fileId = currentFileId
-                                    req.priority = 32
-                                    req.offset = 0
-                                    req.limit = 0
-                                    req.synchronous = false
-                                })
-                            }
+                        if (item.isMultiPart) {
+                            processMultiPartDownloadStep(appContext, item, now, timeDiff)
+                        } else {
+                            processSinglePartDownloadStep(appContext, item, now, timeDiff)
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error in download loop for item ${item.id}", e)
                     }
                 }
+
+                if (timeDiff >= 1000) {
+                    lastSpeedCalcTime = now
+                }
                 delay(1000)
+            }
+        }
+    }
+
+    private suspend fun processSinglePartDownloadStep(context: Context, item: DownloadItem, now: Long, timeDiff: Long) {
+        var currentFileId = item.fileId
+
+        if (currentFileId == 0 && item.chatId != 0L && item.messageId != 0L) {
+            val msg = TelegramClient.sendRequest(TdApi.GetMessage(item.chatId, item.messageId)) as? TdApi.Message
+            val refreshedId = extractFileIdFromMessage(msg)
+            if (refreshedId != null && refreshedId != 0) {
+                currentFileId = refreshedId
+                item.fileId = refreshedId
+            }
+        }
+
+        if (currentFileId != 0) {
+            val fileObj = TelegramClient.sendRequest(TdApi.GetFile(currentFileId)) as? TdApi.File
+            if (fileObj != null) {
+                withContext(Dispatchers.Main) {
+                    onFileUpdate(context, fileObj)
+                }
+
+                if (!fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
+                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        req.fileId = currentFileId
+                        req.priority = 32
+                        req.offset = 0
+                        req.limit = 0
+                        req.synchronous = false
+                    })
+                }
+            } else {
+                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                    req.fileId = currentFileId
+                    req.priority = 32
+                    req.offset = 0
+                    req.limit = 0
+                    req.synchronous = false
+                })
+            }
+        }
+    }
+
+    private suspend fun processMultiPartDownloadStep(context: Context, item: DownloadItem, now: Long, timeDiff: Long) {
+        val idx = item.currentPartIndex
+        if (idx >= item.partFileIds.size) {
+            // All parts finished, perform fast binary concatenation merge!
+            finalizeMultiPartMerge(context, item)
+            return
+        }
+
+        var partFileId = item.partFileIds.getOrNull(idx) ?: 0
+        val chatId = item.partChatIds.getOrNull(idx) ?: 0L
+        val messageId = item.partMessageIds.getOrNull(idx) ?: 0L
+
+        if (partFileId == 0 && chatId != 0L && messageId != 0L) {
+            val msg = TelegramClient.sendRequest(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message
+            val refreshedId = extractFileIdFromMessage(msg)
+            if (refreshedId != null && refreshedId != 0) {
+                partFileId = refreshedId
+                item.partFileIds[idx] = refreshedId
+                item.fileId = refreshedId
+            }
+        }
+
+        if (partFileId != 0) {
+            val fileObj = TelegramClient.sendRequest(TdApi.GetFile(partFileId)) as? TdApi.File
+            if (fileObj != null) {
+                val sumCompletedParts = item.partFileSizes.take(idx).sum()
+                val currentPartDownloaded = fileObj.local.downloadedSize
+                item.downloadedBytes = sumCompletedParts + currentPartDownloaded
+
+                val lastBytes = lastDownloadedBytesMap[item.id] ?: item.downloadedBytes
+                val bytesDiff = (item.downloadedBytes - lastBytes).coerceAtLeast(0)
+                item.speedBytesPerSec = (bytesDiff * 1000) / timeDiff
+                lastDownloadedBytesMap[item.id] = item.downloadedBytes
+
+                val tdlibPath = fileObj.local?.path ?: ""
+
+                if (fileObj.local.isDownloadingCompleted || (fileObj.size > 0 && fileObj.local.downloadedSize >= fileObj.size)) {
+                    if (tdlibPath.isNotBlank()) {
+                        val partTempFile = getPartTempFile(context, item.id, idx)
+                        val source = File(tdlibPath)
+                        if (source.exists()) {
+                            source.copyTo(partTempFile, overwrite = true)
+                        }
+                    }
+
+                    // Advance to next part!
+                    item.currentPartIndex++
+                    saveToPrefs(context)
+                    updateFlow()
+
+                    if (item.currentPartIndex >= item.partFileIds.size) {
+                        finalizeMultiPartMerge(context, item)
+                    } else {
+                        val nextFileId = item.partFileIds.getOrNull(item.currentPartIndex) ?: 0
+                        if (nextFileId != 0) {
+                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = nextFileId
+                                req.priority = 32
+                                req.offset = 0
+                                req.limit = 0
+                                req.synchronous = false
+                            })
+                        }
+                    }
+                } else if (!fileObj.local.isDownloadingActive) {
+                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        req.fileId = partFileId
+                        req.priority = 32
+                        req.offset = 0
+                        req.limit = 0
+                        req.synchronous = false
+                    })
+                }
+
+                saveToPrefs(context)
+                updateFlow()
+            }
+        }
+    }
+
+    private fun getPartTempFile(context: Context, downloadId: String, partIndex: Int): File {
+        val cacheDir = File(context.cacheDir, "multipart_temp")
+        if (!cacheDir.exists()) cacheDir.mkdirs()
+        return File(cacheDir, "${downloadId}_part_$partIndex.tmp")
+    }
+
+    private fun finalizeMultiPartMerge(context: Context, item: DownloadItem) {
+        synchronized(downloadsMap) {
+            try {
+                val targetFile = File(item.localPath)
+                if (targetFile.parentFile?.exists() == false) {
+                    targetFile.parentFile?.mkdirs()
+                }
+                if (targetFile.exists()) targetFile.delete()
+
+                FileOutputStream(targetFile, true).use { outStream ->
+                    val buffer = ByteArray(256 * 1024)
+                    for (i in 0 until item.partFileIds.size) {
+                        val partFile = getPartTempFile(context, item.id, i)
+                        if (partFile.exists()) {
+                            FileInputStream(partFile).use { inStream ->
+                                var readBytes: Int
+                                while (inStream.read(buffer).also { readBytes = it } != -1) {
+                                    outStream.write(buffer, 0, readBytes)
+                                }
+                            }
+                            partFile.delete()
+                        }
+                    }
+                }
+
+                item.status = DownloadStatus.COMPLETED
+                item.downloadedBytes = item.totalBytes
+                item.speedBytesPerSec = 0L
+                saveToPrefs(context)
+                updateFlow()
+                Log.d(TAG, "Successfully merged all ${item.partFileIds.size} parts for ${item.title} into ${item.localPath}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error merging multipart download: ${e.message}", e)
+                item.status = DownloadStatus.FAILED
+                saveToPrefs(context)
+                updateFlow()
             }
         }
     }
@@ -291,8 +536,9 @@ object DownloadManager {
                 updateFlow()
 
                 CoroutineScope(Dispatchers.IO).launch {
-                    if (item.fileId != 0) {
-                        TelegramClient.sendRequest(TdApi.CancelDownloadFile(item.fileId, false))
+                    val activeId = if (item.isMultiPart) item.partFileIds.getOrNull(item.currentPartIndex) ?: item.fileId else item.fileId
+                    if (activeId != 0) {
+                        TelegramClient.sendRequest(TdApi.CancelDownloadFile(activeId, false))
                     }
                 }
             }
@@ -307,10 +553,11 @@ object DownloadManager {
                 saveToPrefs(context)
                 updateFlow()
 
-                if (item.fileId != 0) {
+                val activeId = if (item.isMultiPart) item.partFileIds.getOrNull(item.currentPartIndex) ?: item.fileId else item.fileId
+                if (activeId != 0) {
                     CoroutineScope(Dispatchers.IO).launch {
                         TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = item.fileId
+                            req.fileId = activeId
                             req.priority = 32
                             req.offset = 0
                             req.limit = 0
@@ -331,11 +578,16 @@ object DownloadManager {
             updateFlow()
 
             CoroutineScope(Dispatchers.IO).launch {
-                if (item.fileId != 0) {
-                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(item.fileId, true))
+                val activeId = if (item.isMultiPart) item.partFileIds.getOrNull(item.currentPartIndex) ?: item.fileId else item.fileId
+                if (activeId != 0) {
+                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(activeId, true))
                 }
                 val f = File(item.localPath)
                 if (f.exists()) f.delete()
+                for (i in 0 until item.partFileIds.size) {
+                    val temp = getPartTempFile(context, item.id, i)
+                    if (temp.exists()) temp.delete()
+                }
             }
         }
     }
@@ -349,6 +601,10 @@ object DownloadManager {
             try {
                 val file = File(item.localPath)
                 if (file.exists()) file.delete()
+                for (i in 0 until item.partFileIds.size) {
+                    val temp = getPartTempFile(context, item.id, i)
+                    if (temp.exists()) temp.delete()
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to delete local file: ${item.localPath}", e)
             }
@@ -362,7 +618,7 @@ object DownloadManager {
             val timeDiff = (now - lastSpeedCalcTime).coerceAtLeast(1)
 
             for (item in downloadsMap.values) {
-                if (item.fileId == file.id || (item.fileId == 0 && file.id != 0)) {
+                if (!item.isMultiPart && (item.fileId == file.id || (item.fileId == 0 && file.id != 0))) {
                     if (item.fileId == 0) {
                         item.fileId = file.id
                     }
@@ -374,7 +630,6 @@ object DownloadManager {
                         item.totalBytes = file.size
                     }
 
-                    // Calculate speed
                     val lastBytes = lastDownloadedBytesMap[item.id] ?: item.downloadedBytes
                     val bytesDiff = (item.downloadedBytes - lastBytes).coerceAtLeast(0)
                     item.speedBytesPerSec = (bytesDiff * 1000) / timeDiff
@@ -382,7 +637,6 @@ object DownloadManager {
 
                     val tdlibPath = file.local?.path ?: ""
 
-                    // Check if file completed
                     if (file.local.isDownloadingCompleted || (file.size > 0 && file.local.downloadedSize >= file.size)) {
                         item.status = DownloadStatus.COMPLETED
                         item.downloadedBytes = if (file.size > 0) file.size else item.downloadedBytes
