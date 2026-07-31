@@ -976,6 +976,13 @@ object TelegramStreamingProxy {
         }
     }
 
+    fun clearStreamCache(fileId: Int) {
+        if (fileId <= 0 || DownloadManager.isFileIdActive(fileId)) return
+        scope.launch {
+            deleteFile(fileId)
+        }
+    }
+
     private suspend fun deleteFile(fileId: Int) {
         runCatching {
             TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->

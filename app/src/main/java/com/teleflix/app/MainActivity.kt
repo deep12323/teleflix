@@ -127,7 +127,7 @@ class MainActivity : AppCompatActivity() {
         if (urlToClean.isNotBlank()) {
             val fileId = extractFileIdFromUrl(urlToClean)
             if (fileId != null && fileId != 0 && !DownloadManager.isFileIdActive(fileId)) {
-                TelegramStreamingProxy.clearProxyCache(fileId)
+                TelegramStreamingProxy.clearStreamCache(fileId)
                 TelegramClient.deleteFile(fileId)
                 TeleflixLogger.log("MainActivity", "Cleaned stream cache for fileId=$fileId on player exit")
             }
