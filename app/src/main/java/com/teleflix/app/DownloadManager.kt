@@ -621,7 +621,7 @@ object DownloadManager {
             is TdApi.MessageVideo -> content.video.video.id
             is TdApi.MessageDocument -> content.document.document.id
             is TdApi.MessageAudio -> content.audio.audio.id
-            is TdApi.MessageVoiceNote -> content.voiceNote.voiceNote.id
+            is TdApi.MessageVoiceNote -> content.voiceNote.voice.id
             is TdApi.MessageAnimation -> content.animation.animation.id
             else -> null
         }
