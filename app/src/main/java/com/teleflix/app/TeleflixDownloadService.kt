@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -52,7 +53,12 @@ class TeleflixDownloadService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("Preparing download...", 0, 0, ""))
+        val initNotif = buildNotification("Preparing download...", 0, 0, "")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, initNotif, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            startForeground(NOTIFICATION_ID, initNotif)
+        }
         startObserving()
     }
 
@@ -92,7 +98,7 @@ class TeleflixDownloadService : Service() {
                     val activeItem = activeList.first()
                     val totalDownloaded = activeList.sumOf { it.downloadedBytes }
                     val totalSize = activeList.sumOf { it.totalBytes }
-                    val overallProgress = if (totalSize > 0) ((totalDownloaded * 100) / totalSize).toInt() else 0
+                    val overallProgress = if (totalSize > 0) ((totalDownloaded * 100) / totalSize).toInt().coerceIn(0, 100) else 0
 
                     val titleText = if (activeList.size == 1) {
                         "Downloading ${activeItem.title}"
@@ -100,12 +106,32 @@ class TeleflixDownloadService : Service() {
                         "Downloading ${activeList.size} files (${activeItem.title})"
                     }
 
-                    val subText = "${activeItem.getFormattedSpeed()} • ${activeItem.progressPercent}%"
+                    val formattedTransferred = formatBytes(totalDownloaded)
+                    val formattedTotal = if (totalSize > 0) formatBytes(totalSize) else "..."
+                    val subText = "${activeItem.getFormattedSpeed()} • ${activeItem.progressPercent}% ($formattedTransferred / $formattedTotal)"
 
                     val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                    notificationManager.notify(NOTIFICATION_ID, buildNotification(titleText, overallProgress, activeList.size, subText))
+                    val notification = buildNotification(titleText, overallProgress, activeList.size, subText)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                    } else {
+                        notificationManager.notify(NOTIFICATION_ID, notification)
+                    }
                 }
             }
+        }
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        if (bytes <= 0) return "0 B"
+        val kb = bytes / 1024.0
+        val mb = kb / 1024.0
+        val gb = mb / 1024.0
+        return when {
+            gb >= 1.0 -> String.format(java.util.Locale.US, "%.2f GB", gb)
+            mb >= 1.0 -> String.format(java.util.Locale.US, "%.1f MB", mb)
+            kb >= 1.0 -> String.format(java.util.Locale.US, "%.0f KB", kb)
+            else -> "$bytes B"
         }
     }
 
