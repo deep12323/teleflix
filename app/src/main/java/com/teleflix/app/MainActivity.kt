@@ -3106,17 +3106,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun extractFileIdFromUrl(url: String): Int? {
         if (url.isBlank()) return null
-        if (url.contains("/file/")) {
-            val idStr = url.substringAfter("/file/").substringBefore("/").substringBefore("?")
-            return idStr.toIntOrNull()
+        val patterns = listOf("/file/", "/stream/", "/zip/", "/thumbnail/", "/merged/")
+        for (pattern in patterns) {
+            if (url.contains(pattern)) {
+                val idStr = url.substringAfter(pattern).substringBefore("/").substringBefore("?").substringBefore(",")
+                val parsed = idStr.toIntOrNull()
+                if (parsed != null && parsed != 0) return parsed
+            }
         }
         if (url.contains("fileId=")) {
             val idStr = url.substringAfter("fileId=").substringBefore("&")
-            return idStr.toIntOrNull()
+            val parsed = idStr.toIntOrNull()
+            if (parsed != null && parsed != 0) return parsed
         }
         if (url.contains("ids=")) {
             val idStr = url.substringAfter("ids=").substringBefore(",").substringBefore("&")
-            return idStr.toIntOrNull()
+            val parsed = idStr.toIntOrNull()
+            if (parsed != null && parsed != 0) return parsed
         }
         return null
     }

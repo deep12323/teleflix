@@ -241,19 +241,23 @@ object DownloadManager {
             // Request TDLib to start downloading file
             if (fileId != 0) {
                 lastDownloadRetryTimeMap[fileId] = System.currentTimeMillis()
+                TeleflixLogger.log(TAG, "Starting download '${title}': fileId=$fileId, chatId=$chatId, messageId=$messageId")
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                             req.fileId = fileId
                             req.priority = 32
                             req.offset = 0
                             req.limit = 0
                             req.synchronous = false
                         })
+                        TeleflixLogger.log(TAG, "Initial DownloadFile request for $fileId returned: ${res?.javaClass?.simpleName}")
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed initial DownloadFile request for $fileId", e)
+                        TeleflixLogger.log(TAG, "Failed initial DownloadFile request for $fileId: ${e.message}", isError = true)
                     }
                 }
+            } else {
+                TeleflixLogger.log(TAG, "Starting download '${title}' with fileId=0, chatId=$chatId, messageId=$messageId", isError = true)
             }
 
             // Start background service & active polling loop
@@ -321,17 +325,19 @@ object DownloadManager {
             val firstFileId = firstPart?.fileId ?: 0
             if (firstFileId != 0) {
                 lastDownloadRetryTimeMap[firstFileId] = System.currentTimeMillis()
+                TeleflixLogger.log(TAG, "Starting multipart download '$cleanTitle': parts=${parts.size}, firstFileId=$firstFileId")
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                             req.fileId = firstFileId
                             req.priority = 32
                             req.offset = 0
                             req.limit = 0
                             req.synchronous = false
                         })
+                        TeleflixLogger.log(TAG, "Initial multipart DownloadFile for $firstFileId returned: ${res?.javaClass?.simpleName}")
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed initial DownloadFile for multipart first part $firstFileId", e)
+                        TeleflixLogger.log(TAG, "Failed initial DownloadFile for multipart first part $firstFileId: ${e.message}", isError = true)
                     }
                 }
             }
@@ -361,7 +367,7 @@ object DownloadManager {
                             processSinglePartDownloadStep(appContext, item, now)
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error in download loop for item ${item.id}", e)
+                        TeleflixLogger.log(TAG, "Error in download loop for item ${item.id}: ${e.message}", isError = true)
                     }
                 }
                 delay(1000)
@@ -374,14 +380,16 @@ object DownloadManager {
 
         if (currentFileId == 0 && item.chatId != 0L && item.messageId != 0L) {
             try {
+                TeleflixLogger.log(TAG, "Attempting to fetch message for item ${item.id}: chatId=${item.chatId}, messageId=${item.messageId}")
                 val msg = TelegramClient.sendRequest(TdApi.GetMessage(item.chatId, item.messageId)) as? TdApi.Message
                 val refreshedId = extractFileIdFromMessage(msg)
                 if (refreshedId != null && refreshedId != 0) {
                     currentFileId = refreshedId
                     item.fileId = refreshedId
+                    TeleflixLogger.log(TAG, "Resolved fileId=$refreshedId from message for item ${item.id}")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error fetching message for download item ${item.id}", e)
+                TeleflixLogger.log(TAG, "Error fetching message for download item ${item.id}: ${e.message}", isError = true)
             }
         }
 
@@ -389,7 +397,7 @@ object DownloadManager {
             var fileObj: TdApi.File? = try {
                 TelegramClient.sendRequest(TdApi.GetFile(currentFileId)) as? TdApi.File
             } catch (e: Exception) {
-                Log.w(TAG, "GetFile failed for $currentFileId: ${e.message}, attempting refresh...")
+                TeleflixLogger.log(TAG, "GetFile failed for fileId $currentFileId: ${e.message}, attempting message refresh...", isError = true)
                 null
             }
 
@@ -401,9 +409,10 @@ object DownloadManager {
                         currentFileId = refreshedId
                         item.fileId = refreshedId
                         fileObj = TelegramClient.sendRequest(TdApi.GetFile(currentFileId)) as? TdApi.File
+                        TeleflixLogger.log(TAG, "Successfully refreshed fileId for item ${item.id}: new fileId=$refreshedId")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Refresh after GetFile failure failed for ${item.id}", e)
+                    TeleflixLogger.log(TAG, "Message refresh after GetFile failure failed for ${item.id}: ${e.message}", isError = true)
                 }
             }
 
@@ -414,32 +423,26 @@ object DownloadManager {
 
                 if (!fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
                     try {
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                             req.fileId = currentFileId
                             req.priority = 32
                             req.offset = 0
                             req.limit = 0
                             req.synchronous = false
                         })
+                        TeleflixLogger.log(TAG, "DownloadFile request sent for fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed DownloadFile request for $currentFileId", e)
+                        TeleflixLogger.log(TAG, "Failed DownloadFile request for $currentFileId: ${e.message}", isError = true)
                     }
                 }
             } else {
-                try {
-                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                        req.fileId = currentFileId
-                        req.priority = 32
-                        req.offset = 0
-                        req.limit = 0
-                        req.synchronous = false
-                    })
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed DownloadFile retry for $currentFileId", e)
-                }
+                TeleflixLogger.log(TAG, "Download item ${item.id} has invalid fileId=$currentFileId and could not be fetched. Marking FAILED.", isError = true)
+                item.status = DownloadStatus.FAILED
+                saveToPrefs(context)
+                updateFlow()
             }
         } else {
-            Log.e(TAG, "Download item ${item.id} has invalid fileId=0 and cannot be refreshed. Marking FAILED.")
+            TeleflixLogger.log(TAG, "Download item ${item.id} has fileId=0 and cannot be refreshed. Marking FAILED.", isError = true)
             item.status = DownloadStatus.FAILED
             saveToPrefs(context)
             updateFlow()
@@ -750,6 +753,7 @@ object DownloadManager {
                         item.downloadedBytes = if (file.size > 0) file.size else item.downloadedBytes
                         item.totalBytes = if (file.size > 0) file.size else item.totalBytes
                         item.speedBytesPerSec = 0L
+                        TeleflixLogger.log(TAG, "Download COMPLETED for '${item.title}': size=${item.totalBytes} bytes")
 
                         if (tdlibPath.isNotBlank()) {
                             try {
@@ -760,9 +764,10 @@ object DownloadManager {
                                 }
                                 if (source.exists() && source.absolutePath != target.absolutePath) {
                                     source.copyTo(target, overwrite = true)
+                                    TeleflixLogger.log(TAG, "Copied completed download to ${target.absolutePath}")
                                 }
                             } catch (e: Exception) {
-                                Log.e(TAG, "Failed copying completed download: ${e.message}")
+                                TeleflixLogger.log(TAG, "Failed copying completed download: ${e.message}", isError = true)
                             }
                         }
                     } else if (file.local.isDownloadingActive) {
