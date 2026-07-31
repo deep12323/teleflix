@@ -456,20 +456,19 @@ object DownloadManager {
                     onFileUpdate(context, fileObj)
                 }
 
-                if (!fileObj.local.isDownloadingCompleted) {
-                    val currentDownloaded = fileObj.local.downloadedSize
+                if (!fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
                     val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
-                    if (!fileObj.local.isDownloadingActive || (now - lastRetry > 2000L)) {
+                    if (now - lastRetry > 5000L) {
                         lastDownloadRetryTimeMap[currentFileId] = now
                         try {
                             val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                                 req.fileId = currentFileId
                                 req.priority = 32
-                                req.offset = currentDownloaded
-                                req.limit = 20 * 1024 * 1024L
+                                req.offset = 0
+                                req.limit = 0
                                 req.synchronous = false
                             })
-                            TeleflixLogger.log(TAG, "High-speed DownloadFile window sent for fileId=$currentFileId: offset=$currentDownloaded, res=${res?.javaClass?.simpleName}")
+                            TeleflixLogger.log(TAG, "Re-issued DownloadFile for inactive fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
                         } catch (e: Exception) {
                             TeleflixLogger.log(TAG, "Failed DownloadFile request for $currentFileId: ${e.message}", isError = true)
                         }
@@ -581,7 +580,7 @@ object DownloadManager {
                                     req.fileId = nextFileId
                                     req.priority = 32
                                     req.offset = 0
-                                    req.limit = 20 * 1024 * 1024L
+                                    req.limit = 0
                                     req.synchronous = false
                                 })
                             } catch (e: Exception) {
@@ -589,16 +588,16 @@ object DownloadManager {
                             }
                         }
                     }
-                } else if (!fileObj.local.isDownloadingCompleted) {
+                } else if (!fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
                     val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
-                    if (!fileObj.local.isDownloadingActive || (now - lastRetry > 2000L)) {
+                    if (now - lastRetry > 5000L) {
                         lastDownloadRetryTimeMap[partFileId] = now
                         try {
                             TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                                 req.fileId = partFileId
                                 req.priority = 32
-                                req.offset = currentPartDownloaded
-                                req.limit = 20 * 1024 * 1024L
+                                req.offset = 0
+                                req.limit = 0
                                 req.synchronous = false
                             })
                         } catch (e: Exception) {
@@ -806,7 +805,12 @@ object DownloadManager {
                         if (tdlibPath.isNotBlank()) {
                             try {
                                 val source = File(tdlibPath)
-                                val target = File(item.localPath)
+                                val cleanPath = if (item.localPath.endsWith(".mp4.mp4", ignoreCase = true)) {
+                                    item.localPath.substring(0, item.localPath.length - 4)
+                                } else {
+                                    item.localPath
+                                }
+                                val target = File(cleanPath)
                                 if (target.parentFile?.exists() == false) {
                                     target.parentFile?.mkdirs()
                                 }
