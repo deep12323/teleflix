@@ -377,13 +377,15 @@ object TelegramStreamingProxy {
         try {
             val prev = lastStreamedFileId
             if (prev != null && prev != fileId) {
-                TeleflixLogger.log(TAG, "New file requested ($fileId), cancelling active jobs and TDLib downloads for old file ($prev)")
+                TeleflixLogger.log(TAG, "New file requested ($fileId), cancelling active jobs for old file ($prev)")
                 activeFileJobs.remove("file_$prev")?.cancel()
-                runCatching {
-                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(prev, false))
-                }
-                if (!isCacheEnabled() && (activeStreamRequests[prev]?.isEmpty() != false)) {
-                    scope.launch { deleteFile(prev) }
+                if (!DownloadManager.isFileIdActive(prev)) {
+                    runCatching {
+                        TelegramClient.sendRequest(TdApi.CancelDownloadFile(prev, false))
+                    }
+                    if (!isCacheEnabled() && (activeStreamRequests[prev]?.isEmpty() != false)) {
+                        scope.launch { deleteFile(prev) }
+                    }
                 }
             }
             lastStreamedFileId = fileId
@@ -1052,7 +1054,7 @@ object TelegramStreamingProxy {
         scope.launch {
             activeDownloadWindows.keys.forEach { fileId ->
                 val hasActiveRequests = activeStreamRequests[fileId]?.isNotEmpty() == true
-                if (!hasActiveRequests) {
+                if (!hasActiveRequests && !DownloadManager.isFileIdActive(fileId)) {
                     runCatching {
                         TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
                     }

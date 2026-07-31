@@ -413,26 +413,6 @@ object DownloadManager {
                 }
 
                 if (!fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
-                    val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
-                    if (now - lastRetry > 2000L) {
-                        lastDownloadRetryTimeMap[currentFileId] = now
-                        try {
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = currentFileId
-                                req.priority = 32
-                                req.offset = 0
-                                req.limit = 0
-                                req.synchronous = false
-                            })
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed DownloadFile request for $currentFileId", e)
-                        }
-                    }
-                }
-            } else {
-                val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
-                if (now - lastRetry > 2000L) {
-                    lastDownloadRetryTimeMap[currentFileId] = now
                     try {
                         TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                             req.fileId = currentFileId
@@ -442,8 +422,20 @@ object DownloadManager {
                             req.synchronous = false
                         })
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed DownloadFile retry for $currentFileId", e)
+                        Log.e(TAG, "Failed DownloadFile request for $currentFileId", e)
                     }
+                }
+            } else {
+                try {
+                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        req.fileId = currentFileId
+                        req.priority = 32
+                        req.offset = 0
+                        req.limit = 0
+                        req.synchronous = false
+                    })
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed DownloadFile retry for $currentFileId", e)
                 }
             }
         } else {
@@ -551,20 +543,16 @@ object DownloadManager {
                         }
                     }
                 } else if (!fileObj.local.isDownloadingActive) {
-                    val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
-                    if (now - lastRetry > 2000L) {
-                        lastDownloadRetryTimeMap[partFileId] = now
-                        try {
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = partFileId
-                                req.priority = 32
-                                req.offset = 0
-                                req.limit = 0
-                                req.synchronous = false
-                            })
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
-                        }
+                    try {
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = partFileId
+                            req.priority = 32
+                            req.offset = 0
+                            req.limit = 0
+                            req.synchronous = false
+                        })
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
                     }
                 }
 
@@ -800,6 +788,16 @@ object DownloadManager {
     fun getActiveDownloadsCount(): Int {
         synchronized(downloadsMap) {
             return downloadsMap.values.count { it.status == DownloadStatus.DOWNLOADING }
+        }
+    }
+
+    fun isFileIdActive(fileId: Int): Boolean {
+        if (fileId == 0) return false
+        synchronized(downloadsMap) {
+            return downloadsMap.values.any { item ->
+                item.status == DownloadStatus.DOWNLOADING &&
+                (item.fileId == fileId || (item.isMultiPart && item.partFileIds.getOrNull(item.currentPartIndex) == fileId))
+            }
         }
     }
 }
