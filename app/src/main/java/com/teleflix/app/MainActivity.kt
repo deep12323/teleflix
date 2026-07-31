@@ -3584,8 +3584,7 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(10), dp(6), dp(10), dp(6))
                 isClickable = true
                 setOnClickListener {
-                    DownloadManager.deleteDownloadedFile(context, item.id)
-                    Toast.makeText(context, "Deleted ${item.title}", Toast.LENGTH_SHORT).show()
+                    showDeleteConfirmationDialog(context, item, isCancel = false)
                 }
             }
             actionsRow.addView(playBtn)
@@ -3614,7 +3613,7 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(10), dp(6), dp(10), dp(6))
                 isClickable = true
                 setOnClickListener {
-                    DownloadManager.cancelDownload(context, item.id)
+                    showDeleteConfirmationDialog(context, item, isCancel = true)
                 }
             }
             actionsRow.addView(pauseBtn)
@@ -3643,7 +3642,7 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(10), dp(6), dp(10), dp(6))
                 isClickable = true
                 setOnClickListener {
-                    DownloadManager.deleteDownloadedFile(context, item.id)
+                    showDeleteConfirmationDialog(context, item, isCancel = false)
                 }
             }
             actionsRow.addView(resumeBtn)
@@ -3652,6 +3651,33 @@ class MainActivity : AppCompatActivity() {
 
         card.addView(actionsRow)
         return card
+    }
+
+    private fun showDeleteConfirmationDialog(context: Context, item: DownloadItem, isCancel: Boolean = false) {
+        val titleText = if (isCancel) "Cancel Download?" else "Delete Download?"
+        val messageText = if (isCancel) {
+            "Are you sure you want to cancel downloading '${item.title}'?"
+        } else {
+            "Are you sure you want to delete '${item.title}'?\nThis will permanently remove the downloaded file from your device storage."
+        }
+
+        AlertDialog.Builder(context)
+            .setTitle(titleText)
+            .setMessage(messageText)
+            .setPositiveButton(if (isCancel) "Yes, Cancel" else "Yes, Delete") { dialog, _ ->
+                if (isCancel) {
+                    DownloadManager.cancelDownload(context, item.id)
+                    Toast.makeText(context, "Cancelled '${item.title}'", Toast.LENGTH_SHORT).show()
+                } else {
+                    DownloadManager.deleteDownloadedFile(context, item.id)
+                    Toast.makeText(context, "Deleted '${item.title}'", Toast.LENGTH_SHORT).show()
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton("Keep File") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .show()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
