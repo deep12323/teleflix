@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="fastlane/metadata/android/en-US/images/featureGraphic.png" alt="Teleflix Banner" width="100%">
+</p>
+
 # Teleflix
 
 Teleflix is an Android app that lets you stream movies, TV shows, and videos directly from Telegram channels and Cinemeta catalogs without downloading entire files first.
