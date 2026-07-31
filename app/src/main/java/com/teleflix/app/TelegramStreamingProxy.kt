@@ -97,7 +97,7 @@ object TelegramStreamingProxy {
 
         try {
             // Cancel stuck TDLib download task only on major offset jumps for main stream requests (rate-limited to 2s)
-            if (isOffsetJump && (now - lastTime) >= 2000L && (limit == 0L || limit > 5_000_000L)) {
+            if (isOffsetJump && (now - lastTime) >= 2000L && (limit == 0L || limit > 5_000_000L) && !DownloadManager.isFileIdActive(fileId)) {
                 TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
             }
 
@@ -528,7 +528,7 @@ object TelegramStreamingProxy {
                     scope.launch {
                         delay(5000L)
                         val currentRequests = activeStreamRequests[fileId]
-                        if (currentRequests == null || currentRequests.isEmpty()) {
+                        if ((currentRequests == null || currentRequests.isEmpty()) && !DownloadManager.isFileIdActive(fileId)) {
                             activeDownloadWindows.remove(fileId)
                             TeleflixLogger.log(TAG, "No active streams remaining for fileId=$fileId after 5s grace period, cancelling TDLib background download")
                             runCatching {
@@ -1230,7 +1230,7 @@ object TelegramStreamingProxy {
                     val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
                     val safeLimit = calculateSafeTdlibLimit(offset, totalSize, prefetchSizeMb, limit)
 
-                    if (attempts > 0 && !isDownloading && attempts % 300 == 0) {
+                    if (attempts > 0 && !isDownloading && attempts % 300 == 0 && !DownloadManager.isFileIdActive(fileId)) {
                         TeleflixLogger.log(TAG, "[TDLib] Retry fileId=$fileId offset=$offset attempt=$attempts backoffMs=50 totalWastedMs=${attempts * 50}")
                         runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
                     }
