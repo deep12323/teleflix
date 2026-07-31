@@ -5,18 +5,26 @@
     android:viewportHeight="108">
     <!-- Cinema Matte Black Background -->
     <path
-        android:fillColor="#000000"
+        android:fillColor="#0B0B0F"
         android:pathData="M0,0h108v108h-108z" />
-    <!-- Deep Crimson Drop Shadow for depth -->
+
+    <!-- Outer Crimson Glow Shadow -->
     <path
-        android:fillColor="#600207"
-        android:pathData="M41,33L81,57L41,81Z" />
-    <!-- Main Vibrant Netflix Red Play Symbol -->
+        android:fillColor="#40E50914"
+        android:pathData="M34,26L82,54L34,82Z" />
+
+    <!-- Main Vibrant Crimson Red Play Symbol -->
     <path
         android:fillColor="#E50914"
-        android:pathData="M38,30L78,54L38,78Z" />
-    <!-- Left Ribbon Fold Accent (Rich Crimson) -->
+        android:pathData="M36,28L80,54L36,80Z" />
+
+    <!-- 3D Ribbon Fold Overlay 1 (Dark Crimson Shadow) -->
     <path
-        android:fillColor="#B81D24"
-        android:pathData="M38,30 L47,35.4 L47,72.6 L38,78 Z" />
+        android:fillColor="#99060E"
+        android:pathData="M36,28 L52,38.5 L52,69.5 L36,80 Z" />
+
+    <!-- 3D Ribbon Fold Overlay 2 (Bright Crimson Highlight) -->
+    <path
+        android:fillColor="#FF2E38"
+        android:pathData="M36,28 L80,54 L58,40 Z" />
 </vector>
