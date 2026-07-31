@@ -211,12 +211,33 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        DownloadManager.init(this)
+
+        val downloadsButton = TextView(this).apply {
+            text = "📥"
+            textSize = 18f
+            gravity = android.view.Gravity.CENTER
+            background = UITheme.createCardShape(this@MainActivity, UITheme.SURFACE, 14, UITheme.STROKE_COLOR, 1)
+            val p = UITheme.dpToPx(this@MainActivity, 10)
+            setPadding(p, p, p, p)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                showDownloadsDialog()
+            }
+        }
+
         headerLayout.addView(titleView)
         headerLayout.addView(modeToggleButton)
         val headerGap = android.view.View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(UITheme.dpToPx(this@MainActivity, 10), 1)
+            layoutParams = LinearLayout.LayoutParams(UITheme.dpToPx(this@MainActivity, 8), 1)
+        }
+        val headerGap2 = android.view.View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(UITheme.dpToPx(this@MainActivity, 8), 1)
         }
         headerLayout.addView(headerGap)
+        headerLayout.addView(downloadsButton)
+        headerLayout.addView(headerGap2)
         headerLayout.addView(statusButton)
         rootView.addView(headerLayout)
 
@@ -466,6 +487,8 @@ class MainActivity : AppCompatActivity() {
             if (selectedCategory == "library/list" && !nowBookmarked) {
                 loadLibraryCatalog()
             }
+        }, { item ->
+            handleDownloadItem(item)
         })
 
         val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
@@ -1734,7 +1757,7 @@ class MainActivity : AppCompatActivity() {
 
     // ── Stream Selection ────────────────────────────────────────
 
-    private fun showStreamOptions(title: String, season: Int? = null, episode: Int? = null, posterUrl: String = "") {
+    private fun showStreamOptions(title: String, season: Int? = null, episode: Int? = null, posterUrl: String = "", isDownloadMode: Boolean = false) {
         val displayTitle = if (season != null && episode != null) {
             "$title S${String.format("%02d", season)}E${String.format("%02d", episode)}"
         } else {
@@ -1759,7 +1782,7 @@ class MainActivity : AppCompatActivity() {
         loadingView.addView(progressBar)
 
         val loadTitle = TextView(this).apply {
-            text = "Searching Telegram Streams"
+            text = if (isDownloadMode) "Searching Downloadable Streams" else "Searching Telegram Streams"
             UITheme.applySectionTitleStyle(this)
             setTextColor(Color.WHITE)
             gravity = android.view.Gravity.CENTER
@@ -1808,7 +1831,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val headerText = TextView(this@MainActivity).apply {
-                    text = "Streams Found for $displayTitle (${streams.size})"
+                    text = if (isDownloadMode) "Select Stream to Download for $displayTitle (${streams.size})" else "Streams Found for $displayTitle (${streams.size})"
                     UITheme.applySectionTitleStyle(this)
                     setTextColor(Color.WHITE)
                     setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 14))
@@ -1835,43 +1858,47 @@ class MainActivity : AppCompatActivity() {
                         isFocusable = true
                         setOnClickListener {
                             streamDialog.dismiss()
-                            val parts = telegramGroupPartsCache[stream.id]
-                            val isZipFile = stream.isZip || stream.fileName.lowercase().contains(".zip")
-                            if ((stream.isSplit || stream.id.startsWith("group_")) && !isZipFile) {
-                                val cleanName = stream.fileName.removePrefix("📦 ").removePrefix("🔗 ").trim()
-                                val mediaItem = MediaItem(
-                                    id = stream.id,
-                                    title = cleanName,
-                                    posterUrl = posterUrl,
-                                    year = stream.size,
-                                    rating = stream.quality,
-                                    overview = "Multi-part video pack: $cleanName",
-                                    type = "telegram_media",
-                                    streamUrl = stream.url
-                                )
-                                if (parts != null && parts.isNotEmpty()) {
-                                    showGroupPartsSelectionDialog(mediaItem, parts, cleanName)
-                                } else if (stream.chatId != 0L) {
-                                    Toast.makeText(this@MainActivity, "Loading group parts...", Toast.LENGTH_SHORT).show()
-                                    CoroutineScope(Dispatchers.Main).launch {
-                                        val mediaMessages = withContext(Dispatchers.IO) {
-                                            TelegramRepository.fetchChannelMedia(stream.chatId.toString(), limit = 200).first
+                            if (isDownloadMode) {
+                                downloadStreamSource(stream, displayTitle, posterUrl)
+                            } else {
+                                val parts = telegramGroupPartsCache[stream.id]
+                                val isZipFile = stream.isZip || stream.fileName.lowercase().contains(".zip")
+                                if ((stream.isSplit || stream.id.startsWith("group_")) && !isZipFile) {
+                                    val cleanName = stream.fileName.removePrefix("📦 ").removePrefix("🔗 ").trim()
+                                    val mediaItem = MediaItem(
+                                        id = stream.id,
+                                        title = cleanName,
+                                        posterUrl = posterUrl,
+                                        year = stream.size,
+                                        rating = stream.quality,
+                                        overview = "Multi-part video pack: $cleanName",
+                                        type = "telegram_media",
+                                        streamUrl = stream.url
+                                    )
+                                    if (parts != null && parts.isNotEmpty()) {
+                                        showGroupPartsSelectionDialog(mediaItem, parts, cleanName)
+                                    } else if (stream.chatId != 0L) {
+                                        Toast.makeText(this@MainActivity, "Loading group parts...", Toast.LENGTH_SHORT).show()
+                                        CoroutineScope(Dispatchers.Main).launch {
+                                            val mediaMessages = withContext(Dispatchers.IO) {
+                                                TelegramRepository.fetchChannelMedia(stream.chatId.toString(), limit = 200).first
+                                            }
+                                            val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+                                            val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
+                                                .find { it.group.baseName.equals(cleanName, ignoreCase = true) }
+                                            if (matchGroup != null && matchGroup.group.parts.isNotEmpty()) {
+                                                telegramGroupPartsCache[stream.id] = matchGroup.group.parts
+                                                showGroupPartsSelectionDialog(mediaItem, matchGroup.group.parts, cleanName)
+                                            } else {
+                                                checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, stream.id, stream.fileName)
+                                            }
                                         }
-                                        val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
-                                        val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
-                                            .find { it.group.baseName.equals(cleanName, ignoreCase = true) }
-                                        if (matchGroup != null && matchGroup.group.parts.isNotEmpty()) {
-                                            telegramGroupPartsCache[stream.id] = matchGroup.group.parts
-                                            showGroupPartsSelectionDialog(mediaItem, matchGroup.group.parts, cleanName)
-                                        } else {
-                                            checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, stream.id, stream.fileName)
-                                        }
+                                    } else {
+                                        checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, stream.id, stream.fileName)
                                     }
                                 } else {
                                     checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, stream.id, stream.fileName)
                                 }
-                            } else {
-                                checkResumeAndSelectPlayer(stream.url, displayTitle, posterUrl, stream.id, stream.fileName)
                             }
                         }
                     }
@@ -3022,6 +3049,369 @@ class MainActivity : AppCompatActivity() {
         if (level == TRIM_MEMORY_COMPLETE || level == TRIM_MEMORY_MODERATE) {
             try { TelegramClient.clearMediaCache(this) } catch (_: Exception) {}
         }
+    }
+
+    // ── Downloads Engine & UI Helpers ─────────────────────────────
+
+    private fun extractFileIdFromUrl(url: String): Int? {
+        if (url.isBlank()) return null
+        if (url.contains("/file/")) {
+            val idStr = url.substringAfter("/file/").substringBefore("/").substringBefore("?")
+            return idStr.toIntOrNull()
+        }
+        if (url.contains("fileId=")) {
+            val idStr = url.substringAfter("fileId=").substringBefore("&")
+            return idStr.toIntOrNull()
+        }
+        if (url.contains("ids=")) {
+            val idStr = url.substringAfter("ids=").substringBefore(",").substringBefore("&")
+            return idStr.toIntOrNull()
+        }
+        return null
+    }
+
+    private fun downloadStreamSource(stream: StreamSource, displayTitle: String, posterUrl: String) {
+        val fileId = extractFileIdFromUrl(stream.url)
+        if (fileId != null && fileId != 0) {
+            val cleanFileName = stream.fileName.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
+            val fileName = if (cleanFileName.contains(".")) cleanFileName else "$displayTitle.mp4"
+            val item = DownloadManager.startDownload(
+                context = this,
+                title = displayTitle,
+                fileName = fileName,
+                fileId = fileId,
+                chatId = stream.chatId,
+                messageId = 0L,
+                posterUrl = posterUrl
+            )
+            Toast.makeText(this, "Started downloading '$displayTitle' 📥", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Unable to extract file download ID", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun handleDownloadItem(item: MediaItem) {
+        if (item.type == "channel") {
+            Toast.makeText(this, "Select a video inside the channel to download", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (item.type == "telegram_media") {
+            val streamInfo = telegramStreamCache[item.id]
+            val rawUrl = streamInfo?.first ?: item.streamUrl
+            val fileId = extractFileIdFromUrl(rawUrl)
+
+            val cleanTitle = item.title.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
+            val fileName = item.originalFileName.ifBlank { "$cleanTitle.mp4" }
+
+            val rest = item.id.removePrefix("single_").removePrefix("stream_")
+            val parts = rest.split("_")
+            val chatId = parts.getOrNull(0)?.toLongOrNull() ?: 0L
+            val messageId = parts.getOrNull(1)?.toLongOrNull() ?: 0L
+
+            if (fileId != null && fileId != 0) {
+                DownloadManager.startDownload(
+                    context = this,
+                    title = cleanTitle,
+                    fileName = fileName,
+                    fileId = fileId,
+                    chatId = chatId,
+                    messageId = messageId,
+                    posterUrl = item.posterUrl
+                )
+                Toast.makeText(this, "Started downloading '$cleanTitle' 📥", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Resolving video link for download...", Toast.LENGTH_SHORT).show()
+                if (chatId != 0L && messageId != 0L) {
+                    CoroutineScope(Dispatchers.Main).launch {
+                        val freshUrl = withContext(Dispatchers.IO) {
+                            TelegramRepository.getFreshMediaUrl(chatId, messageId)
+                        }
+                        if (freshUrl != null) {
+                            val freshId = extractFileIdFromUrl(freshUrl)
+                            if (freshId != null && freshId != 0) {
+                                DownloadManager.startDownload(
+                                    context = this@MainActivity,
+                                    title = cleanTitle,
+                                    fileName = fileName,
+                                    fileId = freshId,
+                                    chatId = chatId,
+                                    messageId = messageId,
+                                    posterUrl = item.posterUrl
+                                )
+                                Toast.makeText(this@MainActivity, "Started downloading '$cleanTitle' 📥", Toast.LENGTH_SHORT).show()
+                                return@launch
+                            }
+                        }
+                        Toast.makeText(this@MainActivity, "Failed to resolve download link", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(this, "Unable to download this stream item", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            showStreamOptions(item.title, null, null, item.posterUrl, isDownloadMode = true)
+        }
+    }
+
+    private var downloadsObserveJob: kotlinx.coroutines.Job? = null
+
+    private fun showDownloadsDialog() {
+        val context = this
+        val builder = AlertDialog.Builder(context)
+
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#0B0B0F"))
+            setPadding(UITheme.dpToPx(context, 16), UITheme.dpToPx(context, 16), UITheme.dpToPx(context, 16), UITheme.dpToPx(context, 16))
+        }
+
+        val titleRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, UITheme.dpToPx(context, 12))
+        }
+
+        val titleText = TextView(context).apply {
+            text = "📥 Offline Downloads"
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val closeBtn = TextView(context).apply {
+            text = "✕"
+            textSize = 18f
+            setTextColor(Color.parseColor(UITheme.TEXT_SECONDARY))
+            setPadding(UITheme.dpToPx(context, 8), UITheme.dpToPx(context, 8), UITheme.dpToPx(context, 8), UITheme.dpToPx(context, 8))
+            isClickable = true
+            isFocusable = true
+        }
+
+        titleRow.addView(titleText)
+        titleRow.addView(closeBtn)
+        container.addView(titleRow)
+
+        val scrollView = ScrollView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, UITheme.dpToPx(context, 420))
+        }
+
+        val itemsListLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        scrollView.addView(itemsListLayout)
+        container.addView(scrollView)
+
+        val dialog = builder.setView(container).create()
+
+        closeBtn.setOnClickListener { dialog.dismiss() }
+
+        downloadsObserveJob?.cancel()
+        downloadsObserveJob = CoroutineScope(Dispatchers.Main).launch {
+            DownloadManager.downloadsFlow.collect { downloads ->
+                itemsListLayout.removeAllViews()
+                if (downloads.isEmpty()) {
+                    val emptyView = TextView(context).apply {
+                        text = "No active or saved downloads.\nTap 📥 on any movie card to start downloading!"
+                        UITheme.applyMetadataStyle(this)
+                        gravity = android.view.Gravity.CENTER
+                        setPadding(0, UITheme.dpToPx(context, 50), 0, UITheme.dpToPx(context, 50))
+                    }
+                    itemsListLayout.addView(emptyView)
+                } else {
+                    for (item in downloads) {
+                        val card = createDownloadItemCard(context, item, dialog)
+                        itemsListLayout.addView(card)
+                    }
+                }
+            }
+        }
+
+        dialog.setOnDismissListener {
+            downloadsObserveJob?.cancel()
+        }
+
+        dialog.show()
+    }
+
+    private fun createDownloadItemCard(context: android.content.Context, item: DownloadItem, dialog: AlertDialog): android.view.View {
+        fun dp(v: Int) = UITheme.dpToPx(context, v)
+
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = UITheme.createCardShape(context, UITheme.CARD, 14, UITheme.STROKE_COLOR, 1)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, dp(10)) }
+        }
+
+        val topRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+
+        val iconText = TextView(context).apply {
+            text = when (item.status) {
+                DownloadStatus.COMPLETED -> "✅"
+                DownloadStatus.DOWNLOADING -> "📥"
+                DownloadStatus.PAUSED -> "⏸️"
+                DownloadStatus.FAILED -> "⚠️"
+                DownloadStatus.QUEUED -> "⏳"
+            }
+            textSize = 20f
+            gravity = android.view.Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+                setMargins(0, 0, dp(10), 0)
+            }
+        }
+
+        val textCol = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val titleView = TextView(context).apply {
+            text = item.title
+            UITheme.applyCardTitleStyle(this)
+            textSize = 14f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+
+        val subText = TextView(context).apply {
+            UITheme.applyMetadataStyle(this)
+            text = when (item.status) {
+                DownloadStatus.COMPLETED -> "Completed (${item.getFormattedSize()})"
+                DownloadStatus.DOWNLOADING -> "${item.getFormattedSpeed()} • ${item.progressPercent}% (${item.getFormattedSize()})"
+                DownloadStatus.PAUSED -> "Paused • ${item.progressPercent}%"
+                DownloadStatus.FAILED -> "Download Failed"
+                DownloadStatus.QUEUED -> "Queued..."
+            }
+        }
+
+        textCol.addView(titleView)
+        textCol.addView(subText)
+
+        topRow.addView(iconText)
+        topRow.addView(textCol)
+        card.addView(topRow)
+
+        if (item.status == DownloadStatus.DOWNLOADING || item.status == DownloadStatus.PAUSED) {
+            val progressBar = android.widget.ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 100
+                progress = item.progressPercent
+                progressTintList = android.content.res.ColorStateList.valueOf(Color.parseColor(UITheme.ACCENT_BLUE))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(6)
+                ).apply { setMargins(0, dp(8), 0, dp(8)) }
+            }
+            card.addView(progressBar)
+        }
+
+        val actionsRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.END
+            setPadding(0, dp(6), 0, 0)
+        }
+
+        if (item.status == DownloadStatus.COMPLETED) {
+            val playBtn = TextView(context).apply {
+                text = "▶ Play Offline"
+                textSize = 12f
+                setTextColor(Color.WHITE)
+                background = UITheme.createCardShape(context, UITheme.SUCCESS, 10, UITheme.SUCCESS, 1)
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                isClickable = true
+                setOnClickListener {
+                    dialog.dismiss()
+                    checkResumeAndSelectPlayer(item.localPath, item.title, item.posterUrl, item.id, item.fileName)
+                }
+            }
+            val delBtn = TextView(context).apply {
+                text = "🗑 Delete"
+                textSize = 12f
+                setTextColor(Color.parseColor(UITheme.PRIMARY))
+                background = UITheme.createCardShape(context, UITheme.SURFACE, 10, UITheme.STROKE_COLOR, 1)
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(dp(8), 0, 0, 0)
+                }
+                layoutParams = lp
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                isClickable = true
+                setOnClickListener {
+                    DownloadManager.deleteDownloadedFile(context, item.id)
+                    Toast.makeText(context, "Deleted ${item.title}", Toast.LENGTH_SHORT).show()
+                }
+            }
+            actionsRow.addView(playBtn)
+            actionsRow.addView(delBtn)
+        } else if (item.status == DownloadStatus.DOWNLOADING) {
+            val pauseBtn = TextView(context).apply {
+                text = "⏸ Pause"
+                textSize = 12f
+                setTextColor(Color.WHITE)
+                background = UITheme.createCardShape(context, UITheme.SECONDARY, 10, UITheme.STROKE_COLOR, 1)
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                isClickable = true
+                setOnClickListener {
+                    DownloadManager.pauseDownload(context, item.id)
+                }
+            }
+            val cancelBtn = TextView(context).apply {
+                text = "✖ Cancel"
+                textSize = 12f
+                setTextColor(Color.parseColor(UITheme.PRIMARY))
+                background = UITheme.createCardShape(context, UITheme.SURFACE, 10, UITheme.STROKE_COLOR, 1)
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(dp(8), 0, 0, 0)
+                }
+                layoutParams = lp
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                isClickable = true
+                setOnClickListener {
+                    DownloadManager.cancelDownload(context, item.id)
+                }
+            }
+            actionsRow.addView(pauseBtn)
+            actionsRow.addView(cancelBtn)
+        } else if (item.status == DownloadStatus.PAUSED || item.status == DownloadStatus.FAILED) {
+            val resumeBtn = TextView(context).apply {
+                text = "▶ Resume"
+                textSize = 12f
+                setTextColor(Color.WHITE)
+                background = UITheme.createCardShape(context, UITheme.ACCENT_BLUE, 10, UITheme.ACCENT_BLUE, 1)
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                isClickable = true
+                setOnClickListener {
+                    DownloadManager.resumeDownload(context, item.id)
+                }
+            }
+            val delBtn = TextView(context).apply {
+                text = "🗑 Delete"
+                textSize = 12f
+                setTextColor(Color.parseColor(UITheme.PRIMARY))
+                background = UITheme.createCardShape(context, UITheme.SURFACE, 10, UITheme.STROKE_COLOR, 1)
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(dp(8), 0, 0, 0)
+                }
+                layoutParams = lp
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                isClickable = true
+                setOnClickListener {
+                    DownloadManager.deleteDownloadedFile(context, item.id)
+                }
+            }
+            actionsRow.addView(resumeBtn)
+            actionsRow.addView(delBtn)
+        }
+
+        card.addView(actionsRow)
+        return card
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

@@ -192,6 +192,7 @@ object TelegramClient {
 
     private fun handleUpdate(context: Context, obj: TdApi.Object) {
         when (obj) {
+            is TdApi.UpdateFile -> DownloadManager.onFileUpdate(context, obj.file)
             is TdApi.UpdateAuthorizationState -> handleAuthState(context, obj.authorizationState)
             is TdApi.UpdateConnectionState -> {
                 val stateName = obj.state::class.simpleName ?: "Unknown"

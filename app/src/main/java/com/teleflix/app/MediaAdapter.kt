@@ -18,7 +18,8 @@ class MediaAdapter(
     private val items: List<MediaItem>,
     private val onClick: (MediaItem) -> Unit,
     private val onLongClick: ((MediaItem) -> Boolean)? = null,
-    private val onBookmarkToggle: ((MediaItem, Boolean) -> Unit)? = null
+    private val onBookmarkToggle: ((MediaItem, Boolean) -> Unit)? = null,
+    private val onDownloadClick: ((MediaItem) -> Unit)? = null
 ) : RecyclerView.Adapter<MediaAdapter.ViewHolder>() {
 
     companion object {
@@ -42,7 +43,8 @@ class MediaAdapter(
         val yearText: TextView? = null,
         val overviewText: TextView? = null,
         val iconText: TextView? = null,
-        val bookmarkButton: ImageView? = null
+        val bookmarkButton: ImageView? = null,
+        val downloadButton: TextView? = null
     ) : RecyclerView.ViewHolder(layout)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -156,8 +158,22 @@ class MediaAdapter(
                     isFocusable = true
                 }
 
+                val downloadButton = TextView(context).apply {
+                    text = "📥"
+                    textSize = 14f
+                    gravity = Gravity.CENTER
+                    background = UITheme.createCardShape(context, "#CC0F0F1A", 10, UITheme.STROKE_COLOR, 1)
+                    layoutParams = FrameLayout.LayoutParams(dp(32), dp(32)).apply {
+                        gravity = Gravity.TOP or Gravity.START
+                        setMargins(dp(8), dp(8), 0, 0)
+                    }
+                    isClickable = true
+                    isFocusable = true
+                }
+
                 posterFrame.addView(posterView)
                 posterFrame.addView(bookmarkButton)
+                posterFrame.addView(downloadButton)
 
                 val textContainer = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
@@ -190,7 +206,7 @@ class MediaAdapter(
                 card.addView(posterFrame)
                 card.addView(textContainer)
 
-                return ViewHolder(card, posterView, titleView, yearView, overviewView, bookmarkButton = bookmarkButton)
+                return ViewHolder(card, posterView, titleView, yearView, overviewView, bookmarkButton = bookmarkButton, downloadButton = downloadButton)
             }
 
             else -> {
@@ -236,8 +252,22 @@ class MediaAdapter(
                     isFocusable = true
                 }
 
+                val downloadButton = TextView(context).apply {
+                    text = "📥"
+                    textSize = 14f
+                    gravity = Gravity.CENTER
+                    background = UITheme.createCardShape(context, "#CC0F0F1A", 10, UITheme.STROKE_COLOR, 1)
+                    layoutParams = FrameLayout.LayoutParams(dp(32), dp(32)).apply {
+                        gravity = Gravity.TOP or Gravity.START
+                        setMargins(dp(8), dp(8), 0, 0)
+                    }
+                    isClickable = true
+                    isFocusable = true
+                }
+
                 posterFrame.addView(posterView)
                 posterFrame.addView(bookmarkButton)
+                posterFrame.addView(downloadButton)
 
                 val textContainer = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
@@ -269,7 +299,7 @@ class MediaAdapter(
                 card.addView(posterFrame)
                 card.addView(textContainer)
 
-                return ViewHolder(card, posterView, titleView, yearView, overviewView, bookmarkButton = bookmarkButton)
+                return ViewHolder(card, posterView, titleView, yearView, overviewView, bookmarkButton = bookmarkButton, downloadButton = downloadButton)
             }
         }
     }
@@ -339,6 +369,17 @@ class MediaAdapter(
                     }
                     Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
                     onBookmarkToggle?.invoke(item, nowBookmarked)
+                }
+            }
+        }
+
+        if (holder.downloadButton != null) {
+            if (item.type == "channel" || item.id == "watch_history") {
+                holder.downloadButton.visibility = View.GONE
+            } else {
+                holder.downloadButton.visibility = View.VISIBLE
+                holder.downloadButton.setOnClickListener {
+                    onDownloadClick?.invoke(item)
                 }
             }
         }
