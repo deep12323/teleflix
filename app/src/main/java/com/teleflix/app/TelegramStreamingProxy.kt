@@ -1234,8 +1234,10 @@ object TelegramStreamingProxy {
                         TeleflixLogger.log(TAG, "[TDLib] Retry fileId=$fileId offset=$offset attempt=$attempts backoffMs=50 totalWastedMs=${attempts * 50}")
                         runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
                     }
-                    val forceRequest = (attempts == 0 || (!isDownloading && attempts % 50 == 0))
-                    triggerTdlibDownload(fileId, offset, safeLimit, force = forceRequest)
+                    val forceRequest = (attempts == 0)
+                    if (forceRequest || !isDownloading) {
+                        triggerTdlibDownload(fileId, offset, safeLimit, force = forceRequest)
+                    }
                     val winEnd = if (safeLimit == 0L) Long.MAX_VALUE else offset + safeLimit
                     activeDownloadWindows[fileId] = Pair(offset, winEnd)
                 }
