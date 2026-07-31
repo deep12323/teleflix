@@ -456,19 +456,20 @@ object DownloadManager {
                     onFileUpdate(context, fileObj)
                 }
 
-                if (!fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
+                if (!fileObj.local.isDownloadingCompleted) {
+                    val currentDownloaded = fileObj.local.downloadedSize
                     val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
-                    if (now - lastRetry > 10000L) {
+                    if (!fileObj.local.isDownloadingActive || (now - lastRetry > 2000L)) {
                         lastDownloadRetryTimeMap[currentFileId] = now
                         try {
                             val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                                 req.fileId = currentFileId
                                 req.priority = 32
-                                req.offset = 0
-                                req.limit = 0
+                                req.offset = currentDownloaded
+                                req.limit = 20 * 1024 * 1024L
                                 req.synchronous = false
                             })
-                            TeleflixLogger.log(TAG, "DownloadFile request sent for fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
+                            TeleflixLogger.log(TAG, "High-speed DownloadFile window sent for fileId=$currentFileId: offset=$currentDownloaded, res=${res?.javaClass?.simpleName}")
                         } catch (e: Exception) {
                             TeleflixLogger.log(TAG, "Failed DownloadFile request for $currentFileId: ${e.message}", isError = true)
                         }
@@ -580,7 +581,7 @@ object DownloadManager {
                                     req.fileId = nextFileId
                                     req.priority = 32
                                     req.offset = 0
-                                    req.limit = 0
+                                    req.limit = 20 * 1024 * 1024L
                                     req.synchronous = false
                                 })
                             } catch (e: Exception) {
@@ -588,16 +589,16 @@ object DownloadManager {
                             }
                         }
                     }
-                } else if (!fileObj.local.isDownloadingActive) {
+                } else if (!fileObj.local.isDownloadingCompleted) {
                     val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
-                    if (now - lastRetry > 10000L) {
+                    if (!fileObj.local.isDownloadingActive || (now - lastRetry > 2000L)) {
                         lastDownloadRetryTimeMap[partFileId] = now
                         try {
                             TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                                 req.fileId = partFileId
                                 req.priority = 32
-                                req.offset = 0
-                                req.limit = 0
+                                req.offset = currentPartDownloaded
+                                req.limit = 20 * 1024 * 1024L
                                 req.synchronous = false
                             })
                         } catch (e: Exception) {
