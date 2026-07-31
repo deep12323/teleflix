@@ -378,15 +378,14 @@ object DownloadManager {
     private suspend fun processSinglePartDownloadStep(context: Context, item: DownloadItem, now: Long) {
         var currentFileId = item.fileId
 
-        if (currentFileId == 0 && item.chatId != 0L && item.messageId != 0L) {
+        if (item.chatId != 0L && item.messageId != 0L) {
             try {
-                TeleflixLogger.log(TAG, "Attempting to fetch message for item ${item.id}: chatId=${item.chatId}, messageId=${item.messageId}")
                 val msg = TelegramClient.sendRequest(TdApi.GetMessage(item.chatId, item.messageId)) as? TdApi.Message
                 val refreshedId = extractFileIdFromMessage(msg)
                 if (refreshedId != null && refreshedId != 0) {
                     currentFileId = refreshedId
                     item.fileId = refreshedId
-                    TeleflixLogger.log(TAG, "Resolved fileId=$refreshedId from message for item ${item.id}")
+                    TeleflixLogger.log(TAG, "Resolved fresh video fileId=$refreshedId for item ${item.id}")
                 }
             } catch (e: Exception) {
                 TeleflixLogger.log(TAG, "Error fetching message for download item ${item.id}: ${e.message}", isError = true)

@@ -3128,10 +3128,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun downloadStreamSource(stream: StreamSource, displayTitle: String, posterUrl: String) {
+        val cleanFileName = stream.fileName.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
+        val cleanDisplayTitle = displayTitle.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
+
+        val cachedParts = telegramGroupPartsCache[stream.id]
+        if ((stream.isSplit || stream.id.startsWith("group_")) && cachedParts != null && cachedParts.isNotEmpty()) {
+            DownloadManager.startMultiPartDownload(this, cleanDisplayTitle, cleanFileName, cachedParts, posterUrl)
+            Toast.makeText(this, "Started multi-part download '$cleanDisplayTitle' 📥", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         val fileId = extractFileIdFromUrl(stream.url)
         if (fileId != null && fileId != 0) {
-            val cleanFileName = stream.fileName.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
-            val cleanDisplayTitle = displayTitle.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
             val fileName = when {
                 cleanFileName.isNotBlank() && cleanFileName.contains(".") -> cleanFileName
                 cleanDisplayTitle.contains(".") -> cleanDisplayTitle
@@ -3139,7 +3147,7 @@ class MainActivity : AppCompatActivity() {
             }
             val messageId = stream.id.split("_").getOrNull(1)?.toLongOrNull() ?: 0L
             val chatId = if (stream.chatId != 0L) stream.chatId else stream.id.split("_").getOrNull(0)?.toLongOrNull() ?: 0L
-            val item = DownloadManager.startDownload(
+            DownloadManager.startDownload(
                 context = this,
                 title = cleanDisplayTitle,
                 fileName = fileName,
