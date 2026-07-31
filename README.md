@@ -39,14 +39,12 @@ To connect Telegram, you need to provide your own API credentials from [my.teleg
 5. If your account has Two-Step Verification (2FA password) enabled, enter your 2FA password when prompted.
 6. Once authenticated, your session status will show **Connected**.
 
-### Step 4: Add Channels to Monitored Catalog
-1. Go to **Settings → Catalogue Monitored Channels**.
-2. Add channels using either of the following formats:
-   - **By Username**: Type the `@channel_username` or `channel_username` (e.g., `@movie_channel`).
-   - **By Channel ID**: For private or unlisted channels without a public `@username`, enter the numeric **Channel ID** with the required Telegram `-100` prefix (e.g., `-1001234567890`).
-     > *Note: Telegram channel IDs require `-100` at the beginning (e.g. `-100` + `1234567890` = `-1001234567890`). If you enter raw digits like `1234567890`, Teleflix automatically prepends `-100` for you.*
-3. Tap **Add Channel**.
-4. Toggle the main screen mode to **💬 Telegram Channels** to view and stream videos directly from your monitored channels!
+### Step 4: Select Monitored Channels
+1. Go to **Settings → Select Monitored Channels** (or tap **⚙️ Select Channels** directly on the **Telegram Channels** tab).
+2. A dialog will display all your joined Telegram channels and groups with real-time search.
+3. Check the boxes for the channels you want to monitor and include in your catalog.
+4. Tap **Save Selected**.
+5. Switch the main screen catalog mode to **💬 Telegram Channels** to view and stream videos directly from your selected channels!
 
 ---
 
