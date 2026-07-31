@@ -12,7 +12,7 @@ data class DownloadItem(
     val id: String,                  // Unique ID (e.g. fileId or chatId_messageId)
     val title: String,               // Movie / Episode title
     val fileName: String,            // Destination file name
-    val fileId: Int,                 // TDLib File ID
+    var fileId: Int,                 // TDLib File ID
     val chatId: Long = 0L,           // Telegram Chat ID
     val messageId: Long = 0L,        // Telegram Message ID
     val posterUrl: String = "",      // Poster image URL or empty

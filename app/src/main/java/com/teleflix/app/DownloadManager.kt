@@ -6,10 +6,14 @@ import android.os.Environment
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.drinkless.tdlib.TdApi
 import org.json.JSONArray
 import org.json.JSONObject
@@ -26,9 +30,13 @@ object DownloadManager {
 
     private var lastSpeedCalcTime = System.currentTimeMillis()
     private var lastDownloadedBytesMap = HashMap<String, Long>()
+    private var downloadLoopJob: Job? = null
 
     fun init(context: Context) {
         loadFromPrefs(context)
+        if (hasActiveDownloads()) {
+            startDownloadLoop(context)
+        }
     }
 
     private fun getPrefs(context: Context): SharedPreferences {
@@ -185,14 +193,91 @@ object DownloadManager {
             updateFlow()
 
             // Request TDLib to start downloading file
-            CoroutineScope(Dispatchers.IO).launch {
-                TelegramClient.sendRequest(TdApi.DownloadFile(fileId, 32, 0, 0, false))
+            if (fileId != 0) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        req.fileId = fileId
+                        req.priority = 32
+                        req.offset = 0
+                        req.limit = 0
+                        req.synchronous = false
+                    })
+                }
             }
 
-            // Start background service
+            // Start background service & active polling loop
             TeleflixDownloadService.start(context)
+            startDownloadLoop(context)
 
             return item
+        }
+    }
+
+    private fun startDownloadLoop(context: Context) {
+        if (downloadLoopJob?.isActive == true) return
+        val appContext = context.applicationContext
+        downloadLoopJob = CoroutineScope(Dispatchers.IO).launch {
+            while (isActive && hasActiveDownloads()) {
+                val activeItems = synchronized(downloadsMap) {
+                    downloadsMap.values.filter { it.status == DownloadStatus.DOWNLOADING }
+                }
+
+                for (item in activeItems) {
+                    try {
+                        var currentFileId = item.fileId
+
+                        // Refresh message if fileId is zero
+                        if (currentFileId == 0 && item.chatId != 0L && item.messageId != 0L) {
+                            val msg = TelegramClient.sendRequest(TdApi.GetMessage(item.chatId, item.messageId)) as? TdApi.Message
+                            val refreshedId = extractFileIdFromMessage(msg)
+                            if (refreshedId != null && refreshedId != 0) {
+                                currentFileId = refreshedId
+                                item.fileId = refreshedId
+                            }
+                        }
+
+                        if (currentFileId != 0) {
+                            val fileObj = TelegramClient.sendRequest(TdApi.GetFile(currentFileId)) as? TdApi.File
+                            if (fileObj != null) {
+                                withContext(Dispatchers.Main) {
+                                    onFileUpdate(appContext, fileObj)
+                                }
+
+                                if (!fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
+                                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                        req.fileId = currentFileId
+                                        req.priority = 32
+                                        req.offset = 0
+                                        req.limit = 0
+                                        req.synchronous = false
+                                    })
+                                }
+                            } else {
+                                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                    req.fileId = currentFileId
+                                    req.priority = 32
+                                    req.offset = 0
+                                    req.limit = 0
+                                    req.synchronous = false
+                                })
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in download loop for item ${item.id}", e)
+                    }
+                }
+                delay(1000)
+            }
+        }
+    }
+
+    private fun extractFileIdFromMessage(msg: TdApi.Message?): Int? {
+        if (msg == null) return null
+        return when (val content = msg.content) {
+            is TdApi.MessageVideo -> content.video.video.id
+            is TdApi.MessageDocument -> content.document.document.id
+            is TdApi.MessageAudio -> content.audio.audio.id
+            else -> null
         }
     }
 
@@ -206,7 +291,9 @@ object DownloadManager {
                 updateFlow()
 
                 CoroutineScope(Dispatchers.IO).launch {
-                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(item.fileId, false))
+                    if (item.fileId != 0) {
+                        TelegramClient.sendRequest(TdApi.CancelDownloadFile(item.fileId, false))
+                    }
                 }
             }
         }
@@ -220,10 +307,19 @@ object DownloadManager {
                 saveToPrefs(context)
                 updateFlow()
 
-                CoroutineScope(Dispatchers.IO).launch {
-                    TelegramClient.sendRequest(TdApi.DownloadFile(item.fileId, 32, 0, 0, false))
+                if (item.fileId != 0) {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = item.fileId
+                            req.priority = 32
+                            req.offset = 0
+                            req.limit = 0
+                            req.synchronous = false
+                        })
+                    }
                 }
                 TeleflixDownloadService.start(context)
+                startDownloadLoop(context)
             }
         }
     }
@@ -235,7 +331,9 @@ object DownloadManager {
             updateFlow()
 
             CoroutineScope(Dispatchers.IO).launch {
-                TelegramClient.sendRequest(TdApi.CancelDownloadFile(item.fileId, true))
+                if (item.fileId != 0) {
+                    TelegramClient.sendRequest(TdApi.CancelDownloadFile(item.fileId, true))
+                }
                 val f = File(item.localPath)
                 if (f.exists()) f.delete()
             }
@@ -264,40 +362,51 @@ object DownloadManager {
             val timeDiff = (now - lastSpeedCalcTime).coerceAtLeast(1)
 
             for (item in downloadsMap.values) {
-                if (item.fileId == file.id) {
-                    val localPath = file.local?.path ?: ""
-                    if (localPath.isNotBlank()) {
-                        val pathItem = item.copy()
-                        // If file completed
-                        if (file.local.isDownloadingCompleted) {
-                            item.status = DownloadStatus.COMPLETED
-                            item.downloadedBytes = file.size
-                            item.totalBytes = file.size
-                            item.speedBytesPerSec = 0L
-                            if (localPath.isNotBlank()) {
-                                // Assign path if valid
-                                try {
-                                    val target = File(item.localPath)
-                                    val source = File(localPath)
-                                    if (source.exists() && source.absolutePath != target.absolutePath) {
-                                        source.copyTo(target, overwrite = true)
-                                    }
-                                } catch (_: Exception) {}
-                            }
-                        } else if (file.local.isDownloadingActive) {
-                            item.status = DownloadStatus.DOWNLOADING
-                            item.downloadedBytes = file.local.downloadedSize
-                            if (file.expectedSize > 0) item.totalBytes = file.expectedSize
-                            else if (file.size > 0) item.totalBytes = file.size
-
-                            // Calculate speed
-                            val lastBytes = lastDownloadedBytesMap[item.id] ?: item.downloadedBytes
-                            val bytesDiff = (item.downloadedBytes - lastBytes).coerceAtLeast(0)
-                            item.speedBytesPerSec = (bytesDiff * 1000) / timeDiff
-                            lastDownloadedBytesMap[item.id] = item.downloadedBytes
-                        }
-                        updated = true
+                if (item.fileId == file.id || (item.fileId == 0 && file.id != 0)) {
+                    if (item.fileId == 0) {
+                        item.fileId = file.id
                     }
+
+                    item.downloadedBytes = file.local.downloadedSize
+                    if (file.expectedSize > 0) {
+                        item.totalBytes = file.expectedSize
+                    } else if (file.size > 0) {
+                        item.totalBytes = file.size
+                    }
+
+                    // Calculate speed
+                    val lastBytes = lastDownloadedBytesMap[item.id] ?: item.downloadedBytes
+                    val bytesDiff = (item.downloadedBytes - lastBytes).coerceAtLeast(0)
+                    item.speedBytesPerSec = (bytesDiff * 1000) / timeDiff
+                    lastDownloadedBytesMap[item.id] = item.downloadedBytes
+
+                    val tdlibPath = file.local?.path ?: ""
+
+                    // Check if file completed
+                    if (file.local.isDownloadingCompleted || (file.size > 0 && file.local.downloadedSize >= file.size)) {
+                        item.status = DownloadStatus.COMPLETED
+                        item.downloadedBytes = if (file.size > 0) file.size else item.downloadedBytes
+                        item.totalBytes = if (file.size > 0) file.size else item.totalBytes
+                        item.speedBytesPerSec = 0L
+
+                        if (tdlibPath.isNotBlank()) {
+                            try {
+                                val source = File(tdlibPath)
+                                val target = File(item.localPath)
+                                if (target.parentFile?.exists() == false) {
+                                    target.parentFile?.mkdirs()
+                                }
+                                if (source.exists() && source.absolutePath != target.absolutePath) {
+                                    source.copyTo(target, overwrite = true)
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed copying completed download: ${e.message}")
+                            }
+                        }
+                    } else if (file.local.isDownloadingActive) {
+                        item.status = DownloadStatus.DOWNLOADING
+                    }
+                    updated = true
                 }
             }
 
