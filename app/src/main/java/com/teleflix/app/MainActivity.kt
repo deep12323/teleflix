@@ -3131,18 +3131,24 @@ class MainActivity : AppCompatActivity() {
         val fileId = extractFileIdFromUrl(stream.url)
         if (fileId != null && fileId != 0) {
             val cleanFileName = stream.fileName.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
-            val fileName = if (cleanFileName.contains(".")) cleanFileName else "$displayTitle.mp4"
+            val cleanDisplayTitle = displayTitle.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
+            val fileName = when {
+                cleanFileName.isNotBlank() && cleanFileName.contains(".") -> cleanFileName
+                cleanDisplayTitle.contains(".") -> cleanDisplayTitle
+                else -> "$cleanDisplayTitle.mp4"
+            }
             val messageId = stream.id.split("_").getOrNull(1)?.toLongOrNull() ?: 0L
+            val chatId = if (stream.chatId != 0L) stream.chatId else stream.id.split("_").getOrNull(0)?.toLongOrNull() ?: 0L
             val item = DownloadManager.startDownload(
                 context = this,
-                title = displayTitle,
+                title = cleanDisplayTitle,
                 fileName = fileName,
                 fileId = fileId,
-                chatId = stream.chatId,
+                chatId = chatId,
                 messageId = messageId,
                 posterUrl = posterUrl
             )
-            Toast.makeText(this, "Started downloading '$displayTitle' 📥", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Started downloading '$cleanDisplayTitle' 📥", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(this, "Unable to extract file download ID", Toast.LENGTH_SHORT).show()
         }
