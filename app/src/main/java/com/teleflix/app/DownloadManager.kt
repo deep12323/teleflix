@@ -32,6 +32,7 @@ object DownloadManager {
 
     private var lastSpeedCalcTime = System.currentTimeMillis()
     private var lastDownloadedBytesMap = HashMap<String, Long>()
+    private var lastDownloadRetryTimeMap = HashMap<Int, Long>()
     private var downloadLoopJob: Job? = null
 
     fun init(context: Context) {
@@ -370,6 +371,22 @@ object DownloadManager {
                 }
 
                 if (!fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
+                    val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
+                    if (now - lastRetry > 5000L) {
+                        lastDownloadRetryTimeMap[currentFileId] = now
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = currentFileId
+                            req.priority = 32
+                            req.offset = 0
+                            req.limit = 0
+                            req.synchronous = false
+                        })
+                    }
+                }
+            } else {
+                val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
+                if (now - lastRetry > 5000L) {
+                    lastDownloadRetryTimeMap[currentFileId] = now
                     TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                         req.fileId = currentFileId
                         req.priority = 32
@@ -378,14 +395,6 @@ object DownloadManager {
                         req.synchronous = false
                     })
                 }
-            } else {
-                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                    req.fileId = currentFileId
-                    req.priority = 32
-                    req.offset = 0
-                    req.limit = 0
-                    req.synchronous = false
-                })
             }
         }
     }
@@ -455,13 +464,17 @@ object DownloadManager {
                         }
                     }
                 } else if (!fileObj.local.isDownloadingActive) {
-                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                        req.fileId = partFileId
-                        req.priority = 32
-                        req.offset = 0
-                        req.limit = 0
-                        req.synchronous = false
-                    })
+                    val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
+                    if (now - lastRetry > 5000L) {
+                        lastDownloadRetryTimeMap[partFileId] = now
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = partFileId
+                            req.priority = 32
+                            req.offset = 0
+                            req.limit = 0
+                            req.synchronous = false
+                        })
+                    }
                 }
 
                 saveToPrefs(context)
