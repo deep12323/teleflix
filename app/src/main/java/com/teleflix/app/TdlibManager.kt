@@ -253,9 +253,13 @@ object TdlibManager {
                     )
                 }
             }
+        }
+
         val (highQuality, lowQuality) = resultSources.partition { !isLowQuality(it.fileName) }
         return highQuality + lowQuality
     }
+
+    private fun extractQualityTag(name: String): String {
         val upper = name.uppercase()
         val tags = mutableListOf<String>()
 
