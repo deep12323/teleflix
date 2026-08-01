@@ -20,6 +20,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.GridLayoutManager
@@ -1813,7 +1814,7 @@ class MainActivity : AppCompatActivity() {
             .setCancelable(false)
             .show()
 
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             val streams = try {
                 TdlibManager.resolveStreams(title, season, episode)
             } catch (e: Exception) {
@@ -1823,12 +1824,18 @@ class MainActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 try { progressDialog.dismiss() } catch (_: Exception) {}
 
+                if (isFinishing || isDestroyed) return@withContext
+
                 if (streams.isEmpty()) {
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle("No Streams Found")
-                        .setMessage("Could not find video files matching '$displayTitle' across your connected Telegram account or monitored channels.\n\nMake sure your account is connected in Settings and that your monitored channels contain video streams.")
-                        .setPositiveButton("OK", null)
-                        .show()
+                    try {
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("No Streams Found")
+                            .setMessage("Could not find video files matching '$displayTitle' across your connected Telegram account or monitored channels.\n\nMake sure your account is connected in Settings and that your monitored channels contain video streams.")
+                            .setPositiveButton("OK", null)
+                            .show()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                     return@withContext
                 }
 
@@ -1970,7 +1977,13 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 scrollView.addView(cardList)
-                streamDialog.show()
+                if (!isFinishing && !isDestroyed) {
+                    try {
+                        streamDialog.show()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
             }
         }
     }
