@@ -866,6 +866,7 @@ class MainActivity : AppCompatActivity() {
                 val url = URL(urlString)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 connection.connectTimeout = 8000
                 connection.readTimeout = 8000
                 val text = connection.inputStream.bufferedReader().readText()
@@ -913,6 +914,7 @@ class MainActivity : AppCompatActivity() {
                 val url = URL(urlString)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 connection.connectTimeout = 8000
                 connection.readTimeout = 8000
                 val text = connection.inputStream.bufferedReader().readText()
@@ -958,6 +960,7 @@ class MainActivity : AppCompatActivity() {
                     val url = URL("https://v3-cinemeta.strem.io/catalog/$type/top/search=${java.net.URLEncoder.encode(query, "UTF-8")}.json")
                     val connection = url.openConnection() as HttpURLConnection
                     connection.requestMethod = "GET"
+                    connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                     connection.connectTimeout = 8000
                     connection.readTimeout = 8000
                     val text = connection.inputStream.bufferedReader().readText()
@@ -984,6 +987,7 @@ class MainActivity : AppCompatActivity() {
         val results = mutableListOf<MediaItem>()
         for (i in 0 until metas.length()) {
             val obj = metas.getJSONObject(i)
+            val itemType = obj.optString("type", type)
             results.add(MediaItem(
                 id = obj.optString("id"),
                 title = obj.optString("name"),
@@ -991,7 +995,7 @@ class MainActivity : AppCompatActivity() {
                 year = obj.optString("releaseInfo", obj.optString("year", "")),
                 rating = obj.optString("imdbRating", "—"),
                 overview = obj.optString("description", ""),
-                type = obj.optString("type", type)
+                type = if (itemType == "tv") "series" else itemType
             ))
         }
         return results
@@ -1554,11 +1558,13 @@ class MainActivity : AppCompatActivity() {
     private fun fetchSeriesEpisodes(item: MediaItem) {
         Toast.makeText(this, "Loading episodes for ${item.title}...", Toast.LENGTH_SHORT).show()
 
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val url = URL("https://v3-cinemeta.strem.io/meta/series/${item.id}.json")
+                val metaType = if (item.type == "series" || item.type == "tv") "series" else item.type
+                val url = URL("https://v3-cinemeta.strem.io/meta/$metaType/${item.id}.json")
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 connection.connectTimeout = 8000
                 connection.readTimeout = 8000
                 val text = connection.inputStream.bufferedReader().readText()
@@ -1569,15 +1575,16 @@ class MainActivity : AppCompatActivity() {
                 val episodes = mutableListOf<EpisodeItem>()
                 for (i in 0 until videos.length()) {
                     val v = videos.getJSONObject(i)
-                    val season = v.optInt("season", 0)
-                    val episode = v.optInt("episode", 0)
+                    val season = v.optInt("season", -1)
+                    val episode = if (v.has("episode")) v.optInt("episode") else v.optInt("number", 0)
                     if (season > 0 && episode > 0) {
+                        val epTitle = v.optString("name").ifBlank { v.optString("title", "Episode $episode") }
                         episodes.add(EpisodeItem(
                             season = season,
                             episode = episode,
-                            title = v.optString("name", "Episode $episode"),
-                            overview = v.optString("overview", ""),
-                            released = v.optString("released", "")
+                            title = epTitle,
+                            overview = v.optString("overview", v.optString("description", "")),
+                            released = v.optString("released", v.optString("firstAired", ""))
                         ))
                     }
                 }
@@ -1585,6 +1592,7 @@ class MainActivity : AppCompatActivity() {
                 val seasons = episodes.groupBy { it.season }.toSortedMap()
 
                 withContext(Dispatchers.Main) {
+                    if (isFinishing || isDestroyed) return@withContext
                     if (seasons.isEmpty()) {
                         Toast.makeText(this@MainActivity, "No episodes found", Toast.LENGTH_SHORT).show()
                         return@withContext
@@ -1593,6 +1601,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
+                    if (isFinishing || isDestroyed) return@withContext
                     Toast.makeText(this@MainActivity, "Failed to load episodes: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
