@@ -253,13 +253,16 @@ object TdlibManager {
                     )
                 }
             }
-        }
-        return resultSources
+        val (highQuality, lowQuality) = resultSources.partition { !isLowQuality(it.fileName) }
+        return highQuality + lowQuality
     }
-
-    private fun extractQualityTag(name: String): String {
         val upper = name.uppercase()
         val tags = mutableListOf<String>()
+
+        if (upper.contains("CAMRIP") || upper.contains("CAM-RIP") || upper.contains("HDCAM")) tags.add("⚠️ CAM")
+        else if (upper.contains("HDTS") || upper.contains("HD-TS") || upper.contains("TELESYNC")) tags.add("⚠️ HDTS")
+        else if (upper.contains("SCREENER") || upper.contains("DVDSCR")) tags.add("⚠️ SCR")
+
         if (upper.contains("2160P") || upper.contains("4K")) tags.add("4K")
         else if (upper.contains("1080P")) tags.add("1080p")
         else if (upper.contains("720P")) tags.add("720p")
@@ -275,6 +278,16 @@ object TdlibManager {
         else if (upper.contains("AV1") || upper.contains("AV-1")) tags.add("AV1")
 
         return tags.joinToString(" ")
+    }
+
+    private fun isLowQuality(name: String): Boolean {
+        val upper = name.uppercase()
+        if (upper.contains("CAMRIP") || upper.contains("CAM-RIP") || upper.contains("HDCAM") ||
+            upper.contains("HDTS") || upper.contains("HD-TS") || upper.contains("TELESYNC") ||
+            upper.contains("SCREENER") || upper.contains("DVDSCR") || upper.contains("PRE-DVD")) {
+            return true
+        }
+        return Regex("""\b(CAM|HDCAM|HDTS|TS|SCR|DVDSCR|TELESYNC)\b""").containsMatchIn(upper)
     }
 
     private fun formatBytes(bytes: Long): String {
