@@ -147,25 +147,49 @@ object TdlibManager {
             }
         }
 
-        val queryResults = coroutineScope {
-            queries.map { q ->
-                async(Dispatchers.IO) {
-                    try {
-                        TelegramRepository.searchVideoMessages(q, limit = 100, includeAudio = false)
-                    } catch (e: Exception) {
-                        emptyList()
-                    }
-                }
-            }.awaitAll()
-        }
-
         val rawResults = mutableListOf<TelegramVideoMessage>()
         val seenIds = mutableSetOf<String>()
-        for (res in queryResults) {
-            for (msg in res) {
+
+        val primaryQuery = queries.firstOrNull() ?: ""
+        if (primaryQuery.isNotBlank()) {
+            val primaryRes = try {
+                TelegramRepository.searchVideoMessages(primaryQuery, limit = 100, includeAudio = false)
+            } catch (e: Exception) {
+                emptyList()
+            }
+            for (msg in primaryRes) {
                 val key = "${msg.chatId}_${msg.messageId}"
                 if (seenIds.add(key)) {
                     rawResults.add(msg)
+                }
+            }
+        }
+
+        val primaryFiltered = if (season != null && episode != null) {
+            rawResults.filter { msg -> isMatchingEpisode(msg.fileName, msg.caption, season, episode) }
+        } else {
+            rawResults
+        }
+
+        if (primaryFiltered.size < 10 && queries.size > 1) {
+            val fallbackQueries = queries.drop(1)
+            val fallbackResults = coroutineScope {
+                fallbackQueries.map { q ->
+                    async(Dispatchers.IO) {
+                        try {
+                            TelegramRepository.searchVideoMessages(q, limit = 100, includeAudio = false)
+                        } catch (e: Exception) {
+                            emptyList()
+                        }
+                    }
+                }.awaitAll()
+            }
+            for (res in fallbackResults) {
+                for (msg in res) {
+                    val key = "${msg.chatId}_${msg.messageId}"
+                    if (seenIds.add(key)) {
+                        rawResults.add(msg)
+                    }
                 }
             }
         }
