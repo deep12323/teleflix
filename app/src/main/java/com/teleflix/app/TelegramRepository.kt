@@ -863,13 +863,13 @@ object TelegramRepository {
         query: String,
         limit: Int = 1000,
         includeAudio: Boolean = true
-    ): List<TelegramVideoMessage> {
+    ): List<TelegramVideoMessage> = coroutineScope {
         val results = mutableListOf<TelegramVideoMessage>()
         val seen = mutableSetOf<Pair<String, Long>>()
 
         val filters = mutableListOf<TdApi.SearchMessagesFilter>(
-            TdApi.SearchMessagesFilterDocument(),
-            TdApi.SearchMessagesFilterVideo()
+            TdApi.SearchMessagesFilterVideo(),
+            TdApi.SearchMessagesFilterDocument()
         )
         if (includeAudio) {
             filters.add(TdApi.SearchMessagesFilterAudio())
@@ -883,77 +883,59 @@ object TelegramRepository {
             }
         }
 
-        // 1. Search specifically in custom channels (works even if not joined, if public)
+        val tasks = mutableListOf<Deferred<Unit>>()
+
+        for (filter in filters) {
+            tasks.add(async(Dispatchers.IO) {
+                try {
+                    val result = TelegramClient.sendRequest(TdApi.SearchMessages().also { req ->
+                        req.chatList = null
+                        req.query = query
+                        req.offset = ""
+                        req.limit = minOf(100, limit)
+                        req.filter = filter
+                    })
+                    val found = (result as? TdApi.FoundMessages)
+                    found?.messages?.forEach { msg ->
+                        extractMediaMessage(msg, seen, results)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "SearchMessages error: ${e.message}")
+                }
+            })
+        }
+
         for (chan in cachedCustomChannels) {
             val chatId = getChatId(chan) ?: continue
             for (filter in filters) {
-                try {
-                    var currentFromMessageId = 0L
-                    var fetched = 0
-                    while (fetched < limit) {
-                        val fetchLimit = minOf(100, limit - fetched)
+                tasks.add(async(Dispatchers.IO) {
+                    try {
                         val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
                             req.chatId = chatId
                             req.query = query
                             req.senderId = null
-                            req.fromMessageId = currentFromMessageId
+                            req.fromMessageId = 0L
                             req.offset = 0
-                            req.limit = fetchLimit
+                            req.limit = minOf(100, limit)
                             req.filter = filter
                             req.topicId = null
                         })
-                        val found = (historyResult as? TdApi.FoundChatMessages) ?: break
-                        if (found.messages.isEmpty()) break
-                        
-                        for (msg in found.messages) {
+                        val found = (historyResult as? TdApi.FoundChatMessages)
+                        found?.messages?.forEach { msg ->
                             extractMediaMessage(msg, seen, results)
                         }
-                        
-                        fetched += found.messages.size
-                        if (found.messages.size < fetchLimit) break
-                        
-                        val lastId = found.messages.last().id
-                        if (currentFromMessageId == lastId && found.messages.size == 1) break
-                        currentFromMessageId = lastId
+                    } catch (e: Exception) {
+                        Log.e(TAG, "SearchChatMessages error for $chan: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "SearchChatMessages error for $chan: ${e.message}")
-                }
+                })
             }
         }
 
-        // 2. Search globally across all joined chats
-        for (filter in filters) {
-            try {
-                var currentOffset = ""
-                var fetched = 0
-                while (fetched < limit) {
-                    val fetchLimit = minOf(100, limit - fetched)
-                    val result = TelegramClient.sendRequest(TdApi.SearchMessages().also { req ->
-                        req.chatList = null  // null = search all chats
-                        req.query = query
-                        req.offset = currentOffset
-                        req.limit = fetchLimit
-                        req.filter = filter
-                    })
-                    val found = (result as? TdApi.FoundMessages) ?: break
-                    if (found.messages.isEmpty()) break
-                    
-                    for (msg in found.messages) {
-                        extractMediaMessage(msg, seen, results)
-                    }
-                    
-                    fetched += found.messages.size
-                    currentOffset = found.nextOffset
-                    if (currentOffset.isEmpty()) break
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "SearchMessages error: ${e.message}")
-            }
-        }
+        tasks.awaitAll()
 
-        results.sortByDescending { it.messageId }
-        return results
+        synchronized(results) {
+            results.sortedByDescending { it.messageId }
+        }
     }
 
     private fun resolveDisplayName(rawFileName: String?, caption: String?, defaultExt: String): String {
@@ -1012,8 +994,9 @@ object TelegramRepository {
                 if (!isVideo && !isAudio && !isSplitFile && !isZipFile) return
 
                 val key = filename to content.document.document.size
-                if (seen.add(key)) {
-                    results.add(TelegramVideoMessage(
+                val isNew = synchronized(seen) { seen.add(key) }
+                if (isNew) {
+                    val item = TelegramVideoMessage(
                         messageId = msg.id,
                         chatId = msg.chatId,
                         fileName = filename,
@@ -1023,14 +1006,16 @@ object TelegramRepository {
                         mimeType = mime,
                         caption = content.caption?.text ?: "",
                         thumbnailFileId = content.document.thumbnail?.file?.id
-                    ))
+                    )
+                    synchronized(results) { results.add(item) }
                 }
             }
             is TdApi.MessageVideo -> {
                 val filename = resolveDisplayName(content.video.fileName, content.caption?.text, "mp4")
                 val key = filename to content.video.video.size
-                if (seen.add(key)) {
-                    results.add(TelegramVideoMessage(
+                val isNew = synchronized(seen) { seen.add(key) }
+                if (isNew) {
+                    val item = TelegramVideoMessage(
                         messageId = msg.id,
                         chatId = msg.chatId,
                         fileName = filename,
@@ -1040,7 +1025,8 @@ object TelegramRepository {
                         mimeType = content.video.mimeType ?: "video/mp4",
                         caption = content.caption?.text ?: "",
                         thumbnailFileId = content.video.thumbnail?.file?.id
-                    ))
+                    )
+                    synchronized(results) { results.add(item) }
                 }
             }
             is TdApi.MessageAudio -> {
