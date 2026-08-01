@@ -1818,22 +1818,33 @@ class MainActivity : AppCompatActivity() {
         }
         loadingView.addView(loadSub)
 
+        var searchJob: kotlinx.coroutines.Job? = null
+
         val progressDialog = AlertDialog.Builder(this)
             .setView(loadingView)
-            .setCancelable(false)
+            .setCancelable(true)
+            .setNegativeButton("Cancel") { d, _ ->
+                searchJob?.cancel()
+                d.dismiss()
+            }
+            .setOnCancelListener {
+                searchJob?.cancel()
+            }
             .show()
 
-        lifecycleScope.launch(Dispatchers.IO) {
+        searchJob = lifecycleScope.launch(Dispatchers.IO) {
             val streams = try {
                 TdlibManager.resolveStreams(title, season, episode)
             } catch (e: Exception) {
                 emptyList()
             }
 
+            if (!isActive) return@launch
+
             withContext(Dispatchers.Main) {
                 try { progressDialog.dismiss() } catch (_: Exception) {}
 
-                if (isFinishing || isDestroyed) return@withContext
+                if (isFinishing || isDestroyed || !isActive) return@withContext
 
                 if (streams.isEmpty()) {
                     try {
