@@ -3,6 +3,10 @@ package com.teleflix.app
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 data class TelegramChannel(
     val username: String,
@@ -143,15 +147,21 @@ object TdlibManager {
             }
         }
 
+        val queryResults = coroutineScope {
+            queries.map { q ->
+                async(Dispatchers.IO) {
+                    try {
+                        TelegramRepository.searchVideoMessages(q, limit = 100, includeAudio = false)
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                }
+            }.awaitAll()
+        }
+
         val rawResults = mutableListOf<TelegramVideoMessage>()
         val seenIds = mutableSetOf<String>()
-        for (q in queries) {
-            val res = try {
-                // Searches monitored channels AND globally across ALL joined channels, groups, and chats
-                TelegramRepository.searchVideoMessages(q, limit = 150, includeAudio = false)
-            } catch (e: Exception) {
-                emptyList()
-            }
+        for (res in queryResults) {
             for (msg in res) {
                 val key = "${msg.chatId}_${msg.messageId}"
                 if (seenIds.add(key)) {
