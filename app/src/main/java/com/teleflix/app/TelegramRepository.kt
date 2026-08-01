@@ -883,7 +883,7 @@ object TelegramRepository {
             }
         }
 
-        val tasks = mutableListOf<Deferred<Unit>>()
+        val tasks = mutableListOf<Deferred<*>>()
 
         for (filter in filters) {
             tasks.add(async(Dispatchers.IO) {
