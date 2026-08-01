@@ -978,6 +978,10 @@ object TelegramStreamingProxy {
 
     fun clearStreamCache(fileId: Int) {
         if (fileId <= 0 || DownloadManager.isFileIdActive(fileId)) return
+        activeFileJobs.remove("file_$fileId")?.cancel()
+        latestActiveStreamReqId.remove(fileId)
+        activeStreamRequests.remove(fileId)
+        activeDownloadWindows.remove(fileId)
         scope.launch {
             deleteFile(fileId)
         }
@@ -1254,7 +1258,7 @@ object TelegramStreamingProxy {
             }
             null
         }
-        if (dataBytes == null) {
+        if (dataBytes == null && metrics?.exitReason != "superseded") {
             metrics?.chunksTimedOut = (metrics?.chunksTimedOut ?: 0) + 1
             TeleflixLogger.log(TAG, "downloadChunk TIMEOUT: fileId=$fileId offset=$offset limit=$limit after ${timeoutMs}ms", isError = true)
         }
