@@ -687,15 +687,25 @@ object TelegramStreamingProxy {
         output: java.io.OutputStream,
         isHead: Boolean = false
     ) {
-        val totalSize = sizes.sum()
-        if (totalSize <= 0L || fileIds.isEmpty()) {
-            output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
-            return
-        }
-
         val ext = fileName?.substringAfterLast('.', "")?.lowercase() ?: ""
         if (ext == "zip") {
             streamZipEntryFromMergedOrSingle(fileIds, sizes, fileName, rangeHeader, output, isHead)
+            return
+        }
+        streamMergedFileRaw(fileIds, sizes, fileName, rangeHeader, output, isHead)
+    }
+
+    private suspend fun streamMergedFileRaw(
+        fileIds: List<Int>,
+        sizes: List<Long>,
+        fileName: String?,
+        rangeHeader: String?,
+        output: java.io.OutputStream,
+        isHead: Boolean = false
+    ) {
+        val totalSize = sizes.sum()
+        if (totalSize <= 0L || fileIds.isEmpty()) {
+            output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
             return
         }
 
@@ -729,10 +739,12 @@ object TelegramStreamingProxy {
         }
         val length = end - start + 1
 
+        val cleanName = fileName?.removeSuffix(".zip") ?: "video.mkv"
+        val ext = cleanName.substringAfterLast('.', "mkv").lowercase()
         val mimeType = getMimeType(ext)
 
         val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
-        val safeFileName = fileName?.replace("\"", "\\\"") ?: "video.$ext"
+        val safeFileName = cleanName.replace("\"", "\\\"")
         val headers = StringBuilder().apply {
             append("HTTP/1.1 $status\r\n")
             append("Accept-Ranges: bytes\r\n")
@@ -814,25 +826,24 @@ object TelegramStreamingProxy {
         val eocdSearchSize = minOf(65557L, totalZipSize).toInt()
         val eocdOffset = totalZipSize - eocdSearchSize
         val eocdData = readBufferFromMerged(fileIds, sizes, eocdOffset, eocdSearchSize)
-        if (eocdData == null || eocdData.size < 22) {
-            output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nFailed to read ZIP EOCD".toByteArray())
-            return
-        }
-
+        
         var eocdPos = -1
-        for (i in eocdData.size - 22 downTo 0) {
-            if (eocdData[i] == 0x50.toByte() &&
-                eocdData[i + 1] == 0x4B.toByte() &&
-                eocdData[i + 2] == 0x05.toByte() &&
-                eocdData[i + 3] == 0x06.toByte()
-            ) {
-                eocdPos = i
-                break
+        if (eocdData != null && eocdData.size >= 22) {
+            for (i in eocdData.size - 22 downTo 0) {
+                if (eocdData[i] == 0x50.toByte() &&
+                    eocdData[i + 1] == 0x4B.toByte() &&
+                    eocdData[i + 2] == 0x05.toByte() &&
+                    eocdData[i + 3] == 0x06.toByte()
+                ) {
+                    eocdPos = i
+                    break
+                }
             }
         }
 
-        if (eocdPos < 0) {
-            output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nNo EOCD signature found - not a valid ZIP".toByteArray())
+        if (eocdData == null || eocdData.size < 22 || eocdPos < 0) {
+            TeleflixLogger.log(TAG, "No valid ZIP EOCD signature found for '$requestedInnerName' - falling back to raw merged file stream")
+            streamMergedFileRaw(fileIds, sizes, requestedInnerName, rangeHeader, output, isHead)
             return
         }
 
