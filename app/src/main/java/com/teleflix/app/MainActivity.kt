@@ -421,19 +421,25 @@ class MainActivity : AppCompatActivity() {
                             Toast.makeText(this@MainActivity, "Loading group parts...", Toast.LENGTH_SHORT).show()
                             CoroutineScope(Dispatchers.Main).launch {
                                 val mediaMessages = withContext(Dispatchers.IO) {
-                                    TelegramRepository.fetchChannelMedia(chatId.toString(), limit = 200).first
+                                    TelegramRepository.fetchChannelMedia(chatId.toString(), limit = 1000).first
                                 }
                                 val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
                                 val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
                                     .find { it.group.baseName.equals(baseName, ignoreCase = true) }
                                 if (matchGroup != null && matchGroup.group.parts.isNotEmpty()) {
+                                    val parts = matchGroup.group.parts.map { Pair(it.chatId, it.messageId) }
+                                    val sizes = matchGroup.group.parts.map { it.fileSize }
+                                    telegramGroupCache[item.id] = Pair(parts, sizes)
                                     telegramGroupPartsCache[item.id] = matchGroup.group.parts
-                                    showGroupPartsSelectionDialog(item, matchGroup.group.parts, titleToPlay)
-                                } else {
-                                    val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
-                                    if (backupUrl.isNotBlank()) {
-                                        checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                                    val freshUrl = TelegramRepository.getFreshMergedMediaUrl(parts, baseName, sizes)
+                                    if (freshUrl != null && freshUrl.isNotBlank()) {
+                                        checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                                        return@launch
                                     }
+                                }
+                                val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                                if (backupUrl.isNotBlank()) {
+                                    checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
                                 }
                             }
                         } else {
@@ -443,13 +449,24 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     } else {
-                        val isZipMedia = item.title.lowercase().contains(".zip") || fileName.lowercase().contains(".zip") || item.id.startsWith("zip_")
-                        if (isZipMedia) {
-                            val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
-                            if (backupUrl.isNotBlank()) {
-                                checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
-                            } else {
-                                Toast.makeText(this@MainActivity, "ZIP media link unavailable", Toast.LENGTH_SHORT).show()
+                        val cleanId = item.id.removePrefix("single_").removePrefix("stream_").removePrefix("zip_")
+                        val parts = cleanId.split("_")
+                        val chatId = parts.getOrNull(0)?.toLongOrNull()
+                        val messageId = parts.getOrNull(1)?.toLongOrNull()
+
+                        if (chatId != null && messageId != null && streamInfo == null) {
+                            CoroutineScope(Dispatchers.Main).launch {
+                                val freshUrl = TelegramRepository.getFreshMediaUrl(chatId, messageId)
+                                if (freshUrl != null && freshUrl.isNotBlank()) {
+                                    checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                                } else {
+                                    val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                                    if (backupUrl.isNotBlank()) {
+                                        checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                                    } else {
+                                        Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                             }
                         } else {
                             val cleanId = item.id.removePrefix("single_").removePrefix("stream_")
