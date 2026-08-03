@@ -259,6 +259,26 @@ object TelegramStreamingProxy {
                 if (queryStr.isNotBlank()) {
                     urlSize = queryStr.split("&").find { it.startsWith("size=") }?.substringAfter("=")?.toLongOrNull() ?: 0L
                 }
+
+                val isSplitPart = fileName != null && Regex("(?i)\\.(zip\\.\\d+|z\\d+|part\\d+|7z\\.\\d+)$").containsMatchIn(fileName)
+                val reqChatId = queryStr.split("&").find { it.startsWith("chatId=") }?.substringAfter("=")?.toLongOrNull() ?: 0L
+                val reqMessageId = queryStr.split("&").find { it.startsWith("messageId=") }?.substringAfter("=")?.toLongOrNull() ?: 0L
+
+                if (isSplitPart && reqChatId != 0L && reqMessageId != 0L) {
+                    val mediaMessages = runCatching { TelegramRepository.fetchChannelMedia(reqChatId.toString(), limit = 1000).first }.getOrNull()
+                    if (mediaMessages != null) {
+                        val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+                        val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
+                            .find { g -> g.group.parts.any { it.messageId == reqMessageId } }
+                        if (matchGroup != null && matchGroup.group.parts.size > 1) {
+                            mergedFileIds = matchGroup.group.parts.map { it.fileId }
+                            mergedSizes = matchGroup.group.parts.map { it.fileSize }
+                            fileName = matchGroup.group.baseName
+                            urlSize = mergedSizes.sum()
+                            fileId = mergedFileIds.firstOrNull()
+                        }
+                    }
+                }
             } else if (path.startsWith("/thumbnail/")) {
                 val segment = path.substringAfter("/thumbnail/").substringBefore("?")
                 val thumbParts = segment.split("/")
