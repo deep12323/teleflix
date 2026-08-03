@@ -1277,10 +1277,10 @@ object TelegramStreamingProxy {
         }
         val chunkStartMs = System.currentTimeMillis()
         val timeoutMs = if (metrics?.requestType == "seek_probe") 10_000L else DOWNLOAD_TIMEOUT_MS
+        var isFileNotFound = false
         val dataBytes = withTimeoutOrNull(timeoutMs) {
             var attempts = 0
             var consecutiveGetFileErrors = 0
-            var isFileNotFound = false
             while (attempts < 2000 && running) {
                 activeFileId = resolveFileId(activeFileId)
                 if (metrics != null && metrics.requestType != "seek_probe") {
@@ -1387,7 +1387,7 @@ object TelegramStreamingProxy {
             null
         }
         if (dataBytes == null && metrics?.exitReason != "superseded") {
-            if (metrics?.exitReason == "file_not_found" || metrics == null) {
+            if (metrics?.exitReason == "file_not_found" || isFileNotFound) {
                 TeleflixLogger.log(TAG, "downloadChunk FAILED: fileId=$activeFileId invalid or not found in TDLib (offset=$offset, limit=$limit)", isError = true)
             } else {
                 metrics?.chunksTimedOut = (metrics?.chunksTimedOut ?: 0) + 1
