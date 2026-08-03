@@ -96,9 +96,9 @@ object TelegramStreamingProxy {
         lastDownloadRequestTime[fileId] = now
 
         try {
-            // Cancel stuck TDLib download task only on major offset jumps for main stream requests (rate-limited to 2s)
-            if (isOffsetJump && (now - lastTime) >= 2000L && (limit == 0L || limit > 5_000_000L) && !DownloadManager.isFileIdActive(fileId)) {
-                TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
+            // Cancel stuck TDLib download task on major offset jumps (rate-limited by lastDownloadRequestTime check)
+            if (isOffsetJump && (now - lastTime) >= 500L && !DownloadManager.isFileIdActive(fileId)) {
+                runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
             }
 
             val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
@@ -571,15 +571,7 @@ object TelegramStreamingProxy {
         }
         val alignedPartOffset = partOffset - (partOffset % (1024 * 1024))
 
-        runCatching {
-            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                req.fileId = partFileId
-                req.priority = DOWNLOAD_PRIORITY
-                req.offset = alignedPartOffset
-                req.limit = prefetchBytes
-                req.synchronous = false
-            })
-        }
+        triggerTdlibDownload(partFileId, alignedPartOffset, prefetchBytes)
 
         // Proactively prefetch the NEXT part when approaching boundary (within 50MB)
         if (partIndex + 1 < fileIds.size && partRemaining < 50 * 1024 * 1024L) {
