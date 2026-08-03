@@ -2585,7 +2585,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Refreshing media stream...", Toast.LENGTH_SHORT).show()
                 CoroutineScope(Dispatchers.Main).launch {
                     val mediaMessages = withContext(Dispatchers.IO) {
-                        TelegramRepository.fetchChannelMedia(chatId.toString(), limit = 200).first
+                        TelegramRepository.fetchChannelMedia(chatId.toString(), limit = 1000).first
                     }
                     val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
                     val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
