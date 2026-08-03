@@ -1248,19 +1248,18 @@ object TelegramStreamingProxy {
                 // Check if download is active; if not downloading at all, cancel and re-issue
                 val isDownloading = file?.local?.isDownloadingActive == true
 
-                // Re-trigger DownloadFile on attempt 0 and periodically
-                // Force=true only on initial attempt or every 50 attempts (2.5s) if paused
+                // Re-trigger DownloadFile on attempt 0 and periodically (every 100 attempts = 5s if stalled)
                 if (attempts % 10 == 0) {
                     metrics?.chunksRetried = (metrics?.chunksRetried ?: 0) + 1
                     val fileInfo = getFileInfo(fileId)
                     val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
                     val safeLimit = calculateSafeTdlibLimit(offset, totalSize, prefetchSizeMb, limit)
 
-                    if (attempts > 0 && !isDownloading && attempts % 300 == 0 && !DownloadManager.isFileIdActive(fileId)) {
-                        TeleflixLogger.log(TAG, "[TDLib] Retry fileId=$fileId offset=$offset attempt=$attempts backoffMs=50 totalWastedMs=${attempts * 50}")
+                    val forceRequest = (attempts == 0 || (attempts > 0 && attempts % 100 == 0))
+                    if (attempts > 0 && forceRequest && !DownloadManager.isFileIdActive(fileId)) {
+                        TeleflixLogger.log(TAG, "[TDLib] Re-triggering stalled DownloadFile fileId=$fileId offset=$offset attempt=$attempts")
                         runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
                     }
-                    val forceRequest = (attempts == 0)
                     if (forceRequest || !isDownloading) {
                         triggerTdlibDownload(fileId, offset, safeLimit, force = forceRequest)
                     }
