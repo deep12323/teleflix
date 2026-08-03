@@ -2632,13 +2632,30 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         } else {
-            val cleanId = item.id.removePrefix("single_").removePrefix("stream_")
+            val cleanId = item.id.removePrefix("single_").removePrefix("stream_").removePrefix("zip_")
             val parts = cleanId.split("_")
             val chatId = parts.getOrNull(0)?.toLongOrNull()
             val messageId = parts.getOrNull(1)?.toLongOrNull()
 
-            if (chatId != null && messageId != null && streamInfo == null) {
+            if (chatId != null && messageId != null) {
                 CoroutineScope(Dispatchers.Main).launch {
+                    val mediaMessages = withContext(Dispatchers.IO) {
+                        TelegramRepository.fetchChannelMedia(chatId.toString(), limit = 1000).first
+                    }
+                    val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+                    val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
+                        .find { g -> g.group.parts.any { it.messageId == messageId } }
+
+                    if (matchGroup != null && matchGroup.group.parts.size > 1) {
+                        val groupParts = matchGroup.group.parts.map { Pair(it.chatId, it.messageId) }
+                        val sizes = matchGroup.group.parts.map { it.fileSize }
+                        val freshUrl = TelegramRepository.getFreshMergedMediaUrl(groupParts, matchGroup.group.baseName, sizes)
+                        if (freshUrl != null && freshUrl.isNotBlank()) {
+                            checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                            return@launch
+                        }
+                    }
+
                     val freshUrl = TelegramRepository.getFreshMediaUrl(chatId, messageId)
                     if (freshUrl != null && freshUrl.isNotBlank()) {
                         checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
