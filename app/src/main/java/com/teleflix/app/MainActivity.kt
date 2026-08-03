@@ -400,13 +400,16 @@ class MainActivity : AppCompatActivity() {
                     val groupParts = telegramGroupPartsCache[item.id]
                     val groupInfo = telegramGroupCache[item.id]
 
-                    val isZipMedia = item.title.lowercase().contains(".zip") || fileName.lowercase().contains(".zip") || item.id.startsWith("zip_")
-                    if (isZipMedia) {
-                        val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
-                        if (backupUrl.isNotBlank()) {
-                            checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
-                        } else {
-                            Toast.makeText(this@MainActivity, "ZIP media link unavailable", Toast.LENGTH_SHORT).show()
+                    if (groupInfo != null) {
+                        CoroutineScope(Dispatchers.Main).launch {
+                            val cleanTitle = titleToPlay.removePrefix("📦 ")
+                            val freshUrl = TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second)
+                            if (freshUrl != null && freshUrl.isNotBlank()) {
+                                checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                            } else {
+                                val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                                checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                            }
                         }
                     } else if (groupParts != null && groupParts.size > 1) {
                         showGroupPartsSelectionDialog(item, groupParts, titleToPlay)
@@ -439,19 +442,17 @@ class MainActivity : AppCompatActivity() {
                                 checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
                             }
                         }
-                    } else if (groupInfo != null) {
-                        CoroutineScope(Dispatchers.Main).launch {
-                            val cleanTitle = titleToPlay.removePrefix("📦 ")
-                            val freshUrl = TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second)
-                            if (freshUrl != null && freshUrl.isNotBlank()) {
-                                checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
-                            } else {
-                                val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
-                                checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
-                            }
-                        }
                     } else {
-                        val cleanId = item.id.removePrefix("single_").removePrefix("stream_")
+                        val isZipMedia = item.title.lowercase().contains(".zip") || fileName.lowercase().contains(".zip") || item.id.startsWith("zip_")
+                        if (isZipMedia) {
+                            val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                            if (backupUrl.isNotBlank()) {
+                                checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                            } else {
+                                Toast.makeText(this@MainActivity, "ZIP media link unavailable", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            val cleanId = item.id.removePrefix("single_").removePrefix("stream_")
                         val parts = cleanId.split("_")
                         val chatId = parts.getOrNull(0)?.toLongOrNull()
                         val messageId = parts.getOrNull(1)?.toLongOrNull()
