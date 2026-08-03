@@ -3168,14 +3168,14 @@ class MainActivity : AppCompatActivity() {
         if (url.contains("fileId=")) {
             val idStr = url.substringAfter("fileId=").substringBefore("&")
             val parsed = idStr.toIntOrNull()
-            if (parsed != null && parsed != 0) return parsed
+            if (parsed != null && parsed != 0) return listOf(parsed)
         }
         if (url.contains("ids=")) {
-            val idStr = url.substringAfter("ids=").substringBefore(",").substringBefore("&")
-            val parsed = idStr.toIntOrNull()
-            if (parsed != null && parsed != 0) return parsed
+            val idsStr = url.substringAfter("ids=").substringBefore("&")
+            val ids = idsStr.split(",").mapNotNull { it.toIntOrNull() }.filter { it != 0 }
+            if (ids.isNotEmpty()) return ids
         }
-        return null
+        return emptyList()
     }
 
     private fun downloadStreamSource(stream: StreamSource, displayTitle: String, posterUrl: String) {
