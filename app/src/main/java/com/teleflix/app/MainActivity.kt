@@ -1170,8 +1170,10 @@ class MainActivity : AppCompatActivity() {
                                 val key = "group_${firstMsg.chatId}_${group.baseName}"
                                 val freshIds = group.parts.map { it.fileId }
                                 val partSizes = group.parts.map { it.fileSize }
+                                val groupChats = group.parts.map { it.chatId }
+                                val groupMsgs = group.parts.map { it.messageId }
                                 val formattedSize = formatFileSize(group.totalSize)
-                                val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
+                                val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes, groupChats, groupMsgs)
                                 telegramStreamCache[key] = Pair(url, group.baseName)
                                 telegramGroupCache[key] = Pair(group.parts.map { Pair(it.chatId, it.messageId) }, partSizes)
                                 telegramGroupPartsCache[key] = group.parts
@@ -1197,9 +1199,9 @@ class MainActivity : AppCompatActivity() {
                                 val ext = msg.fileName.substringAfterLast('.', "").lowercase()
                                 val formattedSize = formatFileSize(msg.fileSize)
                                 val url = if (ext == "zip" && msg.fileSize > 1_000_000) {
-                                    TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                    TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                                 } else {
-                                    TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                    TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                                 }
                                 telegramStreamCache[key] = Pair(url, msg.fileName.ifBlank { "Telegram Media" })
                                 val isAudio = msg.mimeType.startsWith("audio/")
@@ -1288,8 +1290,10 @@ class MainActivity : AppCompatActivity() {
                                 val key = "group_${firstMsg.chatId}_${group.baseName}"
                                 val freshIds = group.parts.map { it.fileId }
                                 val partSizes = group.parts.map { it.fileSize }
+                                val groupChats = group.parts.map { it.chatId }
+                                val groupMsgs = group.parts.map { it.messageId }
                                 val formattedSize = formatFileSize(group.totalSize)
-                                val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
+                                val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes, groupChats, groupMsgs)
                                 telegramStreamCache[key] = Pair(url, group.baseName)
                                 telegramGroupCache[key] = Pair(group.parts.map { Pair(it.chatId, it.messageId) }, partSizes)
                                 telegramGroupPartsCache[key] = group.parts
@@ -1315,9 +1319,9 @@ class MainActivity : AppCompatActivity() {
                                 val ext = msg.fileName.substringAfterLast('.', "").lowercase()
                                 val formattedSize = formatFileSize(msg.fileSize)
                                 val url = if (ext == "zip" && msg.fileSize > 1_000_000) {
-                                    TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                    TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                                 } else {
-                                    TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                    TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                                 }
                                 telegramStreamCache[key] = Pair(url, msg.fileName.ifBlank { "Telegram Media" })
                                 val isAudio = msg.mimeType.startsWith("audio/")
@@ -1386,8 +1390,10 @@ class MainActivity : AppCompatActivity() {
                                 val key = "group_${firstMsg.chatId}_${group.baseName}"
                                 val freshIds = group.parts.map { it.fileId }
                                 val partSizes = group.parts.map { it.fileSize }
+                                val groupChats = group.parts.map { it.chatId }
+                                val groupMsgs = group.parts.map { it.messageId }
                                 val formattedSize = formatFileSize(group.totalSize)
-                                val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
+                                val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes, groupChats, groupMsgs)
                                 telegramStreamCache[key] = Pair(url, group.baseName)
                                 telegramGroupCache[key] = Pair(group.parts.map { Pair(it.chatId, it.messageId) }, partSizes)
                                 telegramGroupPartsCache[key] = group.parts
@@ -1413,9 +1419,9 @@ class MainActivity : AppCompatActivity() {
                                 val ext = msg.fileName.substringAfterLast('.', "").lowercase()
                                 val formattedSize = formatFileSize(msg.fileSize)
                                 val url = if (ext == "zip" && msg.fileSize > 1_000_000) {
-                                    TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                    TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                                 } else {
-                                    TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                    TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                                 }
                                 telegramStreamCache[key] = Pair(url, msg.fileName.ifBlank { "Telegram Media" })
                                 val isAudio = msg.mimeType.startsWith("audio/")
@@ -1487,8 +1493,10 @@ class MainActivity : AppCompatActivity() {
                                 val key = "group_${firstMsg.chatId}_${group.baseName}"
                                 val freshIds = group.parts.map { it.fileId }
                                 val partSizes = group.parts.map { it.fileSize }
+                                val groupChats = group.parts.map { it.chatId }
+                                val groupMsgs = group.parts.map { it.messageId }
                                 val formattedSize = formatFileSize(group.totalSize)
-                                val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
+                                val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes, groupChats, groupMsgs)
                                 telegramStreamCache[key] = Pair(url, group.baseName)
                                 telegramGroupCache[key] = Pair(group.parts.map { Pair(it.chatId, it.messageId) }, partSizes)
                                 telegramGroupPartsCache[key] = group.parts
@@ -1514,9 +1522,9 @@ class MainActivity : AppCompatActivity() {
                                 val ext = msg.fileName.substringAfterLast('.', "").lowercase()
                                 val formattedSize = formatFileSize(msg.fileSize)
                                 val url = if (ext == "zip" && msg.fileSize > 1_000_000) {
-                                    TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                    TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                                 } else {
-                                    TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                                    TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                                 }
                                 telegramStreamCache[key] = Pair(url, msg.fileName.ifBlank { "Telegram Media" })
                                 val isAudio = msg.mimeType.startsWith("audio/")

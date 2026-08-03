@@ -42,7 +42,51 @@ object TelegramStreamingProxy {
     private val messageThumbMap = java.util.concurrent.ConcurrentHashMap<Pair<Long, Long>, Int>()
     private val fileMutexes = java.util.concurrent.ConcurrentHashMap<Int, Mutex>()
     private fun getFileMutex(fileId: Int): Mutex = fileMutexes.getOrPut(fileId) { Mutex() }
+    private val fileToMessageMap = java.util.concurrent.ConcurrentHashMap<Int, Pair<Long, Long>>()
+    private val fileIdTranslationMap = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     @Volatile private var lastStreamedFileId: Int? = null
+
+    fun registerFileMessage(fileId: Int, chatId: Long, messageId: Long) {
+        if (fileId != 0 && chatId != 0L && messageId != 0L) {
+            fileToMessageMap[fileId] = Pair(chatId, messageId)
+        }
+    }
+
+    fun resolveFileId(fileId: Int): Int {
+        var curr = fileId
+        var hops = 0
+        while (fileIdTranslationMap.containsKey(curr) && hops < 5) {
+            curr = fileIdTranslationMap[curr] ?: curr
+            hops++
+        }
+        return curr
+    }
+
+    suspend fun refreshFileId(fileId: Int): Int? {
+        val target = resolveFileId(fileId)
+        val pair = fileToMessageMap[target] ?: fileToMessageMap[fileId] ?: return null
+        val (chatId, messageId) = pair
+        if (chatId == 0L || messageId == 0L) return null
+        return try {
+            val msg = TelegramClient.sendRequest(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message ?: return null
+            val freshId = when (val content = msg.content) {
+                is TdApi.MessageVideo -> content.video.video.id
+                is TdApi.MessageDocument -> content.document.document.id
+                is TdApi.MessageAudio -> content.audio.audio.id
+                else -> null
+            }
+            if (freshId != null && freshId != 0) {
+                fileIdTranslationMap[fileId] = freshId
+                fileIdTranslationMap[target] = freshId
+                fileToMessageMap[freshId] = pair
+                TeleflixLogger.log(TAG, "Refreshed fileId from TDLib message lookup: original=$fileId -> fresh=$freshId")
+                freshId
+            } else null
+        } catch (e: Exception) {
+            TeleflixLogger.log(TAG, "Failed refreshFileId for fileId $fileId (chatId=$chatId, msgId=$messageId): ${e.message}")
+            null
+        }
+    }
 
     data class StreamMetrics(
         val reqId: String = java.util.UUID.randomUUID().toString().substring(0, 6),
@@ -316,6 +360,28 @@ object TelegramStreamingProxy {
                 val queryStr = path.substringAfter("?", "")
                 urlSize = queryStr.split("&").find { it.startsWith("size=") }
                     ?.substringAfter("=")?.toLongOrNull() ?: 0L
+            }
+
+            val queryStr = path.substringAfter("?", "")
+            val queryPairs = queryStr.split("&").mapNotNull {
+                val p = it.split("=", limit = 2)
+                if (p.size == 2) p[0] to p[1] else null
+            }.toMap()
+
+            val reqChatId = queryPairs["chatId"]?.toLongOrNull() ?: 0L
+            val reqMessageId = queryPairs["messageId"]?.toLongOrNull() ?: 0L
+            val reqChats = queryPairs["chats"]?.split(",")?.mapNotNull { it.toLongOrNull() } ?: emptyList()
+            val reqMessages = queryPairs["messages"]?.split(",")?.mapNotNull { it.toLongOrNull() } ?: emptyList()
+
+            if (fileId != null && reqChatId != 0L && reqMessageId != 0L) {
+                registerFileMessage(fileId, reqChatId, reqMessageId)
+            }
+            if (mergedFileIds != null && reqChats.size == mergedFileIds.size && reqMessages.size == mergedFileIds.size) {
+                mergedFileIds.forEachIndexed { i, fId ->
+                    if (reqChats[i] != 0L && reqMessages[i] != 0L) {
+                        registerFileMessage(fId, reqChats[i], reqMessages[i])
+                    }
+                }
             }
 
             val output = socket.getOutputStream()
@@ -1010,10 +1076,17 @@ object TelegramStreamingProxy {
         return refreshed
     }
 
-    fun getUrl(fileId: Int, fileName: String, expectedSize: Long = 0L): String {
+    fun getUrl(fileId: Int, fileName: String, expectedSize: Long = 0L, chatId: Long = 0L, messageId: Long = 0L): String {
         ensureRunning()
+        if (chatId != 0L && messageId != 0L) {
+            registerFileMessage(fileId, chatId, messageId)
+        }
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        return "http://127.0.0.1:$port/file/$fileId/$encodedName?size=$expectedSize&token=$authToken"
+        var url = "http://127.0.0.1:$port/file/$fileId/$encodedName?size=$expectedSize"
+        if (chatId != 0L && messageId != 0L) {
+            url += "&chatId=$chatId&messageId=$messageId"
+        }
+        return "$url&token=$authToken"
     }
 
     fun getThumbnailUrl(fileId: Int): String {
@@ -1026,27 +1099,69 @@ object TelegramStreamingProxy {
         return "http://127.0.0.1:$port/thumbnail/$chatId/$messageId?token=$authToken"
     }
 
-    fun getMergedUrl(fileIds: List<Int>, fileName: String, sizes: List<Long>): String {
+    fun getMergedUrl(
+        fileIds: List<Int>,
+        fileName: String,
+        sizes: List<Long>,
+        chatIds: List<Long> = emptyList(),
+        messageIds: List<Long> = emptyList()
+    ): String {
         ensureRunning()
+        if (chatIds.size == fileIds.size && messageIds.size == fileIds.size) {
+            fileIds.forEachIndexed { i, fId ->
+                if (chatIds[i] != 0L && messageIds[i] != 0L) {
+                    registerFileMessage(fId, chatIds[i], messageIds[i])
+                }
+            }
+        }
         val ids = fileIds.joinToString(",")
         val szs = sizes.joinToString(",")
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        return "http://127.0.0.1:$port/merged/$ids/$encodedName?sizes=$szs&token=$authToken"
+        var url = "http://127.0.0.1:$port/merged/$ids/$encodedName?sizes=$szs"
+        if (chatIds.size == fileIds.size && messageIds.size == fileIds.size && chatIds.any { it != 0L }) {
+            url += "&chats=${chatIds.joinToString(",")}&messages=${messageIds.joinToString(",")}"
+        }
+        return "$url&token=$authToken"
     }
 
-    fun getPlaylistUrl(fileIds: List<Int>, fileName: String, durations: List<Int> = emptyList(), sizes: List<Long> = emptyList()): String {
+    fun getPlaylistUrl(
+        fileIds: List<Int>,
+        fileName: String,
+        durations: List<Int> = emptyList(),
+        sizes: List<Long> = emptyList(),
+        chatIds: List<Long> = emptyList(),
+        messageIds: List<Long> = emptyList()
+    ): String {
         ensureRunning()
+        if (chatIds.size == fileIds.size && messageIds.size == fileIds.size) {
+            fileIds.forEachIndexed { i, fId ->
+                if (chatIds[i] != 0L && messageIds[i] != 0L) {
+                    registerFileMessage(fId, chatIds[i], messageIds[i])
+                }
+            }
+        }
         val ids = fileIds.joinToString(",")
         val durs = durations.joinToString(",")
         val szs = sizes.joinToString(",")
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-        return "http://127.0.0.1:$port/playlist/$ids/$encodedName.m3u8?durations=$durs&sizes=$szs&token=$authToken"
+        var url = "http://127.0.0.1:$port/playlist/$ids/$encodedName.m3u8?durations=$durs&sizes=$szs"
+        if (chatIds.size == fileIds.size && messageIds.size == fileIds.size && chatIds.any { it != 0L }) {
+            url += "&chats=${chatIds.joinToString(",")}&messages=${messageIds.joinToString(",")}"
+        }
+        return "$url&token=$authToken"
     }
 
-    fun getZipStreamUrl(fileId: Int, innerFileName: String, zipSize: Long): String {
+    fun getZipStreamUrl(fileId: Int, innerFileName: String, zipSize: Long, chatId: Long = 0L, messageId: Long = 0L): String {
         ensureRunning()
+        if (chatId != 0L && messageId != 0L) {
+            registerFileMessage(fileId, chatId, messageId)
+        }
         val encodedInner = java.net.URLEncoder.encode(innerFileName, "UTF-8").replace("+", "%20")
-        return "http://127.0.0.1:$port/zip/$fileId/$encodedInner?size=$zipSize&token=$authToken"
+        var url = "http://127.0.0.1:$port/zip/$fileId/$encodedInner?size=$zipSize"
+        if (chatId != 0L && messageId != 0L) {
+            url += "&chatId=$chatId&messageId=$messageId"
+        }
+        return "$url&token=$authToken"
     }
 
     fun cancelAllBackgroundDownloads() {
@@ -1150,10 +1265,11 @@ object TelegramStreamingProxy {
         limit: Int,
         metrics: StreamMetrics? = null
     ): ByteArray? {
+        var activeFileId = resolveFileId(fileId)
         if (metrics != null && metrics.requestType != "seek_probe") {
-            val latestReqId = latestActiveStreamReqId[fileId]
+            val latestReqId = latestActiveStreamReqId[activeFileId]
             if (latestReqId != null && latestReqId != metrics.reqId) {
-                TeleflixLogger.log(TAG, "downloadChunk: reqId=${metrics.reqId} for fileId=$fileId superseded by $latestReqId")
+                TeleflixLogger.log(TAG, "downloadChunk: reqId=${metrics.reqId} for fileId=$activeFileId superseded by $latestReqId")
                 metrics.exitReason = "superseded"
                 return null
             }
@@ -1165,21 +1281,22 @@ object TelegramStreamingProxy {
             var consecutiveGetFileErrors = 0
             var isFileNotFound = false
             while (attempts < 2000 && running) {
+                activeFileId = resolveFileId(activeFileId)
                 if (metrics != null && metrics.requestType != "seek_probe") {
-                    val latestReqId = latestActiveStreamReqId[fileId]
+                    val latestReqId = latestActiveStreamReqId[activeFileId]
                     if (latestReqId != null && latestReqId != metrics.reqId) {
-                        TeleflixLogger.log(TAG, "downloadChunk loop: reqId=${metrics.reqId} for fileId=$fileId superseded by $latestReqId")
+                        TeleflixLogger.log(TAG, "downloadChunk loop: reqId=${metrics.reqId} for fileId=$activeFileId superseded by $latestReqId")
                         metrics.exitReason = "superseded"
                         return@withTimeoutOrNull null
                     }
                 }
                 val readRes = try {
                     val lockStart = System.currentTimeMillis()
-                    getFileMutex(fileId).withLock {
+                    getFileMutex(activeFileId).withLock {
                         val waitMs = System.currentTimeMillis() - lockStart
                         metrics?.totalQueueWaitMs = (metrics?.totalQueueWaitMs ?: 0L) + waitMs
                         TelegramClient.sendRequest(
-                            TdApi.ReadFilePart(fileId, offset, limit.toLong())
+                            TdApi.ReadFilePart(activeFileId, offset, limit.toLong())
                         )
                     }
                 } catch (e: Exception) {
@@ -1191,29 +1308,36 @@ object TelegramStreamingProxy {
                     metrics?.chunksOk = (metrics?.chunksOk ?: 0) + 1
                     val count = metrics?.chunksOk ?: 1
                     if (tdlibMs > 500L || count % 5 == 0 || count == 1) {
-                        TeleflixLogger.log(TAG, "[TDLib] chunk #$count fileId=$fileId offset=$offset size=${readRes.data.size} tdlibMs=$tdlibMs status=ok")
+                        TeleflixLogger.log(TAG, "[TDLib] chunk #$count fileId=$activeFileId offset=$offset size=${readRes.data.size} tdlibMs=$tdlibMs status=ok")
                     }
                     return@withTimeoutOrNull readRes.data
                 } else if (readRes is TdApi.Error && (attempts == 0 || attempts % 100 == 0)) {
-                    TeleflixLogger.log(TAG, "[TDLib ReadFilePart Error] fileId=$fileId offset=$offset: code=${readRes.code} msg=${readRes.message}", isError = true)
+                    TeleflixLogger.log(TAG, "[TDLib ReadFilePart Error] fileId=$activeFileId offset=$offset: code=${readRes.code} msg=${readRes.message}", isError = true)
                 }
                 
                 val file = try {
-                    val res = TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File
+                    val res = TelegramClient.sendRequest(TdApi.GetFile(activeFileId)) as? TdApi.File
                     if (res != null) consecutiveGetFileErrors = 0
                     res
                 } catch (e: Exception) {
                     val msg = e.message ?: ""
-                    if (msg.contains("File not found", ignoreCase = true) || msg.contains("400", ignoreCase = true)) {
-                        consecutiveGetFileErrors += 5
+                    val isNotFoundErr = msg.contains("File not found", ignoreCase = true) || msg.contains("400", ignoreCase = true)
+                    if (isNotFoundErr) {
+                        val refreshed = refreshFileId(activeFileId)
+                        if (refreshed != null && refreshed != 0) {
+                            activeFileId = refreshed
+                            consecutiveGetFileErrors = 0
+                        } else {
+                            consecutiveGetFileErrors++
+                        }
                     } else {
                         consecutiveGetFileErrors++
                     }
                     null
                 }
 
-                if (consecutiveGetFileErrors >= 5 && attempts >= 1) {
-                    TeleflixLogger.log(TAG, "fileId=$fileId invalid or not found in TDLib after ${attempts + 1} attempts, failing fast", isError = true)
+                if (consecutiveGetFileErrors >= 10 && attempts >= 10) {
+                    TeleflixLogger.log(TAG, "fileId=$activeFileId invalid or not found in TDLib after ${attempts + 1} attempts, failing fast", isError = true)
                     isFileNotFound = true
                     if (metrics != null) {
                         metrics.exitReason = "file_not_found"
@@ -1223,31 +1347,27 @@ object TelegramStreamingProxy {
 
                 if (file?.local?.isDownloadingCompleted == true) {
                     val finalData = try {
-                        TelegramClient.sendRequest(TdApi.ReadFilePart(fileId, offset, limit.toLong())) as? TdApi.Data
+                        TelegramClient.sendRequest(TdApi.ReadFilePart(activeFileId, offset, limit.toLong())) as? TdApi.Data
                     } catch (e: Exception) { null }
                     return@withTimeoutOrNull finalData?.data
                 }
 
-                // Check if download is active; if not downloading at all, cancel and re-issue
+                // Check if download is active
                 val isDownloading = file?.local?.isDownloadingActive == true
 
-                // Re-trigger DownloadFile on attempt 0 and periodically (every 100 attempts = 5s if stalled)
-                if (attempts % 10 == 0) {
+                // Re-trigger DownloadFile on attempt 0 and periodically (every 20 attempts = 1s if not downloading)
+                if (attempts % 20 == 0) {
                     metrics?.chunksRetried = (metrics?.chunksRetried ?: 0) + 1
-                    val fileInfo = getFileInfo(fileId)
+                    val fileInfo = getFileInfo(activeFileId)
                     val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
                     val safeLimit = calculateSafeTdlibLimit(offset, totalSize, prefetchSizeMb, limit)
 
-                    val forceRequest = (attempts == 0 || (attempts > 0 && attempts % 100 == 0))
-                    if (attempts > 0 && forceRequest && !DownloadManager.isFileIdActive(fileId)) {
-                        TeleflixLogger.log(TAG, "[TDLib] Re-triggering stalled DownloadFile fileId=$fileId offset=$offset attempt=$attempts")
-                        runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
-                    }
+                    val forceRequest = (attempts == 0 || (attempts > 0 && attempts % 200 == 0))
                     if (forceRequest || !isDownloading) {
-                        triggerTdlibDownload(fileId, offset, safeLimit, force = forceRequest)
+                        triggerTdlibDownload(activeFileId, offset, safeLimit, force = forceRequest)
                     }
                     val winEnd = if (safeLimit == 0L) Long.MAX_VALUE else offset + safeLimit
-                    activeDownloadWindows[fileId] = Pair(offset, winEnd)
+                    activeDownloadWindows[activeFileId] = Pair(offset, winEnd)
                 }
                 
                 delay(50L)
@@ -1256,11 +1376,11 @@ object TelegramStreamingProxy {
             null
         }
         if (dataBytes == null && metrics?.exitReason != "superseded") {
-            if (metrics?.exitReason == "file_not_found" || (metrics == null && dataBytes == null)) {
-                TeleflixLogger.log(TAG, "downloadChunk FAILED: fileId=$fileId invalid or not found in TDLib (offset=$offset, limit=$limit)", isError = true)
+            if (metrics?.exitReason == "file_not_found" || metrics == null) {
+                TeleflixLogger.log(TAG, "downloadChunk FAILED: fileId=$activeFileId invalid or not found in TDLib (offset=$offset, limit=$limit)", isError = true)
             } else {
                 metrics?.chunksTimedOut = (metrics?.chunksTimedOut ?: 0) + 1
-                TeleflixLogger.log(TAG, "downloadChunk TIMEOUT: fileId=$fileId offset=$offset limit=$limit after ${timeoutMs}ms", isError = true)
+                TeleflixLogger.log(TAG, "downloadChunk TIMEOUT: fileId=$activeFileId offset=$offset limit=$limit after ${timeoutMs}ms", isError = true)
             }
         }
         return dataBytes

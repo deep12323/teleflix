@@ -1007,6 +1007,7 @@ object TelegramRepository {
                         caption = content.caption?.text ?: "",
                         thumbnailFileId = content.document.thumbnail?.file?.id
                     )
+                    TelegramStreamingProxy.registerFileMessage(item.fileId, item.chatId, item.messageId)
                     synchronized(results) { results.add(item) }
                 }
             }
@@ -1026,6 +1027,7 @@ object TelegramRepository {
                         caption = content.caption?.text ?: "",
                         thumbnailFileId = content.video.thumbnail?.file?.id
                     )
+                    TelegramStreamingProxy.registerFileMessage(item.fileId, item.chatId, item.messageId)
                     synchronized(results) { results.add(item) }
                 }
             }
@@ -1048,7 +1050,7 @@ object TelegramRepository {
                 }
                 val key = displayName to audio.audio.size
                 if (seen.add(key)) {
-                    results.add(TelegramVideoMessage(
+                    val item = TelegramVideoMessage(
                         messageId = msg.id,
                         chatId = msg.chatId,
                         fileName = displayName,
@@ -1058,7 +1060,9 @@ object TelegramRepository {
                         mimeType = audio.mimeType ?: "audio/mpeg",
                         caption = content.caption?.text ?: "",
                         thumbnailFileId = audio.albumCoverThumbnail?.file?.id
-                    ))
+                    )
+                    TelegramStreamingProxy.registerFileMessage(item.fileId, item.chatId, item.messageId)
+                    results.add(item)
                 }
             }
         }
@@ -1116,7 +1120,8 @@ object TelegramRepository {
         return Pair(sorted, minNextMessageId)
     }
 
-    fun getStreamUrl(fileId: Int, fileName: String, expectedSize: Long = 0L): String = TelegramStreamingProxy.getUrl(fileId, fileName, expectedSize)
+    fun getStreamUrl(fileId: Int, fileName: String, expectedSize: Long = 0L, chatId: Long = 0L, messageId: Long = 0L): String =
+        TelegramStreamingProxy.getUrl(fileId, fileName, expectedSize, chatId, messageId)
 
     fun getThumbnailUrl(chatId: Long, messageId: Long, thumbnailFileId: Int? = null): String {
         return if (chatId != 0L && messageId != 0L) {
@@ -1256,11 +1261,21 @@ object TelegramRepository {
         return ext == "zip" && msg.fileSize > 1_000_000 // Only ZIPs > 1MB likely contain media
     }
 
-    fun getMergedStreamUrl(fileIds: List<Int>, fileName: String, sizes: List<Long>): String =
-        TelegramStreamingProxy.getMergedUrl(fileIds, fileName, sizes)
+    fun getMergedStreamUrl(
+        fileIds: List<Int>,
+        fileName: String,
+        sizes: List<Long>,
+        chatIds: List<Long> = emptyList(),
+        messageIds: List<Long> = emptyList()
+    ): String = TelegramStreamingProxy.getMergedUrl(fileIds, fileName, sizes, chatIds, messageIds)
 
-    fun getZipStreamUrl(fileId: Int, innerFileName: String, zipSize: Long): String =
-        TelegramStreamingProxy.getZipStreamUrl(fileId, innerFileName, zipSize)
+    fun getZipStreamUrl(
+        fileId: Int,
+        innerFileName: String,
+        zipSize: Long,
+        chatId: Long = 0L,
+        messageId: Long = 0L
+    ): String = TelegramStreamingProxy.getZipStreamUrl(fileId, innerFileName, zipSize, chatId, messageId)
 
     /**
      * Groups split file parts while preserving exact chronological/message order of the original list.
@@ -1295,20 +1310,20 @@ object TelegramRepository {
                     val filename = resolveDisplayName(content.document.fileName, content.caption?.text, "mkv")
                     val ext = filename.substringAfterLast('.', "").lowercase().trim()
                     if (ext == "zip" && file.size > 1_000_000) {
-                        getZipStreamUrl(file.id, filename, file.size)
+                        getZipStreamUrl(file.id, filename, file.size, chatId, messageId)
                     } else {
-                        getStreamUrl(file.id, filename, file.size)
+                        getStreamUrl(file.id, filename, file.size, chatId, messageId)
                     }
                 }
                 is TdApi.MessageVideo -> {
                     val file = content.video.video
                     val filename = resolveDisplayName(content.video.fileName, content.caption?.text, "mp4")
-                    getStreamUrl(file.id, filename, file.size)
+                    getStreamUrl(file.id, filename, file.size, chatId, messageId)
                 }
                 is TdApi.MessageAudio -> {
                     val file = content.audio.audio
                     val filename = content.audio.fileName ?: "Audio_${msg.id}.mp3"
-                    getStreamUrl(file.id, filename, file.size)
+                    getStreamUrl(file.id, filename, file.size, chatId, messageId)
                 }
                 else -> null
             }
@@ -1318,17 +1333,27 @@ object TelegramRepository {
         }
     }
 
-    fun getPlaylistStreamUrl(fileIds: List<Int>, fileName: String, durations: List<Int> = emptyList(), sizes: List<Long> = emptyList()): String =
-        TelegramStreamingProxy.getPlaylistUrl(fileIds, fileName, durations, sizes)
+    fun getPlaylistStreamUrl(
+        fileIds: List<Int>,
+        fileName: String,
+        durations: List<Int> = emptyList(),
+        sizes: List<Long> = emptyList(),
+        chatIds: List<Long> = emptyList(),
+        messageIds: List<Long> = emptyList()
+    ): String = TelegramStreamingProxy.getPlaylistUrl(fileIds, fileName, durations, sizes, chatIds, messageIds)
 
     suspend fun getFreshMergedMediaUrl(parts: List<Pair<Long, Long>>, baseName: String, partSizes: List<Long>): String? = withContext(Dispatchers.IO) {
         try {
             val freshFileIds = mutableListOf<Int>()
+            val chatIds = mutableListOf<Long>()
+            val messageIds = mutableListOf<Long>()
             for ((chatId, messageId) in parts) {
                 val fId = getFreshFileId(chatId, messageId) ?: return@withContext null
                 freshFileIds.add(fId)
+                chatIds.add(chatId)
+                messageIds.add(messageId)
             }
-            getMergedStreamUrl(freshFileIds, baseName, partSizes)
+            getMergedStreamUrl(freshFileIds, baseName, partSizes, chatIds, messageIds)
         } catch (e: Exception) {
             android.util.Log.e("TelegramRepository", "Failed to refresh merged media URL for $baseName: ${e.message}")
             null
@@ -1338,11 +1363,15 @@ object TelegramRepository {
     suspend fun getFreshPlaylistMediaUrl(parts: List<Pair<Long, Long>>, baseName: String, partDurations: List<Int> = emptyList(), partSizes: List<Long> = emptyList()): String? = withContext(Dispatchers.IO) {
         try {
             val freshFileIds = mutableListOf<Int>()
+            val chatIds = mutableListOf<Long>()
+            val messageIds = mutableListOf<Long>()
             for ((chatId, messageId) in parts) {
                 val fId = getFreshFileId(chatId, messageId) ?: return@withContext null
                 freshFileIds.add(fId)
+                chatIds.add(chatId)
+                messageIds.add(messageId)
             }
-            getPlaylistStreamUrl(freshFileIds, baseName, partDurations, partSizes)
+            getPlaylistStreamUrl(freshFileIds, baseName, partDurations, partSizes, chatIds, messageIds)
         } catch (e: Exception) {
             android.util.Log.e("TelegramRepository", "Failed to refresh playlist media URL for $baseName: ${e.message}")
             null
