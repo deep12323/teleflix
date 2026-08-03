@@ -564,27 +564,18 @@ object TelegramStreamingProxy {
         val partRemaining = sizes[partIndex] - partOffset
         val chunkSize = minOf(limit.toLong(), partRemaining).toInt()
 
-        val prefetchBytes = when {
-            prefetchSizeMb == -1L -> 0L
-            prefetchSizeMb <= 0L -> chunkSize.toLong()
-            else -> maxOf(chunkSize.toLong(), prefetchSizeMb * 1024L * 1024L)
-        }
+        val partSize = sizes[partIndex]
         val alignedPartOffset = partOffset - (partOffset % (1024 * 1024))
+        val safeLimit = calculateSafeTdlibLimit(alignedPartOffset, partSize, prefetchSizeMb, chunkSize)
 
-        triggerTdlibDownload(partFileId, alignedPartOffset, prefetchBytes)
+        triggerTdlibDownload(partFileId, alignedPartOffset, safeLimit)
 
         // Proactively prefetch the NEXT part when approaching boundary (within 50MB)
         if (partIndex + 1 < fileIds.size && partRemaining < 50 * 1024 * 1024L) {
             val nextFileId = fileIds[partIndex + 1]
-            runCatching {
-                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                    req.fileId = nextFileId
-                    req.priority = DOWNLOAD_PRIORITY
-                    req.offset = 0
-                    req.limit = prefetchBytes
-                    req.synchronous = false
-                })
-            }
+            val nextSize = sizes[partIndex + 1]
+            val nextSafeLimit = calculateSafeTdlibLimit(0L, nextSize, prefetchSizeMb, chunkSize)
+            triggerTdlibDownload(nextFileId, 0L, nextSafeLimit)
         }
 
         var chunk = downloadChunk(partFileId, partOffset, chunkSize)
