@@ -598,6 +598,11 @@ object TelegramStreamingProxy {
         var chunk = downloadChunk(partFileId, partOffset, chunkSize)
         var retries = 0
         while ((chunk == null || chunk.isEmpty()) && retries < 5 && running) {
+            val fileInfo = getFileInfo(partFileId)
+            if (fileInfo == null) {
+                TeleflixLogger.log(TAG, "readChunkFromMerged: partFileId=$partFileId not found in TDLib, stopping retries", isError = true)
+                break
+            }
             kotlinx.coroutines.delay(300)
             chunk = downloadChunk(partFileId, partOffset, chunkSize)
             retries++
@@ -1214,12 +1219,20 @@ object TelegramStreamingProxy {
                     if (res != null) consecutiveGetFileErrors = 0
                     res
                 } catch (e: Exception) {
-                    consecutiveGetFileErrors++
+                    val msg = e.message ?: ""
+                    if (msg.contains("File not found", ignoreCase = true) || msg.contains("400", ignoreCase = true)) {
+                        consecutiveGetFileErrors += 5
+                    } else {
+                        consecutiveGetFileErrors++
+                    }
                     null
                 }
 
-                if (consecutiveGetFileErrors >= 10 && attempts > 10) {
-                    TeleflixLogger.log(TAG, "fileId=$fileId invalid or not found in TDLib after $consecutiveGetFileErrors attempts, failing fast", isError = true)
+                if (consecutiveGetFileErrors >= 5 && attempts >= 1) {
+                    TeleflixLogger.log(TAG, "fileId=$fileId invalid or not found in TDLib after ${attempts + 1} attempts, failing fast", isError = true)
+                    if (metrics != null) {
+                        metrics.exitReason = "file_not_found"
+                    }
                     return@withTimeoutOrNull null
                 }
 
@@ -1259,8 +1272,12 @@ object TelegramStreamingProxy {
             null
         }
         if (dataBytes == null && metrics?.exitReason != "superseded") {
-            metrics?.chunksTimedOut = (metrics?.chunksTimedOut ?: 0) + 1
-            TeleflixLogger.log(TAG, "downloadChunk TIMEOUT: fileId=$fileId offset=$offset limit=$limit after ${timeoutMs}ms", isError = true)
+            if (metrics?.exitReason == "file_not_found") {
+                TeleflixLogger.log(TAG, "downloadChunk FAILED: fileId=$fileId invalid or not found in TDLib (offset=$offset, limit=$limit)", isError = true)
+            } else {
+                metrics?.chunksTimedOut = (metrics?.chunksTimedOut ?: 0) + 1
+                TeleflixLogger.log(TAG, "downloadChunk TIMEOUT: fileId=$fileId offset=$offset limit=$limit after ${timeoutMs}ms", isError = true)
+            }
         }
         return dataBytes
     }

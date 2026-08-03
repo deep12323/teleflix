@@ -127,11 +127,13 @@ class MainActivity : AppCompatActivity() {
 
         val urlToClean = activeStreamUrlForResume
         if (urlToClean.isNotBlank()) {
-            val fileId = extractFileIdFromUrl(urlToClean)
-            if (fileId != null && fileId != 0 && !DownloadManager.isFileIdActive(fileId)) {
-                TelegramStreamingProxy.clearStreamCache(fileId)
-                TelegramClient.deleteFile(fileId)
-                TeleflixLogger.log("MainActivity", "Cleaned stream cache for fileId=$fileId on player exit")
+            val fileIds = extractFileIdsFromUrl(urlToClean)
+            for (fileId in fileIds) {
+                if (fileId != 0 && !DownloadManager.isFileIdActive(fileId)) {
+                    TelegramStreamingProxy.clearStreamCache(fileId)
+                    TelegramClient.deleteFile(fileId)
+                    TeleflixLogger.log("MainActivity", "Cleaned stream cache for fileId=$fileId on player exit")
+                }
             }
         }
     }
@@ -3150,13 +3152,17 @@ class MainActivity : AppCompatActivity() {
     // ── Downloads Engine & UI Helpers ─────────────────────────────
 
     private fun extractFileIdFromUrl(url: String): Int? {
-        if (url.isBlank()) return null
-        val patterns = listOf("/file/", "/stream/", "/zip/", "/thumbnail/", "/merged/")
+        return extractFileIdsFromUrl(url).firstOrNull()
+    }
+
+    private fun extractFileIdsFromUrl(url: String): List<Int> {
+        if (url.isBlank()) return emptyList()
+        val patterns = listOf("/file/", "/stream/", "/zip/", "/thumbnail/", "/merged/", "/playlist/")
         for (pattern in patterns) {
             if (url.contains(pattern)) {
-                val idStr = url.substringAfter(pattern).substringBefore("/").substringBefore("?").substringBefore(",")
-                val parsed = idStr.toIntOrNull()
-                if (parsed != null && parsed != 0) return parsed
+                val segment = url.substringAfter(pattern).substringBefore("/").substringBefore("?")
+                val ids = segment.split(",").mapNotNull { it.toIntOrNull() }.filter { it != 0 }
+                if (ids.isNotEmpty()) return ids
             }
         }
         if (url.contains("fileId=")) {
