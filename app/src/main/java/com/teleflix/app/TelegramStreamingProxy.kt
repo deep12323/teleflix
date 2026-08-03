@@ -646,14 +646,10 @@ object TelegramStreamingProxy {
 
         var chunk = downloadChunk(partFileId, partOffset, chunkSize)
         var retries = 0
-        while ((chunk == null || chunk.isEmpty()) && retries < 5 && running) {
-            val fileInfo = getFileInfo(partFileId)
-            if (fileInfo == null) {
-                TeleflixLogger.log(TAG, "readChunkFromMerged: partFileId=$partFileId not found in TDLib, stopping retries", isError = true)
-                break
-            }
+        while ((chunk == null || chunk.isEmpty()) && retries < 10 && running) {
             kotlinx.coroutines.delay(300)
-            chunk = downloadChunk(partFileId, partOffset, chunkSize)
+            val currentPartId = resolveFileId(partFileId)
+            chunk = downloadChunk(currentPartId, partOffset, chunkSize)
             retries++
         }
         return chunk
@@ -1336,7 +1332,7 @@ object TelegramStreamingProxy {
                     null
                 }
 
-                if (consecutiveGetFileErrors >= 10 && attempts >= 10) {
+                if (consecutiveGetFileErrors >= 200 && attempts >= 200) {
                     TeleflixLogger.log(TAG, "fileId=$activeFileId invalid or not found in TDLib after ${attempts + 1} attempts, failing fast", isError = true)
                     isFileNotFound = true
                     if (metrics != null) {
