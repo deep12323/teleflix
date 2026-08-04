@@ -1127,10 +1127,6 @@ object TelegramStreamingProxy {
                 req.onlyIfPending = false
             })
         }
-        runCatching {
-            TelegramClient.sendRequest(TdApi.DeleteFile().also { it.fileId = fileId })
-            Log.d(TAG, "Deleted cached file $fileId")
-        }
     }
 
     private fun ensureRunning() {
@@ -1453,9 +1449,19 @@ object TelegramStreamingProxy {
                     val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
                     val safeLimit = calculateSafeTdlibLimit(offset, totalSize, prefetchSizeMb, limit)
 
-                    val forceRequest = (attempts == 0 || (attempts > 0 && attempts % 200 == 0))
+                    val isStalled = attempts > 0 && attempts % 60 == 0
+                    if (isStalled) {
+                        TeleflixLogger.log(TAG, "downloadChunk stall detected for fileId=$activeFileId offset=$offset at attempt $attempts. Resetting TDLib download task...")
+                        runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(activeFileId, false)) }
+                        val refreshed = refreshFileId(activeFileId)
+                        if (refreshed != null && refreshed != 0) {
+                            activeFileId = refreshed
+                        }
+                    }
+
+                    val forceRequest = (attempts == 0 || isStalled)
                     if (forceRequest || !isDownloading) {
-                        triggerTdlibDownload(activeFileId, offset, safeLimit, force = forceRequest)
+                        triggerTdlibDownload(activeFileId, offset, safeLimit, force = true)
                     }
                     val winEnd = if (safeLimit == 0L) Long.MAX_VALUE else offset + safeLimit
                     activeDownloadWindows[activeFileId] = Pair(offset, winEnd)

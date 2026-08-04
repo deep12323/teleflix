@@ -148,7 +148,7 @@ object TelegramClient {
 
     fun deleteFile(fileId: Int) {
         if (fileId <= 0) return
-        client?.send(TdApi.DeleteFile(fileId), null)
+        client?.send(TdApi.CancelDownloadFile(fileId, false), null)
     }
 
     fun optimizeStorage() {
