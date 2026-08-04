@@ -108,7 +108,8 @@ object TdlibManager {
         getPrefs(context).edit().putString("custom_channels", cleanList.joinToString(",")).apply()
     }
 
-    private val streamResolutionCache = java.util.concurrent.ConcurrentHashMap<String, List<StreamSource>>()
+    private const val STREAM_CACHE_TTL_MS = 5 * 60 * 1000L // 5 minutes
+    private val streamResolutionCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, List<StreamSource>>>()
 
     fun clearStreamResolutionCache() {
         streamResolutionCache.clear()
@@ -117,10 +118,14 @@ object TdlibManager {
     // Resolves video streams across ALL joined Telegram channels, groups, and chats exactly like the Cloudstream extension
     suspend fun resolveStreams(title: String, season: Int? = null, episode: Int? = null, forceRefresh: Boolean = false): List<StreamSource> {
         val cacheKey = "$title-$season-$episode"
+        val now = System.currentTimeMillis()
         if (!forceRefresh && streamResolutionCache.containsKey(cacheKey)) {
-            val cached = streamResolutionCache[cacheKey]
-            if (!cached.isNullOrEmpty()) {
-                return cached
+            val entry = streamResolutionCache[cacheKey]
+            if (entry != null) {
+                val (timestamp, cached) = entry
+                if (!cached.isNullOrEmpty() && (now - timestamp) < STREAM_CACHE_TTL_MS) {
+                    return cached
+                }
             }
         }
 
@@ -275,7 +280,7 @@ object TdlibManager {
         val (highQuality, lowQuality) = resultSources.partition { !isLowQuality(it.fileName) }
         val finalSources = highQuality + lowQuality
         if (finalSources.isNotEmpty()) {
-            streamResolutionCache[cacheKey] = finalSources
+            streamResolutionCache[cacheKey] = Pair(System.currentTimeMillis(), finalSources)
         }
         return finalSources
     }

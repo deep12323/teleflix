@@ -876,7 +876,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        if (cinemetaCatalogCache.containsKey(catalogId)) {
+        val hasCached = cinemetaCatalogCache.containsKey(catalogId)
+        if (hasCached) {
             val cached = cinemetaCatalogCache[catalogId]
             if (!cached.isNullOrEmpty()) {
                 mediaList.clear()
@@ -885,12 +886,11 @@ class MainActivity : AppCompatActivity() {
                 mediaAdapter?.notifyDataSetChanged()
                 loadingText.visibility = android.view.View.GONE
                 isLoadingMore = false
-                return
             }
+        } else {
+            loadingText.text = "Loading $label from Cinemeta..."
+            loadingText.visibility = android.view.View.VISIBLE
         }
-
-        loadingText.text = "Loading $label from Cinemeta..."
-        loadingText.visibility = android.view.View.VISIBLE
 
         val type = if (catalogId.startsWith("series")) "series" else "movie"
 
