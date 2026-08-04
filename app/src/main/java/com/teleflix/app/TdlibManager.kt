@@ -108,8 +108,22 @@ object TdlibManager {
         getPrefs(context).edit().putString("custom_channels", cleanList.joinToString(",")).apply()
     }
 
+    private val streamResolutionCache = java.util.concurrent.ConcurrentHashMap<String, List<StreamSource>>()
+
+    fun clearStreamResolutionCache() {
+        streamResolutionCache.clear()
+    }
+
     // Resolves video streams across ALL joined Telegram channels, groups, and chats exactly like the Cloudstream extension
-    suspend fun resolveStreams(title: String, season: Int? = null, episode: Int? = null): List<StreamSource> {
+    suspend fun resolveStreams(title: String, season: Int? = null, episode: Int? = null, forceRefresh: Boolean = false): List<StreamSource> {
+        val cacheKey = "$title-$season-$episode"
+        if (!forceRefresh && streamResolutionCache.containsKey(cacheKey)) {
+            val cached = streamResolutionCache[cacheKey]
+            if (!cached.isNullOrEmpty()) {
+                return cached
+            }
+        }
+
         val rawTitle = title.trim()
         val cleanTitle = rawTitle.replace(Regex("[^a-zA-Z0-9 ]"), " ").replace(Regex(" +"), " ").trim()
         val compactTitle = cleanTitle.replace(" ", "")
@@ -259,7 +273,11 @@ object TdlibManager {
         }
 
         val (highQuality, lowQuality) = resultSources.partition { !isLowQuality(it.fileName) }
-        return highQuality + lowQuality
+        val finalSources = highQuality + lowQuality
+        if (finalSources.isNotEmpty()) {
+            streamResolutionCache[cacheKey] = finalSources
+        }
+        return finalSources
     }
 
     private fun extractQualityTag(name: String): String {

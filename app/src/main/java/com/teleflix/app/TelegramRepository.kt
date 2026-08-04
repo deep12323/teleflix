@@ -831,8 +831,8 @@ object TelegramRepository {
         limit: Int = 1000,
         includeAudio: Boolean = true
     ): List<TelegramVideoMessage> = coroutineScope {
-        val results = mutableListOf<TelegramVideoMessage>()
-        val seen = mutableSetOf<Pair<String, Long>>()
+        val results = java.util.Collections.synchronizedList(mutableListOf<TelegramVideoMessage>())
+        val seen = java.util.Collections.synchronizedSet(mutableSetOf<Pair<String, Long>>())
 
         val filters = mutableListOf<TdApi.SearchMessagesFilter>(
             TdApi.SearchMessagesFilterVideo(),

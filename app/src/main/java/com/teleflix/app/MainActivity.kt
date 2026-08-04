@@ -141,6 +141,9 @@ class MainActivity : AppCompatActivity() {
     private val mediaList = mutableListOf<MediaItem>()
     private var mediaAdapter: MediaAdapter? = null
 
+    private val cinemetaCatalogCache = java.util.concurrent.ConcurrentHashMap<String, List<MediaItem>>()
+    private val cinemetaSeriesCache = java.util.concurrent.ConcurrentHashMap<String, Map<Int, List<EpisodeItem>>>()
+
     private var selectedCategory = "movie/top"
     private var selectedLabel = "Top Movies"
     private var currentSkip = 0
@@ -873,6 +876,19 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        if (cinemetaCatalogCache.containsKey(catalogId)) {
+            val cached = cinemetaCatalogCache[catalogId]
+            if (!cached.isNullOrEmpty()) {
+                mediaList.clear()
+                mediaList.addAll(cached)
+                hasMoreItems = true
+                mediaAdapter?.notifyDataSetChanged()
+                loadingText.visibility = android.view.View.GONE
+                isLoadingMore = false
+                return
+            }
+        }
+
         loadingText.text = "Loading $label from Cinemeta..."
         loadingText.visibility = android.view.View.VISIBLE
 
@@ -896,6 +912,9 @@ class MainActivity : AppCompatActivity() {
                 val metas = json.optJSONArray("metas") ?: JSONArray()
 
                 val results = parseMetas(metas, type)
+                if (results.isNotEmpty()) {
+                    cinemetaCatalogCache[catalogId] = results
+                }
 
                 withContext(Dispatchers.Main) {
                     mediaList.clear()
@@ -975,21 +994,25 @@ class MainActivity : AppCompatActivity() {
         loadingText.visibility = android.view.View.VISIBLE
 
         CoroutineScope(Dispatchers.IO).launch {
-            val allResults = mutableListOf<MediaItem>()
-
-            for (type in listOf("movie", "series")) {
-                try {
-                    val url = URL("https://v3-cinemeta.strem.io/catalog/$type/top/search=${java.net.URLEncoder.encode(query, "UTF-8")}.json")
-                    val connection = url.openConnection() as HttpURLConnection
-                    connection.requestMethod = "GET"
-                    connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                    connection.connectTimeout = 8000
-                    connection.readTimeout = 8000
-                    val text = connection.inputStream.bufferedReader().readText()
-                    val json = JSONObject(text)
-                    val metas = json.optJSONArray("metas") ?: JSONArray()
-                    allResults.addAll(parseMetas(metas, type))
-                } catch (_: Exception) { }
+            val allResults = coroutineScope {
+                listOf("movie", "series").map { type ->
+                    async(Dispatchers.IO) {
+                        try {
+                            val url = URL("https://v3-cinemeta.strem.io/catalog/$type/top/search=${java.net.URLEncoder.encode(query, "UTF-8")}.json")
+                            val connection = url.openConnection() as HttpURLConnection
+                            connection.requestMethod = "GET"
+                            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                            connection.connectTimeout = 5000
+                            connection.readTimeout = 5000
+                            val text = connection.inputStream.bufferedReader().readText()
+                            val json = JSONObject(text)
+                            val metas = json.optJSONArray("metas") ?: JSONArray()
+                            parseMetas(metas, type)
+                        } catch (_: Exception) {
+                            emptyList()
+                        }
+                    }
+                }.awaitAll().flatten()
             }
 
             withContext(Dispatchers.Main) {
@@ -1590,6 +1613,12 @@ class MainActivity : AppCompatActivity() {
     // ── Series Episode Browser ──────────────────────────────────
 
     private fun fetchSeriesEpisodes(item: MediaItem) {
+        val cachedSeasons = cinemetaSeriesCache[item.id]
+        if (cachedSeasons != null && cachedSeasons.isNotEmpty()) {
+            showSeasonPicker(item.title, cachedSeasons, item.posterUrl)
+            return
+        }
+
         Toast.makeText(this, "Loading episodes for ${item.title}...", Toast.LENGTH_SHORT).show()
 
         lifecycleScope.launch(Dispatchers.IO) {
@@ -1624,6 +1653,9 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val seasons = episodes.groupBy { it.season }.toSortedMap()
+                if (seasons.isNotEmpty()) {
+                    cinemetaSeriesCache[item.id] = seasons
+                }
 
                 withContext(Dispatchers.Main) {
                     if (isFinishing || isDestroyed) return@withContext
