@@ -2586,12 +2586,36 @@ class MainActivity : AppCompatActivity() {
         val titleToPlay = streamInfo?.second ?: item.title
         val fileName = item.originalFileName.ifBlank { titleToPlay }
         val groupInfo = telegramGroupCache[item.id]
+        val rawUrl = streamInfo?.first ?: item.streamUrl
 
         fun ensureMsgRef(url: String, cId: Long?, mId: Long?): String {
             if (url.isBlank() || cId == null || mId == null || cId == 0L || mId == 0L) return url
             if (url.contains("chatId=") || url.contains("chats=")) return url
             val separator = if (url.contains("?")) "&" else "?"
             return "$url${separator}chatId=$cId&messageId=$mId"
+        }
+
+        if (rawUrl.contains("/merged/")) {
+            val queryStr = rawUrl.substringAfter("?", "")
+            val reqChats = queryStr.split("&").find { it.startsWith("chats=") }?.substringAfter("=")?.split(",")?.mapNotNull { it.toLongOrNull() } ?: emptyList()
+            val reqMessages = queryStr.split("&").find { it.startsWith("messages=") }?.substringAfter("=")?.split(",")?.mapNotNull { it.toLongOrNull() } ?: emptyList()
+            val reqSizes = queryStr.split("&").find { it.startsWith("sizes=") }?.substringAfter("=")?.split(",")?.mapNotNull { it.toLongOrNull() } ?: emptyList()
+            val urlFileNameSegment = rawUrl.substringAfter("/merged/").substringBefore("?")
+            val urlFileName = urlFileNameSegment.substringAfter("/", "").takeIf { it.isNotBlank() }?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull() } ?: titleToPlay.removePrefix("📦 ")
+
+            if (reqChats.size == reqMessages.size && reqChats.isNotEmpty()) {
+                CoroutineScope(Dispatchers.Main).launch {
+                    val parts = reqChats.zip(reqMessages)
+                    val freshUrl = TelegramRepository.getFreshMergedMediaUrl(parts, urlFileName, reqSizes)
+                    if (freshUrl != null && freshUrl.isNotBlank()) {
+                        checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                        return@launch
+                    }
+                    val backupUrl = TelegramStreamingProxy.refreshUrl(rawUrl)
+                    checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                }
+                return
+            }
         }
 
         if (groupInfo != null) {

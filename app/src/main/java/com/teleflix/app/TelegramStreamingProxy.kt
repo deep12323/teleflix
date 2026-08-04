@@ -695,6 +695,9 @@ object TelegramStreamingProxy {
             val hasRef = fileToMessageMap.containsKey(currentPartId) || fileToMessageMap.containsKey(partFileId)
             if (hasRef) {
                 refreshFileId(currentPartId)
+            } else {
+                TeleflixLogger.log(TAG, "readChunkFromMerged: partFileId=$partFileId not found in TDLib and no message reference available, stopping retries", isError = true)
+                break
             }
             triggerTdlibDownload(resolveFileId(partFileId), alignedPartOffset, safeLimit, force = true)
             kotlinx.coroutines.delay(300)
