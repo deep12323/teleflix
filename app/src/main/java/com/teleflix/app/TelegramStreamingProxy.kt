@@ -126,7 +126,7 @@ object TelegramStreamingProxy {
         }
     }
 
-    private suspend fun triggerTdlibDownload(fileId: Int, offset: Long, limit: Long, force: Boolean = false) = withContext(NonCancellable) {
+    private suspend fun triggerTdlibDownload(fileId: Int, offset: Long, limit: Long, force: Boolean = false) {
         val now = System.currentTimeMillis()
         val lastOffset = lastDownloadRequestOffset[fileId]
         val lastTime = lastDownloadRequestTime[fileId] ?: 0L
@@ -141,26 +141,28 @@ object TelegramStreamingProxy {
         lastDownloadRequestOffset[fileId] = offset
         lastDownloadRequestTime[fileId] = now
 
-        try {
-            // Cancel stuck TDLib download task on major offset jumps
-            if (isOffsetJump && !DownloadManager.isFileIdActive(fileId)) {
-                runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
-            }
+        withContext(NonCancellable) {
+            try {
+                // Cancel stuck TDLib download task on major offset jumps
+                if (isOffsetJump && !DownloadManager.isFileIdActive(fileId)) {
+                    runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
+                }
 
-            val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                req.fileId = fileId
-                req.priority = DOWNLOAD_PRIORITY
-                req.offset = offset
-                req.limit = if (limit > 0L) limit else 0L
-                req.synchronous = false
-            })
-            if (res is TdApi.Error) {
-                TeleflixLogger.log(TAG, "[TDLib Error] DownloadFile fileId=$fileId offset=$offset limit=$limit: code=${res.code} message=${res.message}", isError = true)
-            } else {
-                TeleflixLogger.log(TAG, "[TDLib OK] DownloadFile fileId=$fileId offset=$offset limit=$limit force=$force jump=$isOffsetJump")
+                val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                    req.fileId = fileId
+                    req.priority = DOWNLOAD_PRIORITY
+                    req.offset = offset
+                    req.limit = if (limit > 0L) limit else 0L
+                    req.synchronous = false
+                })
+                if (res is TdApi.Error) {
+                    TeleflixLogger.log(TAG, "[TDLib Error] DownloadFile fileId=$fileId offset=$offset limit=$limit: code=${res.code} message=${res.message}", isError = true)
+                } else {
+                    TeleflixLogger.log(TAG, "[TDLib OK] DownloadFile fileId=$fileId offset=$offset limit=$limit force=$force jump=$isOffsetJump")
+                }
+            } catch (e: Exception) {
+                TeleflixLogger.log(TAG, "[TDLib Exception] DownloadFile fileId=$fileId: ${e.message}", isError = true)
             }
-        } catch (e: Exception) {
-            TeleflixLogger.log(TAG, "[TDLib Exception] DownloadFile fileId=$fileId: ${e.message}", isError = true)
         }
     }
     private val authToken = java.util.UUID.randomUUID().toString()
