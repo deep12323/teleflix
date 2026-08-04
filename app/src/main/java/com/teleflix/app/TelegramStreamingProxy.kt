@@ -9,6 +9,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.drinkless.tdlib.TdApi
 import java.io.IOException
@@ -124,7 +126,7 @@ object TelegramStreamingProxy {
         }
     }
 
-    private suspend fun triggerTdlibDownload(fileId: Int, offset: Long, limit: Long, force: Boolean = false) {
+    private suspend fun triggerTdlibDownload(fileId: Int, offset: Long, limit: Long, force: Boolean = false) = withContext(NonCancellable) {
         val now = System.currentTimeMillis()
         val lastOffset = lastDownloadRequestOffset[fileId]
         val lastTime = lastDownloadRequestTime[fileId] ?: 0L
@@ -1449,10 +1451,9 @@ object TelegramStreamingProxy {
                     val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
                     val safeLimit = calculateSafeTdlibLimit(offset, totalSize, prefetchSizeMb, limit)
 
-                    val isStalled = attempts > 0 && attempts % 60 == 0
+                    val isStalled = attempts > 0 && attempts % 100 == 0
                     if (isStalled) {
-                        TeleflixLogger.log(TAG, "downloadChunk stall detected for fileId=$activeFileId offset=$offset at attempt $attempts. Resetting TDLib download task...")
-                        runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(activeFileId, false)) }
+                        TeleflixLogger.log(TAG, "downloadChunk stall check for fileId=$activeFileId offset=$offset at attempt $attempts. Re-triggering TDLib download...")
                         val refreshed = refreshFileId(activeFileId)
                         if (refreshed != null && refreshed != 0) {
                             activeFileId = refreshed
