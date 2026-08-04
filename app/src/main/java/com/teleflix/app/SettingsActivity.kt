@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -1241,21 +1242,27 @@ class SettingsActivity : AppCompatActivity() {
         }
         dialogView.addView(searchInput)
 
+        val contentContainer = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, UITheme.dpToPx(this@SettingsActivity, 350))
+        }
+
         val loadingIndicator = ProgressBar(this).apply {
             isIndeterminate = true
             visibility = android.view.View.VISIBLE
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER)
         }
-        dialogView.addView(loadingIndicator)
+        contentContainer.addView(loadingIndicator)
 
         val scrollView = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, UITheme.dpToPx(this@SettingsActivity, 350))
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             visibility = android.view.View.GONE
         }
         val chatListContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
         scrollView.addView(chatListContainer)
-        dialogView.addView(scrollView)
+        contentContainer.addView(scrollView)
+        dialogView.addView(contentContainer)
 
         val currentMonitored = TdlibManager.getChannels(this).map { it.username }.toMutableSet()
 

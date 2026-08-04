@@ -55,6 +55,15 @@ object TelegramRepository {
     private const val TAG = "TelegramRepository"
 
     val groupPartsCache = java.util.concurrent.ConcurrentHashMap<String, List<TelegramVideoMessage>>()
+    @Volatile private var cachedJoinedChats: List<TelegramChatInfo>? = null
+    val cachedForumTopics = java.util.concurrent.ConcurrentHashMap<Long, List<ForumTopicData>>()
+    val channelMediaCache = java.util.concurrent.ConcurrentHashMap<String, Pair<List<TelegramVideoMessage>, Long>>()
+
+    fun clearCaches() {
+        cachedJoinedChats = null
+        cachedForumTopics.clear()
+        channelMediaCache.clear()
+    }
 
     private var appContext: Context? = null
 
@@ -243,11 +252,70 @@ object TelegramRepository {
         return null
     }
 
-    suspend fun getJoinedChatsInfo(): List<TelegramChatInfo> {
-        val list = mutableListOf<TelegramChatInfo>()
-        val seen = mutableSetOf<Long>()
+    private suspend fun fetchChatDetails(id: Long, isArchived: Boolean): TelegramChatInfo? {
+        val chat = (try {
+            TelegramClient.sendRequest(TdApi.GetChat(id))
+        } catch (_: Exception) { null }) as? TdApi.Chat ?: return null
 
-        // 1. Thoroughly load all chats from Main and Archive chat lists
+        var isChannel = false
+        var isGroup = false
+        var isPrivate = false
+        var isBot = false
+        var chatUsername: String? = null
+
+        when (val t = chat.type) {
+            is TdApi.ChatTypeSupergroup -> {
+                if (t.isChannel) isChannel = true else isGroup = true
+            }
+            is TdApi.ChatTypeBasicGroup -> isGroup = true
+            is TdApi.ChatTypePrivate -> {
+                isPrivate = true
+                try {
+                    val user = TelegramClient.sendRequest(TdApi.GetUser(t.userId)) as? TdApi.User
+                    if (user != null) {
+                        if (user.type is TdApi.UserTypeBot) isBot = true
+                        chatUsername = user.usernames?.activeUsernames?.firstOrNull()
+                    }
+                } catch (_: Exception) {}
+            }
+            is TdApi.ChatTypeSecret -> isPrivate = true
+        }
+
+        val photoFileId = chat.photo?.small?.id
+        if (photoFileId != null && photoFileId > 0) {
+            runCatching {
+                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                    req.fileId = photoFileId
+                    req.priority = 1
+                    req.offset = 0
+                    req.limit = 0
+                    req.synchronous = false
+                })
+            }
+        }
+
+        return TelegramChatInfo(
+            chatId = chat.id,
+            title = chat.title,
+            username = chatUsername,
+            photoFileId = photoFileId,
+            isChannel = isChannel,
+            isGroup = isGroup,
+            isPrivate = isPrivate,
+            isBot = isBot,
+            isArchived = isArchived,
+            unreadCount = chat.unreadCount
+        )
+    }
+
+    suspend fun getJoinedChatsInfo(forceRefresh: Boolean = false): List<TelegramChatInfo> = coroutineScope {
+        if (!forceRefresh && !cachedJoinedChats.isNullOrEmpty()) {
+            return@coroutineScope cachedJoinedChats!!
+        }
+
+        val list = java.util.Collections.synchronizedList(mutableListOf<TelegramChatInfo>())
+        val seen = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
+
         val chatLists = listOf(
             Pair(TdApi.ChatListArchive(), true),
             Pair(TdApi.ChatListMain(), false)
@@ -257,149 +325,45 @@ object TelegramRepository {
             val chatList = listPair.first
             val isArchived = listPair.second
 
-            var loadAttempts = 0
-            while (loadAttempts < 10) {
-                val res = try {
-                    TelegramClient.sendRequest(TdApi.LoadChats(chatList, 100))
-                } catch (_: Exception) { null }
-                if (res is TdApi.Error && res.code == 404) {
-                    break
-                }
-                loadAttempts++
-            }
+            try {
+                TelegramClient.sendRequest(TdApi.LoadChats(chatList, 100))
+            } catch (_: Exception) {}
 
             val chatsObj = (try {
                 TelegramClient.sendRequest(TdApi.GetChats(chatList, 500))
             } catch (_: Exception) { null }) as? TdApi.Chats
 
             if (chatsObj != null) {
-                for (id in chatsObj.chatIds) {
-                    if (!seen.add(id)) continue
-                    val chat = (try {
-                        TelegramClient.sendRequest(TdApi.GetChat(id))
-                    } catch (_: Exception) { null }) as? TdApi.Chat ?: continue
-
-                    var isChannel = false
-                    var isGroup = false
-                    var isPrivate = false
-                    var isBot = false
-                    var chatUsername: String? = null
-
-                    when (val t = chat.type) {
-                        is TdApi.ChatTypeSupergroup -> {
-                            if (t.isChannel) isChannel = true else isGroup = true
-                        }
-                        is TdApi.ChatTypeBasicGroup -> isGroup = true
-                        is TdApi.ChatTypePrivate -> {
-                            isPrivate = true
-                            try {
-                                val user = TelegramClient.sendRequest(TdApi.GetUser(t.userId)) as? TdApi.User
-                                if (user != null) {
-                                    if (user.type is TdApi.UserTypeBot) isBot = true
-                                    chatUsername = user.usernames?.activeUsernames?.firstOrNull()
-                                }
-                            } catch (_: Exception) {}
-                        }
-                        is TdApi.ChatTypeSecret -> isPrivate = true
+                val unvisitedIds = chatsObj.chatIds.filter { seen.add(it) }
+                val tasks = unvisitedIds.map { id ->
+                    async(Dispatchers.IO) {
+                        fetchChatDetails(id, isArchived)
                     }
-
-                    val photoFileId = chat.photo?.small?.id
-                    if (photoFileId != null && photoFileId > 0) {
-                        runCatching {
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = photoFileId
-                                req.priority = 1
-                                req.offset = 0
-                                req.limit = 0
-                                req.synchronous = false
-                            })
-                        }
-                    }
-
-                    list.add(
-                        TelegramChatInfo(
-                            chatId = chat.id,
-                            title = chat.title,
-                            username = chatUsername,
-                            photoFileId = photoFileId,
-                            isChannel = isChannel,
-                            isGroup = isGroup,
-                            isPrivate = isPrivate,
-                            isBot = isBot,
-                            isArchived = isArchived,
-                            unreadCount = chat.unreadCount
-                        )
-                    )
                 }
+                val results = tasks.awaitAll().filterNotNull()
+                list.addAll(results)
             }
         }
 
-        // 2. Also search server for any additional joined chats
         try {
             val serverChats = TelegramClient.sendRequest(TdApi.SearchChatsOnServer("", 100)) as? TdApi.Chats
             if (serverChats != null) {
-                for (id in serverChats.chatIds) {
-                    if (!seen.add(id)) continue
-                    val chat = (try {
-                        TelegramClient.sendRequest(TdApi.GetChat(id))
-                    } catch (_: Exception) { null }) as? TdApi.Chat ?: continue
-
-                    var isChannel = false
-                    var isGroup = false
-                    var isPrivate = false
-                    var isBot = false
-                    var chatUsername: String? = null
-
-                    when (val t = chat.type) {
-                        is TdApi.ChatTypeSupergroup -> {
-                            if (t.isChannel) isChannel = true else isGroup = true
-                        }
-                        is TdApi.ChatTypeBasicGroup -> isGroup = true
-                        is TdApi.ChatTypePrivate -> {
-                            isPrivate = true
-                            try {
-                                val user = TelegramClient.sendRequest(TdApi.GetUser(t.userId)) as? TdApi.User
-                                if (user != null) {
-                                    if (user.type is TdApi.UserTypeBot) isBot = true
-                                    chatUsername = user.usernames?.activeUsernames?.firstOrNull()
-                                }
-                            } catch (_: Exception) {}
-                        }
-                        is TdApi.ChatTypeSecret -> isPrivate = true
+                val unvisitedIds = serverChats.chatIds.filter { seen.add(it) }
+                val tasks = unvisitedIds.map { id ->
+                    async(Dispatchers.IO) {
+                        fetchChatDetails(id, isArchived = false)
                     }
-
-                    val photoFileId = chat.photo?.small?.id
-                    if (photoFileId != null && photoFileId > 0) {
-                        runCatching {
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = photoFileId
-                                req.priority = 1
-                                req.offset = 0
-                                req.limit = 0
-                                req.synchronous = false
-                            })
-                        }
-                    }
-
-                    list.add(
-                        TelegramChatInfo(
-                            chatId = chat.id,
-                            title = chat.title,
-                            username = chatUsername,
-                            photoFileId = photoFileId,
-                            isChannel = isChannel,
-                            isGroup = isGroup,
-                            isPrivate = isPrivate,
-                            isBot = isBot,
-                            isArchived = false,
-                            unreadCount = chat.unreadCount
-                        )
-                    )
                 }
+                val results = tasks.awaitAll().filterNotNull()
+                list.addAll(results)
             }
         } catch (_: Exception) {}
 
-        return list
+        val resultList = list.toList()
+        if (resultList.isNotEmpty()) {
+            cachedJoinedChats = resultList
+        }
+        return@coroutineScope resultList
     }
 
     suspend fun getChatPhotoFileId(chatId: Long): Int? {
@@ -437,8 +401,8 @@ object TelegramRepository {
         }
     }
 
-    suspend fun getChannelVideos(identifier: String, page: Int, limit: Int = 50): Pair<String, List<TelegramVideoMessage>>? {
-        val chatId = getChatId(identifier) ?: return null
+    suspend fun getChannelVideos(identifier: String, page: Int, limit: Int = 50): Pair<String, List<TelegramVideoMessage>>? = coroutineScope {
+        val chatId = getChatId(identifier) ?: return@coroutineScope null
 
         var title = identifier
         try {
@@ -448,8 +412,8 @@ object TelegramRepository {
             Log.w(TAG, "Failed to load title for channel $identifier: ${e.message}")
         }
         
-        val results = mutableListOf<TelegramVideoMessage>()
-        val seen = mutableSetOf<Pair<String, Long>>()
+        val results = java.util.Collections.synchronizedList(mutableListOf<TelegramVideoMessage>())
+        val seen = java.util.Collections.synchronizedSet(mutableSetOf<Pair<String, Long>>())
 
         val prefs = TelegramRepository.getContext().getSharedPreferences("telegram_pagination", android.content.Context.MODE_PRIVATE)
         if (page == 1) {
@@ -468,12 +432,10 @@ object TelegramRepository {
         var fetchVid = currentVidCursor != -1L
         var fetchAud = currentAudCursor != -1L
 
-        // Loop until we find at least one valid video/document or reach the end of history.
-        // This prevents pagination from breaking if a chunk of 50 messages contains only non-video documents (e.g. PDFs/SRTs).
         while (results.isEmpty() && (fetchDoc || fetchVid || fetchAud)) {
-            if (fetchDoc) {
+            val docDeferred = if (fetchDoc) async(Dispatchers.IO) {
                 try {
-                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                    TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
                         req.chatId = chatId
                         req.query = ""
                         req.senderId = null
@@ -482,26 +444,16 @@ object TelegramRepository {
                         req.limit = limit
                         req.filter = TdApi.SearchMessagesFilterDocument()
                         req.topicId = null
-                    })
-                    
-                    val found = (historyResult as? TdApi.FoundChatMessages)
-                    if (found != null) {
-                        currentDocCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
-                        prefs.edit().putLong("${chatId}_doc_page_${page + 1}", currentDocCursor).apply()
-                        fetchDoc = currentDocCursor != -1L
-                        for (msg in found.messages) extractMediaMessage(msg, seen, results)
-                    } else {
-                        fetchDoc = false
-                    }
+                    }) as? TdApi.FoundChatMessages
                 } catch (e: Exception) {
                     Log.e(TAG, "Search document messages failed: ${e.message}")
-                    fetchDoc = false
+                    null
                 }
-            }
+            } else null
 
-            if (fetchVid) {
+            val vidDeferred = if (fetchVid) async(Dispatchers.IO) {
                 try {
-                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                    TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
                         req.chatId = chatId
                         req.query = ""
                         req.senderId = null
@@ -510,26 +462,16 @@ object TelegramRepository {
                         req.limit = limit
                         req.filter = TdApi.SearchMessagesFilterVideo()
                         req.topicId = null
-                    })
-                    
-                    val found = (historyResult as? TdApi.FoundChatMessages)
-                    if (found != null) {
-                        currentVidCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
-                        prefs.edit().putLong("${chatId}_vid_page_${page + 1}", currentVidCursor).apply()
-                        fetchVid = currentVidCursor != -1L
-                        for (msg in found.messages) extractMediaMessage(msg, seen, results)
-                    } else {
-                        fetchVid = false
-                    }
+                    }) as? TdApi.FoundChatMessages
                 } catch (e: Exception) {
                     Log.e(TAG, "Search video messages failed: ${e.message}")
-                    fetchVid = false
+                    null
                 }
-            }
+            } else null
 
-            if (fetchAud) {
+            val audDeferred = if (fetchAud) async(Dispatchers.IO) {
                 try {
-                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                    TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
                         req.chatId = chatId
                         req.query = ""
                         req.senderId = null
@@ -538,28 +480,47 @@ object TelegramRepository {
                         req.limit = limit
                         req.filter = TdApi.SearchMessagesFilterAudio()
                         req.topicId = null
-                    })
-                    
-                    val found = (historyResult as? TdApi.FoundChatMessages)
-                    if (found != null) {
-                        currentAudCursor = if (found.nextFromMessageId == 0L) -1L else found.nextFromMessageId
-                        prefs.edit().putLong("${chatId}_aud_page_${page + 1}", currentAudCursor).apply()
-                        fetchAud = currentAudCursor != -1L
-                        for (msg in found.messages) extractMediaMessage(msg, seen, results)
-                    } else {
-                        fetchAud = false
-                    }
+                    }) as? TdApi.FoundChatMessages
                 } catch (e: Exception) {
                     Log.e(TAG, "Search audio messages failed: ${e.message}")
-                    fetchAud = false
+                    null
                 }
+            } else null
+
+            val docFound = docDeferred?.await()
+            if (docFound != null) {
+                currentDocCursor = if (docFound.nextFromMessageId == 0L) -1L else docFound.nextFromMessageId
+                prefs.edit().putLong("${chatId}_doc_page_${page + 1}", currentDocCursor).apply()
+                fetchDoc = currentDocCursor != -1L
+                for (msg in docFound.messages) extractMediaMessage(msg, seen, results)
+            } else if (fetchDoc) {
+                fetchDoc = false
+            }
+
+            val vidFound = vidDeferred?.await()
+            if (vidFound != null) {
+                currentVidCursor = if (vidFound.nextFromMessageId == 0L) -1L else vidFound.nextFromMessageId
+                prefs.edit().putLong("${chatId}_vid_page_${page + 1}", currentVidCursor).apply()
+                fetchVid = currentVidCursor != -1L
+                for (msg in vidFound.messages) extractMediaMessage(msg, seen, results)
+            } else if (fetchVid) {
+                fetchVid = false
+            }
+
+            val audFound = audDeferred?.await()
+            if (audFound != null) {
+                currentAudCursor = if (audFound.nextFromMessageId == 0L) -1L else audFound.nextFromMessageId
+                prefs.edit().putLong("${chatId}_aud_page_${page + 1}", currentAudCursor).apply()
+                fetchAud = currentAudCursor != -1L
+                for (msg in audFound.messages) extractMediaMessage(msg, seen, results)
+            } else if (fetchAud) {
+                fetchAud = false
             }
         }
 
-        
         results.sortByDescending { it.messageId }
 
-        return title to results
+        return@coroutineScope title to results
     }
 
     suspend fun isForumChannel(chatId: Long): Boolean {
@@ -574,7 +535,11 @@ object TelegramRepository {
         }
     }
 
-    suspend fun getForumTopics(chatId: Long): List<ForumTopicData> {
+    suspend fun getForumTopics(chatId: Long, forceRefresh: Boolean = false): List<ForumTopicData> = coroutineScope {
+        if (!forceRefresh && cachedForumTopics.containsKey(chatId)) {
+            return@coroutineScope cachedForumTopics[chatId] ?: emptyList()
+        }
+
         val results = mutableListOf<ForumTopicData>()
         var channelTitle = ""
         try {
@@ -618,38 +583,40 @@ object TelegramRepository {
             Log.e(TAG, "Failed to get forum topics: ${e.message}")
         }
 
-        // Fetch thumbnail from first video in each topic
-        for (i in results.indices) {
-            val topicData = results[i]
-            try {
+        // Fetch thumbnails in parallel for each topic
+        val updatedResults = results.map { topicData ->
+            async(Dispatchers.IO) {
+                var thumbChatId = 0L
+                var thumbMsgId = 0L
                 val topicFilter = TdApi.MessageTopicForum(topicData.topicId)
                 for (filter in listOf(TdApi.SearchMessagesFilterVideo(), TdApi.SearchMessagesFilterDocument(), TdApi.SearchMessagesFilterAudio())) {
-                    val searchResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
-                        req.chatId = chatId
-                        req.topicId = topicFilter
-                        req.query = ""
-                        req.senderId = null
-                        req.fromMessageId = 0
-                        req.offset = 0
-                        req.limit = 1
-                        req.filter = filter
-                    })
-                    val found = (searchResult as? TdApi.FoundChatMessages)
-                    if (found != null && found.messages.isNotEmpty()) {
-                        val msg = found.messages[0]
-                        results[i] = topicData.copy(
-                            thumbnailChatId = chatId,
-                            thumbnailMessageId = msg.id
-                        )
-                        break
-                    }
+                    try {
+                        val searchResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                            req.chatId = chatId
+                            req.topicId = topicFilter
+                            req.query = ""
+                            req.senderId = null
+                            req.fromMessageId = 0
+                            req.offset = 0
+                            req.limit = 1
+                            req.filter = filter
+                        })
+                        val found = (searchResult as? TdApi.FoundChatMessages)
+                        if (found != null && found.messages.isNotEmpty()) {
+                            thumbChatId = chatId
+                            thumbMsgId = found.messages[0].id
+                            break
+                        }
+                    } catch (_: Exception) {}
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to fetch thumbnail for topic ${topicData.topicId}: ${e.message}")
+                topicData.copy(thumbnailChatId = thumbChatId, thumbnailMessageId = thumbMsgId)
             }
-        }
+        }.awaitAll()
 
-        return results
+        if (updatedResults.isNotEmpty()) {
+            cachedForumTopics[chatId] = updatedResults
+        }
+        return@coroutineScope updatedResults
     }
 
     private fun getTopicEmoji(info: TdApi.ForumTopicInfo): String {
@@ -1073,11 +1040,17 @@ object TelegramRepository {
         fromMessageId: Long = 0L,
         topicId: Int = 0,
         limit: Int = 100,
-        includeAudio: Boolean = true
-    ): Pair<List<TelegramVideoMessage>, Long> {
-        val results = mutableListOf<TelegramVideoMessage>()
-        val seen = mutableSetOf<Pair<String, Long>>()
-        val chatId = getChatId(channelUsernameOrId) ?: return Pair(emptyList(), 0L)
+        includeAudio: Boolean = true,
+        forceRefresh: Boolean = false
+    ): Pair<List<TelegramVideoMessage>, Long> = coroutineScope {
+        val cacheKey = "$channelUsernameOrId-$fromMessageId-$topicId-$limit-$includeAudio"
+        if (!forceRefresh && channelMediaCache.containsKey(cacheKey)) {
+            return@coroutineScope channelMediaCache[cacheKey]!!
+        }
+
+        val results = java.util.Collections.synchronizedList(mutableListOf<TelegramVideoMessage>())
+        val seen = java.util.Collections.synchronizedSet(mutableSetOf<Pair<String, Long>>())
+        val chatId = getChatId(channelUsernameOrId) ?: return@coroutineScope Pair(emptyList(), 0L)
 
         val topicFilter = if (topicId > 0) TdApi.MessageTopicForum(topicId) else null
 
@@ -1091,33 +1064,45 @@ object TelegramRepository {
 
         var minNextMessageId = 0L
 
-        for (filter in filters) {
-            try {
-                val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
-                    req.chatId = chatId
-                    req.query = ""
-                    req.senderId = null
-                    req.fromMessageId = fromMessageId
-                    req.offset = 0
-                    req.limit = limit
-                    req.filter = filter
-                    req.topicId = topicFilter
-                })
-                val found = (historyResult as? TdApi.FoundChatMessages) ?: continue
+        val tasks = filters.map { filter ->
+            async(Dispatchers.IO) {
+                try {
+                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.query = ""
+                        req.senderId = null
+                        req.fromMessageId = fromMessageId
+                        req.offset = 0
+                        req.limit = limit
+                        req.filter = filter
+                        req.topicId = topicFilter
+                    })
+                    val found = (historyResult as? TdApi.FoundChatMessages) ?: return@async 0L
 
-                for (msg in found.messages) {
-                    extractMediaMessage(msg, seen, results)
+                    for (msg in found.messages) {
+                        extractMediaMessage(msg, seen, results)
+                    }
+                    found.messages.lastOrNull()?.id ?: 0L
+                } catch (e: Exception) {
+                    Log.e(TAG, "fetchChannelMedia error for $channelUsernameOrId: ${e.message}")
+                    0L
                 }
-                val lastId = found.messages.lastOrNull()?.id ?: 0L
-                if (lastId > 0L && (minNextMessageId == 0L || lastId < minNextMessageId)) {
-                    minNextMessageId = lastId
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "fetchChannelMedia error for $channelUsernameOrId: ${e.message}")
             }
         }
+
+        val lastIds = tasks.awaitAll()
+        for (lastId in lastIds) {
+            if (lastId > 0L && (minNextMessageId == 0L || lastId < minNextMessageId)) {
+                minNextMessageId = lastId
+            }
+        }
+
         val sorted = results.sortedByDescending { it.messageId }
-        return Pair(sorted, minNextMessageId)
+        val res = Pair(sorted, minNextMessageId)
+        if (sorted.isNotEmpty()) {
+            channelMediaCache[cacheKey] = res
+        }
+        return@coroutineScope res
     }
 
     fun getStreamUrl(fileId: Int, fileName: String, expectedSize: Long = 0L, chatId: Long = 0L, messageId: Long = 0L): String =
