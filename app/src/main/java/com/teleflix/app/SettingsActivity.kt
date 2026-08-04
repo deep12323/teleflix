@@ -1326,8 +1326,12 @@ class SettingsActivity : AppCompatActivity() {
                             val thumbUrl = TelegramStreamingProxy.getThumbnailUrl(chat.photoFileId)
                             com.bumptech.glide.Glide.with(this@SettingsActivity)
                                 .load(thumbUrl)
+                                .placeholder(android.R.drawable.ic_menu_gallery)
+                                .error(android.R.drawable.ic_menu_gallery)
                                 .circleCrop()
                                 .into(avatarView)
+                        } else {
+                            avatarView.setImageResource(android.R.drawable.ic_menu_gallery)
                         }
                         row.addView(avatarView)
 

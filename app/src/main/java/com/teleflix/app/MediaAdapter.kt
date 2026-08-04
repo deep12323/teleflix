@@ -68,14 +68,11 @@ class MediaAdapter(
                     }
                 }
 
-                val iconView = TextView(context).apply {
-                    text = "💬"
-                    textSize = 20f
-                    gravity = Gravity.CENTER
-                    background = UITheme.createCardShape(context, UITheme.SECONDARY, 14, UITheme.STROKE_COLOR, 1)
-                    layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+                val posterView = ImageView(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply {
                         setMargins(0, 0, dp(14), 0)
                     }
+                    scaleType = ImageView.ScaleType.CENTER_CROP
                 }
 
                 val textContainer = LinearLayout(context).apply {
@@ -108,11 +105,11 @@ class MediaAdapter(
                 textContainer.addView(titleView)
                 textContainer.addView(descView)
 
-                row.addView(iconView)
+                row.addView(posterView)
                 row.addView(textContainer)
                 row.addView(arrowView)
 
-                return ViewHolder(layout = row, titleText = titleView, overviewText = descView, iconText = iconView)
+                return ViewHolder(layout = row, posterView = posterView, titleText = titleView, overviewText = descView)
             }
 
             VIEW_TYPE_TELEGRAM_MEDIA -> {
