@@ -197,7 +197,9 @@ object TdlibManager {
                     if (isZipGroup) {
                         val freshIds = group.parts.map { it.fileId }
                         val partSizes = group.parts.map { it.fileSize }
-                        val zipUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes)
+                        val groupChats = group.parts.map { it.chatId }
+                        val groupMsgs = group.parts.map { it.messageId }
+                        val zipUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes, groupChats, groupMsgs)
                         resultSources.add(
                             StreamSource(
                                 id = "zip_${firstPart.chatId}_${firstPart.messageId}",
@@ -232,14 +234,15 @@ object TdlibManager {
                 is DisplayItem.Single -> {
                     val msg = item.message
                     val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+                    val isZip = TelegramRepository.isZipArchiveFilename(msg.fileName)
                     val sizeStr = formatBytes(msg.fileSize)
-                    val streamUrl = if (ext == "zip" && msg.fileSize > 1_000_000) {
+                    val streamUrl = if (isZip && msg.fileSize > 1_000_000) {
                         TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
                     } else {
                         TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
                     }
                     val qualityTag = extractQualityTag(msg.fileName)
-                    val prefix = if (ext == "zip") "🗄️ " else "📺 "
+                    val prefix = if (isZip) "🗄️ " else "📺 "
                     resultSources.add(
                         StreamSource(
                             id = "${msg.chatId}_${msg.messageId}",
@@ -248,7 +251,7 @@ object TdlibManager {
                             size = sizeStr,
                             channel = "Telegram Stream",
                             url = streamUrl,
-                            isZip = (ext == "zip")
+                            isZip = isZip
                         )
                     )
                 }

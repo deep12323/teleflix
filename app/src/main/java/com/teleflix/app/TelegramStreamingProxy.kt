@@ -140,8 +140,8 @@ object TelegramStreamingProxy {
         lastDownloadRequestTime[fileId] = now
 
         try {
-            // Cancel stuck TDLib download task on major offset jumps (rate-limited by lastDownloadRequestTime check)
-            if (isOffsetJump && (now - lastTime) >= 500L && !DownloadManager.isFileIdActive(fileId)) {
+            // Cancel stuck TDLib download task on major offset jumps
+            if (isOffsetJump && !DownloadManager.isFileIdActive(fileId)) {
                 runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
             }
 
@@ -380,6 +380,26 @@ object TelegramStreamingProxy {
                 val queryStr = path.substringAfter("?", "")
                 urlSize = queryStr.split("&").find { it.startsWith("size=") }
                     ?.substringAfter("=")?.toLongOrNull() ?: 0L
+
+                val isSplitPart = zipInnerName != null && Regex("(?i)\\.(zip\\.\\d+|z\\d+|part\\d+|7z\\.\\d+)$").containsMatchIn(zipInnerName)
+                val reqChatId = queryStr.split("&").find { it.startsWith("chatId=") }?.substringAfter("=")?.toLongOrNull() ?: 0L
+                val reqMessageId = queryStr.split("&").find { it.startsWith("messageId=") }?.substringAfter("=")?.toLongOrNull() ?: 0L
+
+                if (isSplitPart && reqChatId != 0L && reqMessageId != 0L) {
+                    val mediaMessages = runCatching { TelegramRepository.fetchChannelMedia(reqChatId.toString(), limit = 1000).first }.getOrNull()
+                    if (mediaMessages != null) {
+                        val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+                        val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
+                            .find { g -> g.group.parts.any { it.messageId == reqMessageId } }
+                        if (matchGroup != null && matchGroup.group.parts.size > 1) {
+                            mergedFileIds = matchGroup.group.parts.map { it.fileId }
+                            mergedSizes = matchGroup.group.parts.map { it.fileSize }
+                            fileName = matchGroup.group.baseName
+                            urlSize = mergedSizes.sum()
+                            fileId = mergedFileIds.firstOrNull()
+                        }
+                    }
+                }
             }
 
             val queryStr = path.substringAfter("?", "")
@@ -396,10 +416,12 @@ object TelegramStreamingProxy {
             if (fileId != null && reqChatId != 0L && reqMessageId != 0L) {
                 registerFileMessage(fileId, reqChatId, reqMessageId)
             }
-            if (mergedFileIds != null && reqChats.size == mergedFileIds.size && reqMessages.size == mergedFileIds.size) {
+            if (mergedFileIds != null) {
                 mergedFileIds.forEachIndexed { i, fId ->
-                    if (reqChats[i] != 0L && reqMessages[i] != 0L) {
-                        registerFileMessage(fId, reqChats[i], reqMessages[i])
+                    val cId = reqChats.getOrNull(i) ?: reqChatId
+                    val mId = reqMessages.getOrNull(i) ?: reqMessageId
+                    if (cId != 0L && mId != 0L) {
+                        registerFileMessage(fId, cId, mId)
                     }
                 }
             }
@@ -425,9 +447,11 @@ object TelegramStreamingProxy {
             if (isThumbnail) {
                 serveThumbnail(fileId, output, isHead)
             } else if (mergedFileIds != null && mergedSizes != null && mergedFileIds!!.size == mergedSizes!!.size) {
-                streamMergedFile(mergedFileIds!!, mergedSizes!!, fileName, rangeHeader, output, isHead)
+                streamMergedFile(mergedFileIds!!, mergedSizes!!, fileName ?: zipInnerName, rangeHeader, output, isHead)
             } else if (zipInnerName != null) {
                 streamZipEntry(fileId, zipInnerName!!, rangeHeader, output, urlSize, isHead)
+            } else if (fileName != null && TelegramRepository.isZipArchiveFilename(fileName)) {
+                streamZipEntryFromMergedOrSingle(listOf(fileId), listOf(if (urlSize > 0L) urlSize else getFileInfo(fileId)?.second ?: 0L), fileName, rangeHeader, output, isHead)
             } else {
                 streamFile(fileId, fileName, rangeHeader, output, urlSize, isHead)
             }
@@ -669,12 +693,12 @@ object TelegramStreamingProxy {
         while ((chunk == null || chunk.isEmpty()) && retries < 10 && running) {
             val currentPartId = resolveFileId(partFileId)
             val hasRef = fileToMessageMap.containsKey(currentPartId) || fileToMessageMap.containsKey(partFileId)
-            if (!hasRef && chunk == null) {
-                TeleflixLogger.log(TAG, "readChunkFromMerged: partFileId=$partFileId not found in TDLib and no message reference available, stopping retries", isError = true)
-                break
+            if (hasRef) {
+                refreshFileId(currentPartId)
             }
+            triggerTdlibDownload(resolveFileId(partFileId), alignedPartOffset, safeLimit, force = true)
             kotlinx.coroutines.delay(300)
-            chunk = downloadChunk(currentPartId, partOffset, chunkSize)
+            chunk = downloadChunk(resolveFileId(partFileId), partOffset, chunkSize)
             retries++
         }
         return chunk
@@ -707,8 +731,8 @@ object TelegramStreamingProxy {
         output: java.io.OutputStream,
         isHead: Boolean = false
     ) {
-        val ext = fileName?.substringAfterLast('.', "")?.lowercase() ?: ""
-        if (ext == "zip") {
+        val isZip = fileName != null && TelegramRepository.isZipArchiveFilename(fileName)
+        if (isZip) {
             streamZipEntryFromMergedOrSingle(fileIds, sizes, fileName, rangeHeader, output, isHead)
             return
         }
@@ -721,10 +745,12 @@ object TelegramStreamingProxy {
         fileName: String?,
         rangeHeader: String?,
         output: java.io.OutputStream,
-        isHead: Boolean = false
+        isHead: Boolean = false,
+        payloadOffset: Long = 0L
     ) {
-        val totalSize = sizes.sum()
-        if (totalSize <= 0L || fileIds.isEmpty()) {
+        val totalRawSize = sizes.sum()
+        val effectiveSize = maxOf(0L, totalRawSize - payloadOffset)
+        if (effectiveSize <= 0L || fileIds.isEmpty()) {
             output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
             return
         }
@@ -751,11 +777,11 @@ object TelegramStreamingProxy {
         val end: Long
 
         if (rangeStart == null && rangeEnd != null) {
-            start = maxOf(0L, totalSize - rangeEnd)
-            end = totalSize - 1L
+            start = maxOf(0L, effectiveSize - rangeEnd)
+            end = effectiveSize - 1L
         } else {
             start = rangeStart ?: 0L
-            end = rangeEnd ?: (totalSize - 1L)
+            end = rangeEnd ?: (effectiveSize - 1L)
         }
         val length = end - start + 1
 
@@ -770,7 +796,7 @@ object TelegramStreamingProxy {
             append("Accept-Ranges: bytes\r\n")
             append("Content-Length: $length\r\n")
             if (rangeHeader != null) {
-                append("Content-Range: bytes $start-$end/$totalSize\r\n")
+                append("Content-Range: bytes $start-$end/$effectiveSize\r\n")
             }
             append("Content-Type: $mimeType\r\n")
             append("Content-Disposition: inline; filename=\"$safeFileName\"\r\n")
@@ -788,7 +814,7 @@ object TelegramStreamingProxy {
         var offset = start
         while (offset <= end && running) {
             val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
-            val bytes = readChunkFromMerged(fileIds, sizes, offset, chunkSize)
+            val bytes = readChunkFromMerged(fileIds, sizes, payloadOffset + offset, chunkSize)
             if (bytes == null || bytes.isEmpty()) break
             output.write(bytes)
             output.flush()
@@ -862,7 +888,25 @@ object TelegramStreamingProxy {
         }
 
         if (eocdData == null || eocdData.size < 22 || eocdPos < 0) {
-            TeleflixLogger.log(TAG, "No valid ZIP EOCD signature found for '$requestedInnerName' - falling back to raw merged file stream")
+            TeleflixLogger.log(TAG, "No valid ZIP EOCD signature found for '$requestedInnerName' - checking for Local File Header at offset 0")
+            val startHeader = readBufferFromMerged(fileIds, sizes, 0L, 30)
+            if (startHeader != null && startHeader.size >= 30 &&
+                startHeader[0] == 0x50.toByte() && startHeader[1] == 0x4B.toByte() &&
+                startHeader[2] == 0x03.toByte() && startHeader[3] == 0x04.toByte()
+            ) {
+                fun readLocalUInt16(data: ByteArray, off: Int): Int =
+                    (data[off].toInt() and 0xFF) or ((data[off + 1].toInt() and 0xFF) shl 8)
+                val compressionMethod = readLocalUInt16(startHeader, 8)
+                val nameLen = readLocalUInt16(startHeader, 26)
+                val extraLen = readLocalUInt16(startHeader, 28)
+                val dataOffset = 30L + nameLen + extraLen
+                TeleflixLogger.log(TAG, "Found ZIP Local File Header at offset 0: dataOffset=$dataOffset, compressionMethod=$compressionMethod")
+                if (compressionMethod == 0) {
+                    streamMergedFileRaw(fileIds, sizes, requestedInnerName, rangeHeader, output, isHead, dataOffset)
+                    return
+                }
+            }
+            TeleflixLogger.log(TAG, "Falling back to raw merged file stream for '$requestedInnerName'")
             streamMergedFileRaw(fileIds, sizes, requestedInnerName, rangeHeader, output, isHead)
             return
         }
@@ -975,7 +1019,7 @@ object TelegramStreamingProxy {
 
         var target: ZipEntry? = null
 
-        if (!requestedInnerName.isNullOrBlank() && !requestedInnerName.lowercase().endsWith(".zip")) {
+        if (!requestedInnerName.isNullOrBlank() && !TelegramRepository.isZipArchiveFilename(requestedInnerName)) {
             target = entries.find { it.name.equals(requestedInnerName, ignoreCase = true) }
                 ?: entries.find { it.name.substringAfterLast('/').equals(requestedInnerName, ignoreCase = true) }
         }
@@ -1139,10 +1183,12 @@ object TelegramStreamingProxy {
         messageIds: List<Long> = emptyList()
     ): String {
         ensureRunning()
-        if (chatIds.size == fileIds.size && messageIds.size == fileIds.size) {
+        if (chatIds.isNotEmpty() && messageIds.isNotEmpty()) {
             fileIds.forEachIndexed { i, fId ->
-                if (chatIds[i] != 0L && messageIds[i] != 0L) {
-                    registerFileMessage(fId, chatIds[i], messageIds[i])
+                val cId = chatIds.getOrNull(i) ?: 0L
+                val mId = messageIds.getOrNull(i) ?: 0L
+                if (cId != 0L && mId != 0L) {
+                    registerFileMessage(fId, cId, mId)
                 }
             }
         }
@@ -1150,7 +1196,7 @@ object TelegramStreamingProxy {
         val szs = sizes.joinToString(",")
         val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
         var url = "http://127.0.0.1:$port/merged/$ids/$encodedName?sizes=$szs"
-        if (chatIds.size == fileIds.size && messageIds.size == fileIds.size && chatIds.any { it != 0L }) {
+        if (chatIds.isNotEmpty() && messageIds.isNotEmpty() && chatIds.any { it != 0L }) {
             url += "&chats=${chatIds.joinToString(",")}&messages=${messageIds.joinToString(",")}"
         }
         return "$url&token=$authToken"

@@ -1214,8 +1214,9 @@ class MainActivity : AppCompatActivity() {
                                 val msg = dItem.message
                                 val key = "${msg.chatId}_${msg.messageId}"
                                 val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+                                val isZip = TelegramRepository.isZipArchiveFilename(msg.fileName)
                                 val formattedSize = formatFileSize(msg.fileSize)
-                                val url = if (ext == "zip" && msg.fileSize > 1_000_000) {
+                                val url = if (isZip && msg.fileSize > 1_000_000) {
                                     TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                                 } else {
                                     TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
@@ -1223,7 +1224,7 @@ class MainActivity : AppCompatActivity() {
                                 telegramStreamCache[key] = Pair(url, msg.fileName.ifBlank { "Telegram Media" })
                                 val isAudio = msg.mimeType.startsWith("audio/")
                                 val badge = when {
-                                    ext == "zip" -> "🗄️ ZIP Stream"
+                                    isZip -> "🗄️ ZIP Stream"
                                     isAudio -> "🎵 Audio"
                                     else -> "🎬 Video"
                                 }
@@ -1233,7 +1234,7 @@ class MainActivity : AppCompatActivity() {
                                 mediaList.add(
                                     MediaItem(
                                         id = key,
-                                        title = if (ext == "zip") "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
+                                        title = if (isZip) "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
                                         posterUrl = thumbUrl,
                                         year = formattedSize,
                                         rating = badge,
@@ -1334,8 +1335,9 @@ class MainActivity : AppCompatActivity() {
                                 val msg = dItem.message
                                 val key = "${msg.chatId}_${msg.messageId}"
                                 val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+                                val isZip = TelegramRepository.isZipArchiveFilename(msg.fileName)
                                 val formattedSize = formatFileSize(msg.fileSize)
-                                val url = if (ext == "zip" && msg.fileSize > 1_000_000) {
+                                val url = if (isZip && msg.fileSize > 1_000_000) {
                                     TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                                 } else {
                                     TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
@@ -1343,7 +1345,7 @@ class MainActivity : AppCompatActivity() {
                                 telegramStreamCache[key] = Pair(url, msg.fileName.ifBlank { "Telegram Media" })
                                 val isAudio = msg.mimeType.startsWith("audio/")
                                 val badge = when {
-                                    ext == "zip" -> "🗄️ ZIP Stream"
+                                    isZip -> "🗄️ ZIP Stream"
                                     isAudio -> "🎵 Audio"
                                     else -> "🎬 Video"
                                 }
@@ -1353,7 +1355,7 @@ class MainActivity : AppCompatActivity() {
                                 mediaList.add(
                                     MediaItem(
                                         id = key,
-                                        title = if (ext == "zip") "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
+                                        title = if (isZip) "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
                                         posterUrl = thumbUrl,
                                         year = formattedSize,
                                         rating = badge,
@@ -1434,8 +1436,9 @@ class MainActivity : AppCompatActivity() {
                                 val msg = dItem.message
                                 val key = "${msg.chatId}_${msg.messageId}"
                                 val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+                                val isZip = TelegramRepository.isZipArchiveFilename(msg.fileName)
                                 val formattedSize = formatFileSize(msg.fileSize)
-                                val url = if (ext == "zip" && msg.fileSize > 1_000_000) {
+                                val url = if (isZip && msg.fileSize > 1_000_000) {
                                     TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                                 } else {
                                     TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
@@ -1443,7 +1446,7 @@ class MainActivity : AppCompatActivity() {
                                 telegramStreamCache[key] = Pair(url, msg.fileName.ifBlank { "Telegram Media" })
                                 val isAudio = msg.mimeType.startsWith("audio/")
                                 val badge = when {
-                                    ext == "zip" -> "🗄️ ZIP Stream"
+                                    isZip -> "🗄️ ZIP Stream"
                                     isAudio -> "🎵 Audio"
                                     else -> "🎬 Video"
                                 }
@@ -1453,7 +1456,7 @@ class MainActivity : AppCompatActivity() {
                                 newMediaItems.add(
                                     MediaItem(
                                         id = key,
-                                        title = if (ext == "zip") "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
+                                        title = if (isZip) "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
                                         posterUrl = thumbUrl,
                                         year = formattedSize,
                                         rating = badge,
@@ -1537,8 +1540,9 @@ class MainActivity : AppCompatActivity() {
                                 val msg = dItem.message
                                 val key = "${msg.chatId}_${msg.messageId}"
                                 val ext = msg.fileName.substringAfterLast('.', "").lowercase()
+                                val isZip = TelegramRepository.isZipArchiveFilename(msg.fileName)
                                 val formattedSize = formatFileSize(msg.fileSize)
-                                val url = if (ext == "zip" && msg.fileSize > 1_000_000) {
+                                val url = if (isZip && msg.fileSize > 1_000_000) {
                                     TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                                 } else {
                                     TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
@@ -1546,7 +1550,7 @@ class MainActivity : AppCompatActivity() {
                                 telegramStreamCache[key] = Pair(url, msg.fileName.ifBlank { "Telegram Media" })
                                 val isAudio = msg.mimeType.startsWith("audio/")
                                 val badge = when {
-                                    ext == "zip" -> "🗄️ ZIP Stream"
+                                    isZip -> "🗄️ ZIP Stream"
                                     isAudio -> "🎵 Audio"
                                     else -> "🎬 Video"
                                 }
@@ -1556,7 +1560,7 @@ class MainActivity : AppCompatActivity() {
                                 mediaList.add(
                                     MediaItem(
                                         id = key,
-                                        title = if (ext == "zip") "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
+                                        title = if (isZip) "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
                                         posterUrl = thumbUrl,
                                         year = formattedSize,
                                         rating = badge,
@@ -1930,7 +1934,7 @@ class MainActivity : AppCompatActivity() {
                                 downloadStreamSource(stream, displayTitle, posterUrl)
                             } else {
                                 val parts = telegramGroupPartsCache[stream.id]
-                                val isZipFile = stream.isZip || stream.fileName.lowercase().contains(".zip")
+                                val isZipFile = stream.isZip || TelegramRepository.isZipArchiveFilename(stream.fileName)
                                 if ((stream.isSplit || stream.id.startsWith("group_")) && !isZipFile) {
                                     val cleanName = stream.fileName.removePrefix("📦 ").removePrefix("🔗 ").trim()
                                     val mediaItem = MediaItem(
@@ -2583,6 +2587,13 @@ class MainActivity : AppCompatActivity() {
         val fileName = item.originalFileName.ifBlank { titleToPlay }
         val groupInfo = telegramGroupCache[item.id]
 
+        fun ensureMsgRef(url: String, cId: Long?, mId: Long?): String {
+            if (url.isBlank() || cId == null || mId == null || cId == 0L || mId == 0L) return url
+            if (url.contains("chatId=") || url.contains("chats=")) return url
+            val separator = if (url.contains("?")) "&" else "?"
+            return "$url${separator}chatId=$cId&messageId=$mId"
+        }
+
         if (groupInfo != null) {
             CoroutineScope(Dispatchers.Main).launch {
                 val cleanTitle = titleToPlay.removePrefix("📦 ")
@@ -2618,7 +2629,7 @@ class MainActivity : AppCompatActivity() {
                             return@launch
                         }
                     }
-                    val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                    val backupUrl = ensureMsgRef(TelegramStreamingProxy.refreshUrl(item.streamUrl), chatId, null)
                     if (backupUrl.isNotBlank()) {
                         checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
                     } else {
@@ -2660,7 +2671,7 @@ class MainActivity : AppCompatActivity() {
                     if (freshUrl != null && freshUrl.isNotBlank()) {
                         checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
                     } else {
-                        val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                        val backupUrl = ensureMsgRef(TelegramStreamingProxy.refreshUrl(item.streamUrl), chatId, messageId)
                         if (backupUrl.isNotBlank()) {
                             checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
                         } else {
@@ -2670,7 +2681,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } else {
                 val rawUrl = streamInfo?.first ?: item.streamUrl
-                val urlToPlay = TelegramStreamingProxy.refreshUrl(rawUrl)
+                val urlToPlay = ensureMsgRef(TelegramStreamingProxy.refreshUrl(rawUrl), chatId, messageId)
                 if (urlToPlay.isNotBlank()) {
                     checkResumeAndSelectPlayer(urlToPlay, titleToPlay, item.posterUrl, item.id, fileName)
                 } else {

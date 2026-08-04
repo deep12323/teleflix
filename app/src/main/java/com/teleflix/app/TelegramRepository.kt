@@ -1228,7 +1228,7 @@ object TelegramRepository {
         val duplicateTitleGroups = mutableMapOf<String, MutableList<TelegramVideoMessage>>()
         val remainingSingles = mutableListOf<TelegramVideoMessage>()
         for (s in singles) {
-            if (s.fileName.lowercase().endsWith(".zip")) {
+            if (isZipArchiveFilename(s.fileName)) {
                 remainingSingles.add(s)
                 continue
             }
@@ -1253,12 +1253,21 @@ object TelegramRepository {
         return splitGroups to remainingSingles
     }
 
+    fun isZipArchiveFilename(filename: String?): Boolean {
+        if (filename.isNullOrBlank()) return false
+        val lower = filename.lowercase().trim()
+        if (lower.endsWith(".zip")) return true
+        if (lower.contains(".zip.")) return true
+        if (Regex("""(?i)\.zip\.\d+$""").containsMatchIn(lower)) return true
+        if (Regex("""(?i)\.z\d+$""").containsMatchIn(lower)) return true
+        return false
+    }
+
     /**
      * Check if a file is a ZIP that could contain streamable media.
      */
     fun isStreamableZip(msg: TelegramVideoMessage): Boolean {
-        val ext = msg.fileName.substringAfterLast('.', "").lowercase()
-        return ext == "zip" && msg.fileSize > 1_000_000 // Only ZIPs > 1MB likely contain media
+        return isZipArchiveFilename(msg.fileName) && msg.fileSize > 1_000_000 // Only ZIPs > 1MB likely contain media
     }
 
     fun getMergedStreamUrl(
@@ -1308,8 +1317,7 @@ object TelegramRepository {
                 is TdApi.MessageDocument -> {
                     val file = content.document.document
                     val filename = resolveDisplayName(content.document.fileName, content.caption?.text, "mkv")
-                    val ext = filename.substringAfterLast('.', "").lowercase().trim()
-                    if (ext == "zip" && file.size > 1_000_000) {
+                    if (isZipArchiveFilename(filename) && file.size > 1_000_000) {
                         getZipStreamUrl(file.id, filename, file.size, chatId, messageId)
                     } else {
                         getStreamUrl(file.id, filename, file.size, chatId, messageId)
