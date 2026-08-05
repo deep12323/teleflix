@@ -596,13 +596,13 @@ object TelegramStreamingProxy {
             var offset = start
             while (offset <= end && running) {
                 val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
-
-                val safeLimit = calculateSafeTdlibLimit(offset, totalSize, prefetchSizeMb, chunkSize)
+                val alignedOffset = offset - (offset % (1024 * 1024))
+                val safeLimit = calculateSafeTdlibLimit(alignedOffset, totalSize, prefetchSizeMb, chunkSize)
 
                 if (activeDownloadEnd < 0L || offset >= activeDownloadEnd - maxOf(CHUNK_SIZE.toLong(), safeLimit / 4)) {
-                    triggerTdlibDownload(fileId, offset, safeLimit, force = true)
-                    activeDownloadEnd = if (safeLimit == 0L) totalSize else offset + safeLimit
-                    activeDownloadWindows[fileId] = Pair(offset, activeDownloadEnd)
+                    triggerTdlibDownload(fileId, alignedOffset, safeLimit, force = true)
+                    activeDownloadEnd = if (safeLimit == 0L) totalSize else alignedOffset + safeLimit
+                    activeDownloadWindows[fileId] = Pair(alignedOffset, activeDownloadEnd)
                 }
 
                 val bytes = downloadChunk(fileId, offset, chunkSize, m)
@@ -1535,7 +1535,8 @@ object TelegramStreamingProxy {
                     metrics?.chunksRetried = (metrics?.chunksRetried ?: 0) + 1
                     val fileInfo = getFileInfo(activeFileId)
                     val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
-                    val safeLimit = calculateSafeTdlibLimit(offset, totalSize, prefetchSizeMb, limit)
+                    val alignedOffset = offset - (offset % (1024 * 1024))
+                    val safeLimit = calculateSafeTdlibLimit(alignedOffset, totalSize, prefetchSizeMb, limit)
 
                     val isStalled = attempts > 0 && attempts % 100 == 0
                     if (isStalled) {
@@ -1548,10 +1549,10 @@ object TelegramStreamingProxy {
 
                     val forceRequest = (attempts == 0 || isStalled)
                     if (forceRequest || !isDownloading) {
-                        triggerTdlibDownload(activeFileId, offset, safeLimit, force = true)
+                        triggerTdlibDownload(activeFileId, alignedOffset, safeLimit, force = true)
                     }
-                    val winEnd = if (safeLimit == 0L) Long.MAX_VALUE else offset + safeLimit
-                    activeDownloadWindows[activeFileId] = Pair(offset, winEnd)
+                    val winEnd = if (safeLimit == 0L) Long.MAX_VALUE else alignedOffset + safeLimit
+                    activeDownloadWindows[activeFileId] = Pair(alignedOffset, winEnd)
                 }
                 
                 delay(50L)
