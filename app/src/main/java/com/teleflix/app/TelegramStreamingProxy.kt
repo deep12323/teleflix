@@ -659,7 +659,8 @@ object TelegramStreamingProxy {
         fileIds: List<Int>,
         sizes: List<Long>,
         globalOffset: Long,
-        limit: Int
+        limit: Int,
+        metrics: StreamMetrics? = null
     ): ByteArray? {
         if (fileIds.isEmpty() || sizes.isEmpty()) return null
         val totalSize = sizes.sum()
@@ -692,9 +693,10 @@ object TelegramStreamingProxy {
             triggerTdlibDownload(nextFileId, 0L, nextSafeLimit)
         }
 
-        var chunk = downloadChunk(partFileId, partOffset, chunkSize)
+        var chunk = downloadChunk(partFileId, partOffset, chunkSize, metrics)
         var retries = 0
         while ((chunk == null || chunk.isEmpty()) && retries < 10 && running) {
+            if (metrics?.exitReason == "superseded") break
             val currentPartId = resolveFileId(partFileId)
             val hasRef = fileToMessageMap.containsKey(currentPartId) || fileToMessageMap.containsKey(partFileId)
             if (hasRef) {
@@ -705,7 +707,7 @@ object TelegramStreamingProxy {
             }
             triggerTdlibDownload(resolveFileId(partFileId), alignedPartOffset, safeLimit, force = true)
             kotlinx.coroutines.delay(300)
-            chunk = downloadChunk(resolveFileId(partFileId), partOffset, chunkSize)
+            chunk = downloadChunk(resolveFileId(partFileId), partOffset, chunkSize, metrics)
             retries++
         }
         return chunk
@@ -715,14 +717,15 @@ object TelegramStreamingProxy {
         fileIds: List<Int>,
         sizes: List<Long>,
         globalOffset: Long,
-        totalToRead: Int
+        totalToRead: Int,
+        metrics: StreamMetrics? = null
     ): ByteArray? {
         if (totalToRead <= 0) return ByteArray(0)
         val buffer = ByteArray(totalToRead)
         var bytesRead = 0
         while (bytesRead < totalToRead && running) {
             val readSize = minOf(CHUNK_SIZE, totalToRead - bytesRead)
-            val chunk = readChunkFromMerged(fileIds, sizes, globalOffset + bytesRead, readSize)
+            val chunk = readChunkFromMerged(fileIds, sizes, globalOffset + bytesRead, readSize, metrics)
             if (chunk == null || chunk.isEmpty()) break
             System.arraycopy(chunk, 0, buffer, bytesRead, chunk.size)
             bytesRead += chunk.size
@@ -762,23 +765,7 @@ object TelegramStreamingProxy {
             return
         }
 
-        val prefetchBytes = when {
-            prefetchSizeMb == -1L -> 0L
-            prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
-            else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
-        }
-        for (fId in fileIds) {
-            runCatching {
-                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                    req.fileId = fId
-                    req.priority = DOWNLOAD_PRIORITY
-                    req.offset = 0
-                    req.limit = prefetchBytes
-                    req.synchronous = false
-                })
-            }
-        }
-
+        val primaryFileId = fileIds.first()
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
         val start: Long
         val end: Long
@@ -792,40 +779,96 @@ object TelegramStreamingProxy {
         }
         val length = end - start + 1
 
-        val cleanName = fileName?.removeSuffix(".zip") ?: "video.mkv"
-        val ext = cleanName.substringAfterLast('.', "mkv").lowercase()
-        val mimeType = getMimeType(ext)
+        val m = StreamMetrics(
+            fileId = primaryFileId,
+            rangeHeader = rangeHeader,
+            startOffset = start,
+            totalSize = effectiveSize
+        )
+        val currentJob = kotlin.coroutines.coroutineContext[Job]
+        val currentJobRegisteredKeys = mutableListOf<String>()
 
-        val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
-        val safeFileName = cleanName.replace("\"", "\\\"")
-        val headers = StringBuilder().apply {
-            append("HTTP/1.1 $status\r\n")
-            append("Accept-Ranges: bytes\r\n")
-            append("Content-Length: $length\r\n")
-            if (rangeHeader != null) {
-                append("Content-Range: bytes $start-$end/$effectiveSize\r\n")
+        try {
+            if (m.requestType != "seek_probe") {
+                fileIds.forEach { fId ->
+                    latestActiveStreamReqId[fId] = m.reqId
+                    val jobKey = "file_$fId"
+                    currentJobRegisteredKeys.add(jobKey)
+                    if (currentJob != null) {
+                        val oldJob = activeFileJobs.put(jobKey, currentJob)
+                        if (oldJob != null && oldJob != currentJob && oldJob.isActive) {
+                            TeleflixLogger.log(TAG, "Cancelling previous stream job for fileId=$fId due to new request $jobKey")
+                            oldJob.cancel()
+                        }
+                    }
+                }
             }
-            append("Content-Type: $mimeType\r\n")
-            append("Content-Disposition: inline; filename=\"$safeFileName\"\r\n")
-            append("Connection: keep-alive\r\n")
-            append("Keep-Alive: timeout=60, max=1000\r\n\r\n")
-        }.toString()
+            m.logStart()
 
-        output.write(headers.toByteArray())
-        output.flush()
+            val prefetchBytes = when {
+                prefetchSizeMb == -1L -> 0L
+                prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
+                else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
+            }
+            for (fId in fileIds) {
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        req.fileId = fId
+                        req.priority = DOWNLOAD_PRIORITY
+                        req.offset = 0
+                        req.limit = prefetchBytes
+                        req.synchronous = false
+                    })
+                }
+            }
 
-        if (isHead) {
-            return
-        }
+            val cleanName = fileName?.removeSuffix(".zip") ?: "video.mkv"
+            val ext = cleanName.substringAfterLast('.', "mkv").lowercase()
+            val mimeType = getMimeType(ext)
 
-        var offset = start
-        while (offset <= end && running) {
-            val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
-            val bytes = readChunkFromMerged(fileIds, sizes, payloadOffset + offset, chunkSize)
-            if (bytes == null || bytes.isEmpty()) break
-            output.write(bytes)
+            val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
+            val safeFileName = cleanName.replace("\"", "\\\"")
+            val headers = StringBuilder().apply {
+                append("HTTP/1.1 $status\r\n")
+                append("Accept-Ranges: bytes\r\n")
+                append("Content-Length: $length\r\n")
+                if (rangeHeader != null) {
+                    append("Content-Range: bytes $start-$end/$effectiveSize\r\n")
+                }
+                append("Content-Type: $mimeType\r\n")
+                append("Content-Disposition: inline; filename=\"$safeFileName\"\r\n")
+                append("Connection: keep-alive\r\n")
+                append("Keep-Alive: timeout=60, max=1000\r\n\r\n")
+            }.toString()
+
+            output.write(headers.toByteArray())
             output.flush()
-            offset += bytes.size
+
+            if (isHead) {
+                m.exitReason = "head_request"
+                m.logEnd()
+                return
+            }
+
+            var offset = start
+            while (offset <= end && running) {
+                val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
+                val bytes = readChunkFromMerged(fileIds, sizes, payloadOffset + offset, chunkSize, m)
+                if (bytes == null || bytes.isEmpty()) break
+                output.write(bytes)
+                output.flush()
+                offset += bytes.size
+            }
+            m.logEnd()
+        } finally {
+            fileIds.forEach { fId ->
+                activeStreamRequests[fId]?.remove(m.reqId)
+            }
+            currentJobRegisteredKeys.forEach { key ->
+                if (activeFileJobs[key] == currentJob) {
+                    activeFileJobs.remove(key)
+                }
+            }
         }
     }
 
@@ -858,258 +901,299 @@ object TelegramStreamingProxy {
             return
         }
 
-        val zipPrefetch = when {
-            prefetchSizeMb >= 102400L || prefetchSizeMb == -1L -> 0L
-            prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
-            else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
-        }
-
-        for (fId in fileIds) {
-            runCatching {
-                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                    req.fileId = fId
-                    req.priority = DOWNLOAD_PRIORITY
-                    req.offset = 0
-                    req.limit = zipPrefetch
-                    req.synchronous = false
-                })
-            }
-        }
-
-        val eocdSearchSize = minOf(65557L, totalZipSize).toInt()
-        val eocdOffset = totalZipSize - eocdSearchSize
-        val eocdData = readBufferFromMerged(fileIds, sizes, eocdOffset, eocdSearchSize)
-        
-        var eocdPos = -1
-        if (eocdData != null && eocdData.size >= 22) {
-            for (i in eocdData.size - 22 downTo 0) {
-                if (eocdData[i] == 0x50.toByte() &&
-                    eocdData[i + 1] == 0x4B.toByte() &&
-                    eocdData[i + 2] == 0x05.toByte() &&
-                    eocdData[i + 3] == 0x06.toByte()
-                ) {
-                    eocdPos = i
-                    break
-                }
-            }
-        }
-
-        if (eocdData == null || eocdData.size < 22 || eocdPos < 0) {
-            TeleflixLogger.log(TAG, "No valid ZIP EOCD signature found for '$requestedInnerName' - checking for Local File Header at offset 0")
-            val startHeader = readBufferFromMerged(fileIds, sizes, 0L, 30)
-            if (startHeader != null && startHeader.size >= 30 &&
-                startHeader[0] == 0x50.toByte() && startHeader[1] == 0x4B.toByte() &&
-                startHeader[2] == 0x03.toByte() && startHeader[3] == 0x04.toByte()
-            ) {
-                fun readLocalUInt16(data: ByteArray, off: Int): Int =
-                    (data[off].toInt() and 0xFF) or ((data[off + 1].toInt() and 0xFF) shl 8)
-                val compressionMethod = readLocalUInt16(startHeader, 8)
-                val nameLen = readLocalUInt16(startHeader, 26)
-                val extraLen = readLocalUInt16(startHeader, 28)
-                val dataOffset = 30L + nameLen + extraLen
-                TeleflixLogger.log(TAG, "Found ZIP Local File Header at offset 0: dataOffset=$dataOffset, compressionMethod=$compressionMethod")
-                if (compressionMethod == 0) {
-                    streamMergedFileRaw(fileIds, sizes, requestedInnerName, rangeHeader, output, isHead, dataOffset)
-                    return
-                }
-            }
-            TeleflixLogger.log(TAG, "Falling back to raw merged file stream for '$requestedInnerName'")
-            streamMergedFileRaw(fileIds, sizes, requestedInnerName, rangeHeader, output, isHead)
-            return
-        }
-
-        fun readUInt16(data: ByteArray, off: Int): Int =
-            (data[off].toInt() and 0xFF) or ((data[off + 1].toInt() and 0xFF) shl 8)
-        fun readUInt32(data: ByteArray, off: Int): Long =
-            (data[off].toInt() and 0xFF).toLong() or
-            ((data[off + 1].toInt() and 0xFF).toLong() shl 8) or
-            ((data[off + 2].toInt() and 0xFF).toLong() shl 16) or
-            ((data[off + 3].toInt() and 0xFF).toLong() shl 24)
-        fun readUInt64(data: ByteArray, off: Int): Long =
-            (readUInt32(data, off) and 0xFFFFFFFFL) or ((readUInt32(data, off + 4) and 0xFFFFFFFFL) shl 32)
-
-        var cdSize = readUInt32(eocdData, eocdPos + 12)
-        var cdOffset = readUInt32(eocdData, eocdPos + 16)
-
-        var isZip64 = false
-        if (cdOffset == 0xFFFFFFFFL || cdSize == 0xFFFFFFFFL || eocdPos >= 20) {
-            val locatorPos = eocdPos - 20
-            if (locatorPos >= 0 &&
-                eocdData[locatorPos] == 0x50.toByte() &&
-                eocdData[locatorPos + 1] == 0x4B.toByte() &&
-                eocdData[locatorPos + 2] == 0x06.toByte() &&
-                eocdData[locatorPos + 3] == 0x07.toByte()
-            ) {
-                val zip64EocdOffset = readUInt64(eocdData, locatorPos + 8)
-                val zip64EocdData = readBufferFromMerged(fileIds, sizes, zip64EocdOffset, 56)
-                if (zip64EocdData != null && zip64EocdData.size >= 56 &&
-                    zip64EocdData[0] == 0x50.toByte() && zip64EocdData[1] == 0x4B.toByte() &&
-                    zip64EocdData[2] == 0x06.toByte() && zip64EocdData[3] == 0x06.toByte()
-                ) {
-                    cdSize = readUInt64(zip64EocdData, 40)
-                    cdOffset = readUInt64(zip64EocdData, 48)
-                    isZip64 = true
-                }
-            }
-        }
-
-        val cdData = readBufferFromMerged(fileIds, sizes, cdOffset, cdSize.toInt())
-        if (cdData == null || cdData.isEmpty()) {
-            output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nFailed to read Central Directory".toByteArray())
-            return
-        }
-
-        data class ZipEntry(
-            val name: String,
-            val compressionMethod: Int,
-            val compressedSize: Long,
-            val uncompressedSize: Long,
-            val localHeaderOffset: Long
+        val primaryFileId = fileIds.first()
+        val (initialStart, _) = parseRange(rangeHeader)
+        val m = StreamMetrics(
+            fileId = primaryFileId,
+            rangeHeader = rangeHeader,
+            startOffset = initialStart ?: 0L,
+            totalSize = totalZipSize
         )
+        val currentJob = kotlin.coroutines.coroutineContext[Job]
+        val currentJobRegisteredKeys = mutableListOf<String>()
 
-        val entries = mutableListOf<ZipEntry>()
-        var pos = 0
-        while (pos + 46 <= cdData.size) {
-            if (cdData[pos] != 0x50.toByte() || cdData[pos + 1] != 0x4B.toByte() ||
-                cdData[pos + 2] != 0x01.toByte() || cdData[pos + 3] != 0x02.toByte()
-            ) break
-
-            val compressionMethod = readUInt16(cdData, pos + 10)
-            var compressedSize = readUInt32(cdData, pos + 20)
-            var uncompressedSize = readUInt32(cdData, pos + 24)
-            val nameLength = readUInt16(cdData, pos + 28)
-            val extraLength = readUInt16(cdData, pos + 30)
-            val commentLength = readUInt16(cdData, pos + 32)
-            var localHeaderOffset = readUInt32(cdData, pos + 42)
-
-            if (pos + 46 + nameLength > cdData.size) break
-            val nameBytes = cdData.copyOfRange(pos + 46, pos + 46 + nameLength)
-            val entryName = String(nameBytes, Charsets.UTF_8)
-
-            if (extraLength > 0 && pos + 46 + nameLength + extraLength <= cdData.size) {
-                var extraPos = pos + 46 + nameLength
-                val extraEnd = extraPos + extraLength
-                while (extraPos + 4 <= extraEnd) {
-                    val headerId = readUInt16(cdData, extraPos)
-                    val dataSize = readUInt16(cdData, extraPos + 2)
-                    if (headerId == 0x0001 && extraPos + 4 + dataSize <= extraEnd) {
-                        var zip64FieldPos = extraPos + 4
-                        if (uncompressedSize == 0xFFFFFFFFL && zip64FieldPos + 8 <= extraEnd) {
-                            uncompressedSize = readUInt64(cdData, zip64FieldPos)
-                            zip64FieldPos += 8
+        try {
+            if (m.requestType != "seek_probe") {
+                fileIds.forEach { fId ->
+                    latestActiveStreamReqId[fId] = m.reqId
+                    val jobKey = "file_$fId"
+                    currentJobRegisteredKeys.add(jobKey)
+                    if (currentJob != null) {
+                        val oldJob = activeFileJobs.put(jobKey, currentJob)
+                        if (oldJob != null && oldJob != currentJob && oldJob.isActive) {
+                            TeleflixLogger.log(TAG, "Cancelling previous stream job for fileId=$fId due to new request $jobKey")
+                            oldJob.cancel()
                         }
-                        if (compressedSize == 0xFFFFFFFFL && zip64FieldPos + 8 <= extraEnd) {
-                            compressedSize = readUInt64(cdData, zip64FieldPos)
-                            zip64FieldPos += 8
-                        }
-                        if (localHeaderOffset == 0xFFFFFFFFL && zip64FieldPos + 8 <= extraEnd) {
-                            localHeaderOffset = readUInt64(cdData, zip64FieldPos)
-                        }
+                    }
+                }
+            }
+            m.logStart()
+
+            val zipPrefetch = when {
+                prefetchSizeMb >= 102400L || prefetchSizeMb == -1L -> 0L
+                prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
+                else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
+            }
+
+            for (fId in fileIds) {
+                runCatching {
+                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                        req.fileId = fId
+                        req.priority = DOWNLOAD_PRIORITY
+                        req.offset = 0
+                        req.limit = zipPrefetch
+                        req.synchronous = false
+                    })
+                }
+            }
+
+            val eocdSearchSize = minOf(65557L, totalZipSize).toInt()
+            val eocdOffset = totalZipSize - eocdSearchSize
+            val eocdData = readBufferFromMerged(fileIds, sizes, eocdOffset, eocdSearchSize, m)
+            
+            var eocdPos = -1
+            if (eocdData != null && eocdData.size >= 22) {
+                for (i in eocdData.size - 22 downTo 0) {
+                    if (eocdData[i] == 0x50.toByte() &&
+                        eocdData[i + 1] == 0x4B.toByte() &&
+                        eocdData[i + 2] == 0x05.toByte() &&
+                        eocdData[i + 3] == 0x06.toByte()
+                    ) {
+                        eocdPos = i
                         break
                     }
-                    extraPos += 4 + dataSize
                 }
             }
 
-            if (!entryName.endsWith("/")) {
-                entries.add(ZipEntry(entryName, compressionMethod, compressedSize, uncompressedSize, localHeaderOffset))
+            if (eocdData == null || eocdData.size < 22 || eocdPos < 0) {
+                TeleflixLogger.log(TAG, "No valid ZIP EOCD signature found for '$requestedInnerName' - checking for Local File Header at offset 0")
+                val startHeader = readBufferFromMerged(fileIds, sizes, 0L, 30, m)
+                if (startHeader != null && startHeader.size >= 30 &&
+                    startHeader[0] == 0x50.toByte() && startHeader[1] == 0x4B.toByte() &&
+                    startHeader[2] == 0x03.toByte() && startHeader[3] == 0x04.toByte()
+                ) {
+                    fun readLocalUInt16(data: ByteArray, off: Int): Int =
+                        (data[off].toInt() and 0xFF) or ((data[off + 1].toInt() and 0xFF) shl 8)
+                    val compressionMethod = readLocalUInt16(startHeader, 8)
+                    val nameLen = readLocalUInt16(startHeader, 26)
+                    val extraLen = readLocalUInt16(startHeader, 28)
+                    val dataOffset = 30L + nameLen + extraLen
+                    TeleflixLogger.log(TAG, "Found ZIP Local File Header at offset 0: dataOffset=$dataOffset, compressionMethod=$compressionMethod")
+                    if (compressionMethod == 0) {
+                        streamMergedFileRaw(fileIds, sizes, requestedInnerName, rangeHeader, output, isHead, dataOffset)
+                        return
+                    }
+                }
+                TeleflixLogger.log(TAG, "Falling back to raw merged file stream for '$requestedInnerName'")
+                streamMergedFileRaw(fileIds, sizes, requestedInnerName, rangeHeader, output, isHead)
+                return
             }
-            pos += 46 + nameLength + extraLength + commentLength
-        }
 
-        if (entries.isEmpty()) {
-            output.write("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nNo files found in ZIP archive".toByteArray())
-            return
-        }
+            fun readUInt16(data: ByteArray, off: Int): Int =
+                (data[off].toInt() and 0xFF) or ((data[off + 1].toInt() and 0xFF) shl 8)
+            fun readUInt32(data: ByteArray, off: Int): Long =
+                (data[off].toInt() and 0xFF).toLong() or
+                ((data[off + 1].toInt() and 0xFF).toLong() shl 8) or
+                ((data[off + 2].toInt() and 0xFF).toLong() shl 16) or
+                ((data[off + 3].toInt() and 0xFF).toLong() shl 24)
+            fun readUInt64(data: ByteArray, off: Int): Long =
+                (readUInt32(data, off) and 0xFFFFFFFFL) or ((readUInt32(data, off + 4) and 0xFFFFFFFFL) shl 32)
 
-        val mediaExtensions = setOf("mkv", "mp4", "avi", "mov", "webm", "flv", "wmv", "ts", "m2ts", "m4v", "3gp", "mp3", "flac", "aac", "ogg", "opus", "wav", "m4a")
+            var cdSize = readUInt32(eocdData, eocdPos + 12)
+            var cdOffset = readUInt32(eocdData, eocdPos + 16)
 
-        var target: ZipEntry? = null
-
-        if (!requestedInnerName.isNullOrBlank() && !TelegramRepository.isZipArchiveFilename(requestedInnerName)) {
-            target = entries.find { it.name.equals(requestedInnerName, ignoreCase = true) }
-                ?: entries.find { it.name.substringAfterLast('/').equals(requestedInnerName, ignoreCase = true) }
-        }
-
-        if (target == null) {
-            val mediaEntries = entries.filter { 
-                val ext = it.name.substringAfterLast('.', "").lowercase()
-                ext in mediaExtensions
+            var isZip64 = false
+            if (cdOffset == 0xFFFFFFFFL || cdSize == 0xFFFFFFFFL || eocdPos >= 20) {
+                val locatorPos = eocdPos - 20
+                if (locatorPos >= 0 &&
+                    eocdData[locatorPos] == 0x50.toByte() &&
+                    eocdData[locatorPos + 1] == 0x4B.toByte() &&
+                    eocdData[locatorPos + 2] == 0x06.toByte() &&
+                    eocdData[locatorPos + 3] == 0x07.toByte()
+                ) {
+                    val zip64EocdOffset = readUInt64(eocdData, locatorPos + 8)
+                    val zip64EocdData = readBufferFromMerged(fileIds, sizes, zip64EocdOffset, 56, m)
+                    if (zip64EocdData != null && zip64EocdData.size >= 56 &&
+                        zip64EocdData[0] == 0x50.toByte() && zip64EocdData[1] == 0x4B.toByte() &&
+                        zip64EocdData[2] == 0x06.toByte() && zip64EocdData[3] == 0x06.toByte()
+                    ) {
+                        cdSize = readUInt64(zip64EocdData, 40)
+                        cdOffset = readUInt64(zip64EocdData, 48)
+                        isZip64 = true
+                    }
+                }
             }
-            target = mediaEntries.maxByOrNull { it.uncompressedSize }
-                ?: entries.maxByOrNull { it.uncompressedSize }
-        }
 
-        if (target == null) {
-            output.write("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nNo playable entry found in ZIP".toByteArray())
-            return
-        }
-
-        if (target.compressionMethod != 0) {
-            output.write("HTTP/1.1 422 Unprocessable Entity\r\nContent-Type: text/plain\r\n\r\nFile '${target.name}' is compressed (method ${target.compressionMethod}). Only STORED (uncompressed) files can be streamed.".toByteArray())
-            return
-        }
-
-        val localHeader = readBufferFromMerged(fileIds, sizes, target.localHeaderOffset, 30)
-        if (localHeader == null || localHeader.size < 30) {
-            output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nFailed to read local file header".toByteArray())
-            return
-        }
-        val localNameLen = readUInt16(localHeader, 26)
-        val localExtraLen = readUInt16(localHeader, 28)
-        val dataOffset = target.localHeaderOffset + 30 + localNameLen + localExtraLen
-
-        val innerFileSize = target.uncompressedSize
-
-        Log.d(TAG, "ZIP streaming entry '${target.name}' size=$innerFileSize dataOffset=$dataOffset isZip64=$isZip64")
-
-        val (rangeStart, rangeEnd) = parseRange(rangeHeader)
-        val reqStart: Long
-        val reqEnd: Long
-
-        if (rangeStart == null && rangeEnd != null) {
-            reqStart = maxOf(0L, innerFileSize - rangeEnd)
-            reqEnd = innerFileSize - 1L
-        } else {
-            reqStart = rangeStart ?: 0L
-            reqEnd = rangeEnd ?: (innerFileSize - 1L)
-        }
-        val length = reqEnd - reqStart + 1
-
-        val ext = target.name.substringAfterLast('.', "").lowercase()
-        val mimeType = getMimeType(ext)
-
-        val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
-        val safeFileName = target.name.replace("\"", "\\\"")
-        val headers = StringBuilder().apply {
-            append("HTTP/1.1 $status\r\n")
-            append("Accept-Ranges: bytes\r\n")
-            append("Content-Length: $length\r\n")
-            if (rangeHeader != null) {
-                append("Content-Range: bytes $reqStart-$reqEnd/$innerFileSize\r\n")
+            val cdData = readBufferFromMerged(fileIds, sizes, cdOffset, cdSize.toInt(), m)
+            if (cdData == null || cdData.isEmpty()) {
+                output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nFailed to read Central Directory".toByteArray())
+                return
             }
-            append("Content-Type: $mimeType\r\n")
-            append("Content-Disposition: inline; filename=\"$safeFileName\"\r\n")
-            append("Connection: close\r\n\r\n")
-        }.toString()
 
-        output.write(headers.toByteArray())
-        output.flush()
+            data class ZipEntry(
+                val name: String,
+                val compressionMethod: Int,
+                val compressedSize: Long,
+                val uncompressedSize: Long,
+                val localHeaderOffset: Long
+            )
 
-        if (isHead) {
-            return
-        }
+            val entries = mutableListOf<ZipEntry>()
+            var pos = 0
+            while (pos + 46 <= cdData.size) {
+                if (cdData[pos] != 0x50.toByte() || cdData[pos + 1] != 0x4B.toByte() ||
+                    cdData[pos + 2] != 0x01.toByte() || cdData[pos + 3] != 0x02.toByte()
+                ) break
 
-        var offset = reqStart
-        while (offset <= reqEnd && running) {
-            val chunkSize = minOf(CHUNK_SIZE.toLong(), reqEnd - offset + 1).toInt()
-            val globalZipOffset = dataOffset + offset
+                val compressionMethod = readUInt16(cdData, pos + 10)
+                var compressedSize = readUInt32(cdData, pos + 20)
+                var uncompressedSize = readUInt32(cdData, pos + 24)
+                val nameLength = readUInt16(cdData, pos + 28)
+                val extraLength = readUInt16(cdData, pos + 30)
+                val commentLength = readUInt16(cdData, pos + 32)
+                var localHeaderOffset = readUInt32(cdData, pos + 42)
 
-            val bytes = readChunkFromMerged(fileIds, sizes, globalZipOffset, chunkSize)
-            if (bytes == null || bytes.isEmpty()) break
-            output.write(bytes)
+                if (pos + 46 + nameLength > cdData.size) break
+                val nameBytes = cdData.copyOfRange(pos + 46, pos + 46 + nameLength)
+                val entryName = String(nameBytes, Charsets.UTF_8)
+
+                if (extraLength > 0 && pos + 46 + nameLength + extraLength <= cdData.size) {
+                    var extraPos = pos + 46 + nameLength
+                    val extraEnd = extraPos + extraLength
+                    while (extraPos + 4 <= extraEnd) {
+                        val headerId = readUInt16(cdData, extraPos)
+                        val dataSize = readUInt16(cdData, extraPos + 2)
+                        if (headerId == 0x0001 && extraPos + 4 + dataSize <= extraEnd) {
+                            var zip64FieldPos = extraPos + 4
+                            if (uncompressedSize == 0xFFFFFFFFL && zip64FieldPos + 8 <= extraEnd) {
+                                uncompressedSize = readUInt64(cdData, zip64FieldPos)
+                                zip64FieldPos += 8
+                            }
+                            if (compressedSize == 0xFFFFFFFFL && zip64FieldPos + 8 <= extraEnd) {
+                                compressedSize = readUInt64(cdData, zip64FieldPos)
+                                zip64FieldPos += 8
+                            }
+                            if (localHeaderOffset == 0xFFFFFFFFL && zip64FieldPos + 8 <= extraEnd) {
+                                localHeaderOffset = readUInt64(cdData, zip64FieldPos)
+                            }
+                            break
+                        }
+                        extraPos += 4 + dataSize
+                    }
+                }
+
+                if (!entryName.endsWith("/")) {
+                    entries.add(ZipEntry(entryName, compressionMethod, compressedSize, uncompressedSize, localHeaderOffset))
+                }
+                pos += 46 + nameLength + extraLength + commentLength
+            }
+
+            if (entries.isEmpty()) {
+                output.write("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nNo files found in ZIP archive".toByteArray())
+                return
+            }
+
+            val mediaExtensions = setOf("mkv", "mp4", "avi", "mov", "webm", "flv", "wmv", "ts", "m2ts", "m4v", "3gp", "mp3", "flac", "aac", "ogg", "opus", "wav", "m4a")
+
+            var target: ZipEntry? = null
+
+            if (!requestedInnerName.isNullOrBlank() && !TelegramRepository.isZipArchiveFilename(requestedInnerName)) {
+                target = entries.find { it.name.equals(requestedInnerName, ignoreCase = true) }
+                    ?: entries.find { it.name.substringAfterLast('/').equals(requestedInnerName, ignoreCase = true) }
+            }
+
+            if (target == null) {
+                val mediaEntries = entries.filter { 
+                    val ext = it.name.substringAfterLast('.', "").lowercase()
+                    ext in mediaExtensions
+                }
+                target = mediaEntries.maxByOrNull { it.uncompressedSize }
+                    ?: entries.maxByOrNull { it.uncompressedSize }
+            }
+
+            if (target == null) {
+                output.write("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nNo playable entry found in ZIP".toByteArray())
+                return
+            }
+
+            if (target.compressionMethod != 0) {
+                output.write("HTTP/1.1 422 Unprocessable Entity\r\nContent-Type: text/plain\r\n\r\nFile '${target.name}' is compressed (method ${target.compressionMethod}). Only STORED (uncompressed) files can be streamed.".toByteArray())
+                return
+            }
+
+            val localHeader = readBufferFromMerged(fileIds, sizes, target.localHeaderOffset, 30, m)
+            if (localHeader == null || localHeader.size < 30) {
+                output.write("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nFailed to read local file header".toByteArray())
+                return
+            }
+            val localNameLen = readUInt16(localHeader, 26)
+            val localExtraLen = readUInt16(localHeader, 28)
+            val dataOffset = target.localHeaderOffset + 30 + localNameLen + localExtraLen
+
+            val innerFileSize = target.uncompressedSize
+
+            Log.d(TAG, "ZIP streaming entry '${target.name}' size=$innerFileSize dataOffset=$dataOffset isZip64=$isZip64")
+
+            val (rangeStart, rangeEnd) = parseRange(rangeHeader)
+            val reqStart: Long
+            val reqEnd: Long
+
+            if (rangeStart == null && rangeEnd != null) {
+                reqStart = maxOf(0L, innerFileSize - rangeEnd)
+                reqEnd = innerFileSize - 1L
+            } else {
+                reqStart = rangeStart ?: 0L
+                reqEnd = rangeEnd ?: (innerFileSize - 1L)
+            }
+            val length = reqEnd - reqStart + 1
+
+            val ext = target.name.substringAfterLast('.', "").lowercase()
+            val mimeType = getMimeType(ext)
+
+            val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
+            val safeFileName = target.name.replace("\"", "\\\"")
+            val headers = StringBuilder().apply {
+                append("HTTP/1.1 $status\r\n")
+                append("Accept-Ranges: bytes\r\n")
+                append("Content-Length: $length\r\n")
+                if (rangeHeader != null) {
+                    append("Content-Range: bytes $reqStart-$reqEnd/$innerFileSize\r\n")
+                }
+                append("Content-Type: $mimeType\r\n")
+                append("Content-Disposition: inline; filename=\"$safeFileName\"\r\n")
+                append("Connection: close\r\n\r\n")
+            }.toString()
+
+            output.write(headers.toByteArray())
             output.flush()
-            offset += bytes.size
+
+            if (isHead) {
+                m.exitReason = "head_request"
+                m.logEnd()
+                return
+            }
+
+            var offset = reqStart
+            while (offset <= reqEnd && running) {
+                val chunkSize = minOf(CHUNK_SIZE.toLong(), reqEnd - offset + 1).toInt()
+                val globalZipOffset = dataOffset + offset
+
+                val bytes = readChunkFromMerged(fileIds, sizes, globalZipOffset, chunkSize, m)
+                if (bytes == null || bytes.isEmpty()) break
+                output.write(bytes)
+                output.flush()
+                offset += bytes.size
+            }
+            m.logEnd()
+        } finally {
+            fileIds.forEach { fId ->
+                activeStreamRequests[fId]?.remove(m.reqId)
+            }
+            currentJobRegisteredKeys.forEach { key ->
+                if (activeFileJobs[key] == currentJob) {
+                    activeFileJobs.remove(key)
+                }
+            }
         }
     }
 
