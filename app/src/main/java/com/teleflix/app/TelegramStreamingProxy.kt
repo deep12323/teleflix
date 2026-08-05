@@ -401,6 +401,12 @@ object TelegramStreamingProxy {
                             fileName = matchGroup.group.baseName
                             urlSize = mergedSizes.sum()
                             fileId = mergedFileIds.firstOrNull()
+
+                            matchGroup.group.parts.forEach { part ->
+                                if (part.fileId != 0 && part.messageId != 0L) {
+                                    registerFileMessage(part.fileId, reqChatId, part.messageId)
+                                }
+                            }
                         }
                     }
                 }
@@ -423,8 +429,8 @@ object TelegramStreamingProxy {
             if (mergedFileIds != null) {
                 mergedFileIds.forEachIndexed { i, fId ->
                     val cId = reqChats.getOrNull(i) ?: reqChatId
-                    val mId = reqMessages.getOrNull(i) ?: reqMessageId
-                    if (cId != 0L && mId != 0L) {
+                    val mId = reqMessages.getOrNull(i)
+                    if (cId != 0L && mId != null && mId != 0L) {
                         registerFileMessage(fId, cId, mId)
                     }
                 }
@@ -700,7 +706,15 @@ object TelegramStreamingProxy {
             val currentPartId = resolveFileId(partFileId)
             val hasRef = fileToMessageMap.containsKey(currentPartId) || fileToMessageMap.containsKey(partFileId)
             if (hasRef) {
-                refreshFileId(currentPartId)
+                val refreshed = refreshFileId(currentPartId)
+                if (refreshed != null && refreshed != 0) {
+                    val otherIndex = fileIds.indexOf(refreshed)
+                    if (otherIndex >= 0 && otherIndex != partIndex) {
+                        TeleflixLogger.log(TAG, "refreshFileId mapped partFileId=$currentPartId (part $partIndex) to fileId=$refreshed which belongs to part $otherIndex - ignoring invalid translation", isError = true)
+                        fileIdTranslationMap.remove(currentPartId)
+                        fileIdTranslationMap.remove(partFileId)
+                    }
+                }
             } else {
                 TeleflixLogger.log(TAG, "readChunkFromMerged: partFileId=$partFileId not found in TDLib and no message reference available, stopping retries", isError = true)
                 break
