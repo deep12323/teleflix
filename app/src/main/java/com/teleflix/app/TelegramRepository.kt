@@ -1215,10 +1215,10 @@ object TelegramRepository {
     fun isZipArchiveFilename(filename: String?): Boolean {
         if (filename.isNullOrBlank()) return false
         val lower = filename.lowercase().trim()
-        if (lower.endsWith(".zip")) return true
-        if (lower.contains(".zip.")) return true
-        if (Regex("""(?i)\.zip\.\d+$""").containsMatchIn(lower)) return true
-        if (Regex("""(?i)\.z\d+$""").containsMatchIn(lower)) return true
+        if (lower.endsWith(".zip") || lower.endsWith(".7z") || lower.endsWith(".rar") || lower.endsWith(".tar") || lower.endsWith(".gz")) return true
+        if (lower.contains(".zip.") || lower.contains(".7z.") || lower.contains(".rar.")) return true
+        if (Regex("""(?i)\.(zip|7z|rar)\.\d+$""").containsMatchIn(lower)) return true
+        if (Regex("""(?i)\.(z\d+|part\d+|r\d+)$""").containsMatchIn(lower)) return true
         return false
     }
 
