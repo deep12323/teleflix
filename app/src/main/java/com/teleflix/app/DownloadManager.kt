@@ -385,6 +385,21 @@ object DownloadManager {
         }
     }
 
+    private fun fastCopyFile(source: File, dest: File) {
+        try {
+            if (dest.parentFile?.exists() == false) {
+                dest.parentFile?.mkdirs()
+            }
+            FileInputStream(source).channel.use { inChannel ->
+                FileOutputStream(dest).channel.use { outChannel ->
+                    inChannel.transferTo(0, inChannel.size(), outChannel)
+                }
+            }
+        } catch (e: Exception) {
+            source.copyTo(dest, overwrite = true)
+        }
+    }
+
     private fun startDownloadLoop(context: Context) {
         if (downloadLoopJob?.isActive == true) return
         val appContext = context.applicationContext
@@ -406,7 +421,7 @@ object DownloadManager {
                         TeleflixLogger.log(TAG, "Error in download loop for item ${item.id}: ${e.message}", isError = true)
                     }
                 }
-                delay(1000)
+                delay(300)
             }
         }
     }
@@ -562,7 +577,7 @@ object DownloadManager {
                         val partTempFile = getPartTempFile(context, item.id, idx)
                         val source = File(tdlibPath)
                         if (source.exists()) {
-                            source.copyTo(partTempFile, overwrite = true)
+                            fastCopyFile(source, partTempFile)
                         }
                     }
 
@@ -588,20 +603,43 @@ object DownloadManager {
                             }
                         }
                     }
-                } else if (!fileObj.local.canBeDownloaded && !fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
-                    val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
-                    if (now - lastRetry > 5000L) {
-                        lastDownloadRetryTimeMap[partFileId] = now
-                        try {
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = partFileId
-                                req.priority = 32
-                                req.offset = 0
-                                req.limit = 0
-                                req.synchronous = false
-                            })
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
+                } else {
+                    // Pre-fetch next part in advance while current part is downloading
+                    val nextIdx = idx + 1
+                    if (nextIdx < item.partFileIds.size) {
+                        val nextFileId = item.partFileIds.getOrNull(nextIdx) ?: 0
+                        if (nextFileId != 0) {
+                            val lastPrefetch = lastDownloadRetryTimeMap[nextFileId] ?: 0L
+                            if (now - lastPrefetch > 10000L) {
+                                lastDownloadRetryTimeMap[nextFileId] = now
+                                try {
+                                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                        req.fileId = nextFileId
+                                        req.priority = 16
+                                        req.offset = 0
+                                        req.limit = 0
+                                        req.synchronous = false
+                                    })
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
+
+                    if (!fileObj.local.canBeDownloaded && !fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
+                        val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
+                        if (now - lastRetry > 5000L) {
+                            lastDownloadRetryTimeMap[partFileId] = now
+                            try {
+                                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                    req.fileId = partFileId
+                                    req.priority = 32
+                                    req.offset = 0
+                                    req.limit = 0
+                                    req.synchronous = false
+                                })
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
+                            }
                         }
                     }
                 }
@@ -816,7 +854,7 @@ object DownloadManager {
                                     target.parentFile?.mkdirs()
                                 }
                                 if (source.exists() && source.absolutePath != target.absolutePath) {
-                                    source.copyTo(target, overwrite = true)
+                                    fastCopyFile(source, target)
                                     TeleflixLogger.log(TAG, "Copied completed download to ${target.absolutePath}")
                                 }
                             } catch (e: Exception) {

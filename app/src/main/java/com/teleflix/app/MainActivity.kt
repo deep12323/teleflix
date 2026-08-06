@@ -1696,10 +1696,10 @@ class MainActivity : AppCompatActivity() {
 
     // ── Series Episode Browser ──────────────────────────────────
 
-    private fun fetchSeriesEpisodes(item: MediaItem) {
+    private fun fetchSeriesEpisodes(item: MediaItem, isDownloadMode: Boolean = false) {
         val cachedSeasons = cinemetaSeriesCache[item.id]
         if (cachedSeasons != null && cachedSeasons.isNotEmpty()) {
-            showSeasonPicker(item.title, cachedSeasons, item.posterUrl)
+            showSeasonPicker(item.title, cachedSeasons, item.posterUrl, isDownloadMode = isDownloadMode)
             return
         }
 
@@ -1747,7 +1747,7 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this@MainActivity, "No episodes found", Toast.LENGTH_SHORT).show()
                         return@withContext
                     }
-                    showSeasonPicker(item.title, seasons, item.posterUrl)
+                    showSeasonPicker(item.title, seasons, item.posterUrl, isDownloadMode = isDownloadMode)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -1758,7 +1758,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showSeasonPicker(seriesTitle: String, seasons: Map<Int, List<EpisodeItem>>, posterUrl: String = "") {
+    private fun showSeasonPicker(seriesTitle: String, seasons: Map<Int, List<EpisodeItem>>, posterUrl: String = "", isDownloadMode: Boolean = false) {
         val seasonList = seasons.keys.toList()
 
         val scrollView = ScrollView(this).apply {
@@ -1778,7 +1778,7 @@ class MainActivity : AppCompatActivity() {
         container.addView(headerTitle)
 
         val headerSub = TextView(this).apply {
-            text = "Select Season"
+            text = if (isDownloadMode) "Select Season to Download" else "Select Season"
             UITheme.applyMetadataStyle(this)
             setPadding(0, UITheme.dpToPx(this@MainActivity, 2), 0, UITheme.dpToPx(this@MainActivity, 14))
         }
@@ -1806,7 +1806,7 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener {
                     dialog?.dismiss()
                     val episodes = seasons[seasonNum] ?: return@setOnClickListener
-                    showEpisodePicker(seriesTitle, seasonNum, episodes, posterUrl)
+                    showEpisodePicker(seriesTitle, seasonNum, episodes, posterUrl, isDownloadMode = isDownloadMode)
                 }
             }
 
@@ -1838,7 +1838,7 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun showEpisodePicker(seriesTitle: String, season: Int, episodes: List<EpisodeItem>, posterUrl: String = "") {
+    private fun showEpisodePicker(seriesTitle: String, season: Int, episodes: List<EpisodeItem>, posterUrl: String = "", isDownloadMode: Boolean = false) {
         val scrollView = ScrollView(this).apply {
             setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
         }
@@ -1856,7 +1856,7 @@ class MainActivity : AppCompatActivity() {
         container.addView(headerTitle)
 
         val headerSub = TextView(this).apply {
-            text = "${episodes.size} Episodes Available"
+            text = if (isDownloadMode) "${episodes.size} Episodes — Select Episode to Download" else "${episodes.size} Episodes Available"
             UITheme.applyMetadataStyle(this)
             setPadding(0, UITheme.dpToPx(this@MainActivity, 2), 0, UITheme.dpToPx(this@MainActivity, 14))
         }
@@ -1882,7 +1882,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 setOnClickListener {
                     dialog?.dismiss()
-                    showStreamOptions(seriesTitle, season, ep.episode, posterUrl)
+                    showStreamOptions(seriesTitle, season, ep.episode, posterUrl, isDownloadMode = isDownloadMode)
                 }
             }
 
@@ -3756,6 +3756,8 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, "Unable to download this stream item", Toast.LENGTH_SHORT).show()
                 }
             }
+        } else if (item.type == "series" || item.type == "tv") {
+            fetchSeriesEpisodes(item, isDownloadMode = true)
         } else {
             showStreamOptions(item.title, null, null, item.posterUrl, isDownloadMode = true)
         }

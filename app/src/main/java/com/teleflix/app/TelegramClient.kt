@@ -144,6 +144,7 @@ object TelegramClient {
         client?.send(TdApi.SetOption("online", TdApi.OptionValueBoolean(true)), null)
         client?.send(TdApi.SetOption("max_download_file_size", TdApi.OptionValueInteger(50000000000L)), null)
         client?.send(TdApi.SetOption("prefer_ipv6", TdApi.OptionValueBoolean(false)), null)
+        client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeOther()), null)
     }
 
     fun deleteFile(fileId: Int) {
