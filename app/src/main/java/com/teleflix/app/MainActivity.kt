@@ -405,73 +405,110 @@ class MainActivity : AppCompatActivity() {
                     val fileName = item.originalFileName.ifBlank { titleToPlay }
                     val groupParts = telegramGroupPartsCache[item.id]
                     val groupInfo = telegramGroupCache[item.id]
+                    val isZipFile = item.id.startsWith("zip_") || 
+                                    TelegramRepository.isZipArchiveFilename(titleToPlay) || 
+                                    TelegramRepository.isZipArchiveFilename(fileName) || 
+                                    (groupParts != null && groupParts.any { TelegramRepository.isZipArchiveFilename(it.fileName) })
 
-                    if (groupInfo != null) {
-                        CoroutineScope(Dispatchers.Main).launch {
-                            val cleanTitle = titleToPlay.removePrefix("📦 ")
-                            val freshUrl = TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second)
-                            if (freshUrl != null && freshUrl.isNotBlank()) {
-                                checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
-                            } else {
-                                val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
-                                checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
-                            }
-                        }
-                    } else if (groupParts != null && groupParts.size > 1) {
-                        showGroupPartsSelectionDialog(item, groupParts, titleToPlay)
-                    } else if (item.id.startsWith("group_")) {
-                        val rest = item.id.removePrefix("group_")
-                        val chatId = rest.substringBefore("_").toLongOrNull()
-                        val baseName = rest.substringAfter("_")
-                        if (chatId != null && chatId != 0L) {
-                            Toast.makeText(this@MainActivity, "Loading group parts...", Toast.LENGTH_SHORT).show()
+                    if (isZipFile) {
+                        if (groupInfo != null) {
                             CoroutineScope(Dispatchers.Main).launch {
-                                val mediaMessages = withContext(Dispatchers.IO) {
-                                    TelegramRepository.fetchChannelMedia(chatId.toString(), limit = 1000).first
+                                val cleanTitle = titleToPlay.removePrefix("📦 ").removePrefix("🗄️ ")
+                                val freshUrl = TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second)
+                                if (freshUrl != null && freshUrl.isNotBlank()) {
+                                    checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                                } else {
+                                    val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                                    checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
                                 }
-                                val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
-                                val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
-                                    .find { it.group.baseName.equals(baseName, ignoreCase = true) }
-                                if (matchGroup != null && matchGroup.group.parts.isNotEmpty()) {
-                                    val parts = matchGroup.group.parts.map { Pair(it.chatId, it.messageId) }
-                                    val sizes = matchGroup.group.parts.map { it.fileSize }
-                                    telegramGroupCache[item.id] = Pair(parts, sizes)
-                                    telegramGroupPartsCache[item.id] = matchGroup.group.parts
-                                    val freshUrl = TelegramRepository.getFreshMergedMediaUrl(parts, baseName, sizes)
+                            }
+                        } else {
+                            val cleanId = item.id.removePrefix("single_").removePrefix("stream_").removePrefix("zip_")
+                            val parts = cleanId.split("_")
+                            val chatId = parts.getOrNull(0)?.toLongOrNull()
+                            val messageId = parts.getOrNull(1)?.toLongOrNull()
+
+                            if (chatId != null && messageId != null && streamInfo == null) {
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    val freshUrl = TelegramRepository.getFreshMediaUrl(chatId, messageId)
                                     if (freshUrl != null && freshUrl.isNotBlank()) {
                                         checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
-                                        return@launch
+                                    } else {
+                                        val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                                        if (backupUrl.isNotBlank()) {
+                                            checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                                        } else {
+                                            Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 }
+                            } else {
+                                val rawUrl = streamInfo?.first ?: item.streamUrl
+                                val urlToPlay = TelegramStreamingProxy.refreshUrl(rawUrl)
+                                if (urlToPlay.isNotBlank()) {
+                                    checkResumeAndSelectPlayer(urlToPlay, titleToPlay, item.posterUrl, item.id, fileName)
+                                } else {
+                                    Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    } else {
+                        // Multi-part video file handling (non-ZIP)
+                        if (groupParts != null && groupParts.size > 1) {
+                            showGroupPartsSelectionDialog(item, groupParts, titleToPlay)
+                        } else if (item.id.startsWith("group_")) {
+                            val rest = item.id.removePrefix("group_")
+                            val chatId = rest.substringBefore("_").toLongOrNull()
+                            val baseName = rest.substringAfter("_")
+                            if (chatId != null && chatId != 0L) {
+                                Toast.makeText(this@MainActivity, "Loading group parts...", Toast.LENGTH_SHORT).show()
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    val mediaMessages = withContext(Dispatchers.IO) {
+                                        TelegramRepository.fetchChannelMedia(chatId.toString(), limit = 1000).first
+                                    }
+                                    val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+                                    val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
+                                        .find { it.group.baseName.equals(baseName, ignoreCase = true) }
+                                    if (matchGroup != null && matchGroup.group.parts.isNotEmpty()) {
+                                        val parts = matchGroup.group.parts.map { Pair(it.chatId, it.messageId) }
+                                        val sizes = matchGroup.group.parts.map { it.fileSize }
+                                        telegramGroupCache[item.id] = Pair(parts, sizes)
+                                        telegramGroupPartsCache[item.id] = matchGroup.group.parts
+                                        if (matchGroup.group.parts.size > 1) {
+                                            showGroupPartsSelectionDialog(item, matchGroup.group.parts, titleToPlay)
+                                        } else {
+                                            val freshUrl = TelegramRepository.getFreshMergedMediaUrl(parts, baseName, sizes)
+                                            if (freshUrl != null && freshUrl.isNotBlank()) {
+                                                checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                                            } else {
+                                                val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                                                if (backupUrl.isNotBlank()) {
+                                                    checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
+                                        if (backupUrl.isNotBlank()) {
+                                            checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
+                                        }
+                                    }
+                                }
+                            } else {
                                 val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
                                 if (backupUrl.isNotBlank()) {
                                     checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
                                 }
                             }
-                        } else {
-                            val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
-                            if (backupUrl.isNotBlank()) {
-                                checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
-                            }
-                        }
-                    } else {
-                        val cleanId = item.id.removePrefix("single_").removePrefix("stream_").removePrefix("zip_")
-                        val parts = cleanId.split("_")
-                        val chatId = parts.getOrNull(0)?.toLongOrNull()
-                        val messageId = parts.getOrNull(1)?.toLongOrNull()
-
-                        if (chatId != null && messageId != null && streamInfo == null) {
+                        } else if (groupInfo != null) {
                             CoroutineScope(Dispatchers.Main).launch {
-                                val freshUrl = TelegramRepository.getFreshMediaUrl(chatId, messageId)
+                                val cleanTitle = titleToPlay.removePrefix("📦 ")
+                                val freshUrl = TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second)
                                 if (freshUrl != null && freshUrl.isNotBlank()) {
                                     checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
                                 } else {
                                     val backupUrl = TelegramStreamingProxy.refreshUrl(item.streamUrl)
-                                    if (backupUrl.isNotBlank()) {
-                                        checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
-                                    } else {
-                                        Toast.makeText(this@MainActivity, "Media link expired or unavailable", Toast.LENGTH_SHORT).show()
-                                    }
+                                    checkResumeAndSelectPlayer(backupUrl, titleToPlay, item.posterUrl, item.id, fileName)
                                 }
                             }
                         } else {
@@ -2872,6 +2909,69 @@ class MainActivity : AppCompatActivity() {
         cardList.addView(subHeaderText)
 
         var dialog: AlertDialog? = null
+
+        // Combined Stream Option Card
+        val streamCombinedCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = UITheme.createRippleCardShape(this@MainActivity, UITheme.SURFACE, 14, UITheme.PRIMARY)
+            val p = UITheme.dpToPx(this@MainActivity, 12)
+            setPadding(p, p, p, p)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
+            }
+            isClickable = true
+            setOnClickListener {
+                dialog?.dismiss()
+                val streamInfo = telegramStreamCache[item.id]
+                val titleToPlay = streamInfo?.second ?: item.title
+                val fileName = item.originalFileName.ifBlank { titleToPlay }
+                val groupInfo = telegramGroupCache[item.id]
+                CoroutineScope(Dispatchers.Main).launch {
+                    val urlToPlay = if (groupInfo != null) {
+                        TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second) ?: item.streamUrl
+                    } else {
+                        val freshIds = parts.map { it.fileId }
+                        val partSizes = parts.map { it.fileSize }
+                        val groupChats = parts.map { it.chatId }
+                        val groupMsgs = parts.map { it.messageId }
+                        TelegramRepository.getMergedStreamUrl(freshIds, cleanTitle, partSizes, groupChats, groupMsgs)
+                    }
+                    val freshUrl = TelegramStreamingProxy.refreshUrl(urlToPlay)
+                    checkResumeAndSelectPlayer(freshUrl, "📦 $cleanTitle", item.posterUrl, item.id, fileName)
+                }
+            }
+        }
+
+        val stIcon = TextView(this).apply {
+            text = "🎬 ▶"
+            textSize = 18f
+            setPadding(0, 0, 12, 0)
+        }
+        streamCombinedCard.addView(stIcon)
+
+        val stInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val stTitle = TextView(this).apply {
+            text = "Stream Full Combined Video"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 14f
+            setTextColor(Color.WHITE)
+        }
+        stInfo.addView(stTitle)
+
+        val stSub = TextView(this).apply {
+            text = "Stream continuous merged playback of all ${parts.size} parts ($totalSizeStr)"
+            UITheme.applyMetadataStyle(this)
+            setTextColor(Color.parseColor(UITheme.PRIMARY))
+        }
+        stInfo.addView(stSub)
+        streamCombinedCard.addView(stInfo)
+
+        cardList.addView(streamCombinedCard)
 
         // Combined Download Option Card
         val downloadCombinedCard = LinearLayout(this).apply {
