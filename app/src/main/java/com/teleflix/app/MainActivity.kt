@@ -1260,6 +1260,7 @@ class MainActivity : AppCompatActivity() {
                                 val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
                                     TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
                                 } else ""
+                                val isZipGroup = group.parts.any { TelegramRepository.isZipArchiveFilename(it.fileName) }
                                 mediaList.add(
                                     MediaItem(
                                         id = key,
@@ -1267,7 +1268,7 @@ class MainActivity : AppCompatActivity() {
                                         posterUrl = thumbUrl,
                                         year = formattedSize,
                                         rating = "📦 Split Pack (${group.parts.size} parts)",
-                                        overview = "Merged Telegram Split/ZIP Archive (${group.parts.size} split files combined into a single continuous stream). Total size: $formattedSize.",
+                                        overview = if (isZipGroup) "Split ZIP" else "Split Video",
                                         type = "telegram_media",
                                         streamUrl = url
                                     )
@@ -1381,6 +1382,7 @@ class MainActivity : AppCompatActivity() {
                                 val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
                                     TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
                                 } else ""
+                                val isZipGroup = group.parts.any { TelegramRepository.isZipArchiveFilename(it.fileName) }
                                 mediaList.add(
                                     MediaItem(
                                         id = key,
@@ -1388,7 +1390,7 @@ class MainActivity : AppCompatActivity() {
                                         posterUrl = thumbUrl,
                                         year = formattedSize,
                                         rating = "📦 Split Pack (${group.parts.size} parts)",
-                                        overview = "Merged Telegram Split/ZIP Archive (${group.parts.size} split files combined into a single continuous stream). Total size: $formattedSize.",
+                                        overview = if (isZipGroup) "Split ZIP" else "Split Video",
                                         type = "telegram_media",
                                         streamUrl = url
                                     )
@@ -1482,6 +1484,7 @@ class MainActivity : AppCompatActivity() {
                                 val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
                                     TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
                                 } else ""
+                                val isZipGroup = group.parts.any { TelegramRepository.isZipArchiveFilename(it.fileName) }
                                 newMediaItems.add(
                                     MediaItem(
                                         id = key,
@@ -1489,7 +1492,7 @@ class MainActivity : AppCompatActivity() {
                                         posterUrl = thumbUrl,
                                         year = formattedSize,
                                         rating = "📦 Split Pack (${group.parts.size} parts)",
-                                        overview = "Merged Telegram Split/ZIP Archive (${group.parts.size} split files combined into a single continuous stream). Total size: $formattedSize.",
+                                        overview = if (isZipGroup) "Split ZIP" else "Split Video",
                                         type = "telegram_media",
                                         streamUrl = url
                                     )
@@ -1586,6 +1589,7 @@ class MainActivity : AppCompatActivity() {
                                 val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
                                     TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
                                 } else ""
+                                val isZipGroup = group.parts.any { TelegramRepository.isZipArchiveFilename(it.fileName) }
                                 mediaList.add(
                                     MediaItem(
                                         id = key,
@@ -1593,7 +1597,7 @@ class MainActivity : AppCompatActivity() {
                                         posterUrl = thumbUrl,
                                         year = formattedSize,
                                         rating = "📦 Split Pack (${group.parts.size} parts)",
-                                        overview = "Merged Telegram Split/ZIP Archive (${group.parts.size} split files combined into a single continuous stream). Total size: $formattedSize.",
+                                        overview = if (isZipGroup) "Split ZIP" else "Split Video",
                                         type = "telegram_media",
                                         streamUrl = url
                                     )
