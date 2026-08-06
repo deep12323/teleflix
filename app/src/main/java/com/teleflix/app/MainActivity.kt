@@ -1956,7 +1956,7 @@ class MainActivity : AppCompatActivity() {
                     try {
                         AlertDialog.Builder(this@MainActivity)
                             .setTitle("No Streams Found")
-                            .setMessage("Could not find video files matching '$displayTitle' across your connected Telegram account or monitored channels.\n\nMake sure your account is connected in Settings and that your monitored channels contain video streams.")
+                            .setMessage("No matching streams found for '$displayTitle'.\nCheck your Telegram account & monitored channels.")
                             .setPositiveButton("OK", null)
                             .show()
                     } catch (e: Exception) {
