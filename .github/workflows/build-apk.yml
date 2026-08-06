@@ -1,4 +1,5 @@
 name: Build Standalone Teleflix APK
+# Automated APK build & release workflow
 
 on:
   push:
