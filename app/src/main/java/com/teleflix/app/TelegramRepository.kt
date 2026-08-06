@@ -1209,33 +1209,7 @@ object TelegramRepository {
             ))
         }
 
-        // Fallback: group remaining singles that share the exact same clean base title (excluding standalone ZIPs)
-        val duplicateTitleGroups = mutableMapOf<String, MutableList<TelegramVideoMessage>>()
-        val remainingSingles = mutableListOf<TelegramVideoMessage>()
-        for (s in singles) {
-            if (isZipArchiveFilename(s.fileName)) {
-                remainingSingles.add(s)
-                continue
-            }
-            val cleanTitle = s.fileName.substringBeforeLast('.', s.fileName).lowercase().trim()
-            duplicateTitleGroups.getOrPut(cleanTitle) { mutableListOf() }.add(s)
-        }
-        for ((_, list) in duplicateTitleGroups) {
-            if (list.size >= 2) {
-                val base = list.first().fileName.substringBeforeLast('.', list.first().fileName)
-                val ext = list.first().fileName.substringAfterLast('.', "")
-                val fullName = if (ext.isNotBlank()) "$base.$ext" else base
-                splitGroups.add(SplitFileGroup(
-                    baseName = fullName,
-                    parts = list.sortedBy { it.messageId },
-                    totalSize = list.sumOf { it.fileSize }
-                ))
-            } else {
-                remainingSingles.addAll(list)
-            }
-        }
-        
-        return splitGroups to remainingSingles
+        return splitGroups to singles
     }
 
     fun isZipArchiveFilename(filename: String?): Boolean {
