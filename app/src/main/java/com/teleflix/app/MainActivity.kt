@@ -2927,6 +2927,7 @@ class MainActivity : AppCompatActivity() {
                 val titleToPlay = streamInfo?.second ?: item.title
                 val fileName = item.originalFileName.ifBlank { titleToPlay }
                 val groupInfo = telegramGroupCache[item.id]
+                val combinedMediaId = if (item.id.startsWith("group_")) item.id else "group_${parts.firstOrNull()?.chatId ?: 0}_$cleanTitle"
                 CoroutineScope(Dispatchers.Main).launch {
                     val urlToPlay = if (groupInfo != null) {
                         TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second) ?: item.streamUrl
@@ -2938,7 +2939,7 @@ class MainActivity : AppCompatActivity() {
                         TelegramRepository.getMergedStreamUrl(freshIds, cleanTitle, partSizes, groupChats, groupMsgs)
                     }
                     val freshUrl = TelegramStreamingProxy.refreshUrl(urlToPlay)
-                    checkResumeAndSelectPlayer(freshUrl, "📦 $cleanTitle", item.posterUrl, item.id, fileName)
+                    checkResumeAndSelectPlayer(freshUrl, "📦 $cleanTitle (Combined)", item.posterUrl, combinedMediaId, fileName)
                 }
             }
         }
@@ -3026,6 +3027,8 @@ class MainActivity : AppCompatActivity() {
             val partNumStr = String.format("%03d", index + 1)
             val partTitle = part.fileName.ifBlank { "Part $partNumStr" }
             val partSize = formatFileSize(part.fileSize)
+            val partMediaId = "${part.chatId}_${part.messageId}"
+            val displayPartTitle = if (partTitle.contains(cleanTitle, ignoreCase = true)) partTitle else "$cleanTitle - Part ${index + 1}"
 
             val partCard = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -3044,7 +3047,7 @@ class MainActivity : AppCompatActivity() {
                         if (freshUrl != null && freshUrl.isNotBlank()) {
                             val groupId = if (item.id.startsWith("group_")) item.id else "group_${part.chatId}_$cleanTitle"
                             telegramGroupPartsCache[groupId] = parts
-                            checkResumeAndSelectPlayer(freshUrl, "📦 $cleanTitle", item.posterUrl, groupId, part.fileName)
+                            checkResumeAndSelectPlayer(freshUrl, displayPartTitle, item.posterUrl, partMediaId, part.fileName)
                         } else {
                             Toast.makeText(this@MainActivity, "Media link expired", Toast.LENGTH_SHORT).show()
                         }
