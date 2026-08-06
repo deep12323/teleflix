@@ -408,7 +408,7 @@ class MainActivity : AppCompatActivity() {
                     val isZipFile = item.id.startsWith("zip_") || 
                                     TelegramRepository.isZipArchiveFilename(titleToPlay) || 
                                     TelegramRepository.isZipArchiveFilename(fileName) || 
-                                    (groupParts != null && groupParts.any { TelegramRepository.isZipArchiveFilename(it.fileName) })
+                                    (groupParts != null && groupParts.any { TelegramRepository.isZipArchiveFilename(it.fileName, it.mimeType) })
 
                     if (isZipFile) {
                         if (groupInfo != null) {

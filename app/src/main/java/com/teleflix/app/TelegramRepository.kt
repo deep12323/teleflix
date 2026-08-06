@@ -1212,12 +1212,19 @@ object TelegramRepository {
         return splitGroups to singles
     }
 
-    fun isZipArchiveFilename(filename: String?): Boolean {
+    fun isZipArchiveFilename(filename: String?, mimeType: String? = null): Boolean {
         if (filename.isNullOrBlank()) return false
         val lower = filename.lowercase().trim()
+        val mime = mimeType?.lowercase()?.trim() ?: ""
+
+        if (mime.contains("zip") || mime.contains("rar") || mime.contains("7z") || mime.contains("tar") || mime.contains("gzip")) return true
+
         if (lower.endsWith(".zip") || lower.endsWith(".7z") || lower.endsWith(".rar") || lower.endsWith(".tar") || lower.endsWith(".gz")) return true
         if (lower.contains(".zip.") || lower.contains(".7z.") || lower.contains(".rar.")) return true
-        if (Regex("""(?i)\.(zip|7z|rar)\.\d+$""").containsMatchIn(lower)) return true
+        
+        // Numeric split extensions (.001, .002, .003, etc., or .mkv.001)
+        if (Regex("""(?i)\.\d{3,4}$""").containsMatchIn(lower)) return true
+        if (Regex("""(?i)\.(zip|7z|rar|mkv|mp4|avi|ts|flv|mov|webm)\.\d+$""").containsMatchIn(lower)) return true
         if (Regex("""(?i)\.(z\d+|part\d+|r\d+)$""").containsMatchIn(lower)) return true
         return false
     }
@@ -1226,7 +1233,7 @@ object TelegramRepository {
      * Check if a file is a ZIP that could contain streamable media.
      */
     fun isStreamableZip(msg: TelegramVideoMessage): Boolean {
-        return isZipArchiveFilename(msg.fileName) && msg.fileSize > 1_000_000 // Only ZIPs > 1MB likely contain media
+        return isZipArchiveFilename(msg.fileName, msg.mimeType) && msg.fileSize > 1_000_000 // Only ZIPs > 1MB likely contain media
     }
 
     fun getMergedStreamUrl(
