@@ -3803,9 +3803,29 @@ class MainActivity : AppCompatActivity() {
         }
 
         val cachedParts = telegramGroupPartsCache[item.id]
+        val parts = if (item.groupedFiles.isNotEmpty()) {
+            item.groupedFiles.map { 
+                val pId = it.id.removePrefix("single_").removePrefix("stream_")
+                val pParts = pId.split("_")
+                val cId = pParts.getOrNull(0)?.toLongOrNull() ?: 0L
+                val mId = pParts.getOrNull(1)?.toLongOrNull() ?: 0L
+                val fId = extractFileIdFromUrl(it.streamUrl) ?: 0
+                TelegramVideoMessage(
+                    messageId = mId,
+                    chatId = cId,
+                    fileName = it.originalFileName.ifBlank { it.title },
+                    fileSize = 0L,
+                    duration = 0,
+                    fileId = fId,
+                    mimeType = "video/mp4"
+                )
+            }
+        } else {
+            cachedParts ?: emptyList()
+        }
+
         val cleanTitle = item.title.removePrefix("Select:").removePrefix("Select").removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
-        if (item.id.startsWith("group_") || (cachedParts != null && cachedParts.size > 1)) {
-            val parts = cachedParts ?: emptyList()
+        if (item.id.startsWith("group_") || item.type == "history_group" || parts.size > 1) {
             if (parts.isNotEmpty()) {
                 showGroupDownloadOptionsDialog(item, parts, cleanTitle)
                 return
