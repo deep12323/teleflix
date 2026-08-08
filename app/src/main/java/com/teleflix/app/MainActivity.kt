@@ -2157,19 +2157,19 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
-                    // Left Source/Media Icon Box
+                    // Left Source/Media Icon Box (48x48dp fixed)
                     val iconBox = TextView(this@MainActivity).apply {
-                        text = if (stream.isSplit) "📦" else "🎬"
+                        text = if (stream.isZip) "🤐" else if (stream.isSplit) "📦" else "🎬"
                         textSize = 18f
                         gravity = android.view.Gravity.CENTER
-                        background = UITheme.createCardShape(this@MainActivity, "#1A202C", 12, "#21262D", 1)
-                        layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply {
+                        background = UITheme.createCardShape(this@MainActivity, "#1A202C", 14, "#21262D", 1)
+                        layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)).apply {
                             setMargins(0, 0, dp(12), 0)
                         }
                     }
                     card.addView(iconBox)
 
-                    // Center Details Column
+                    // Center Details Column (Flexible width weight = 1f)
                     val detailsCol = LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL
                         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -2182,66 +2182,86 @@ class MainActivity : AppCompatActivity() {
                         UITheme.applyCardTitleStyle(this)
                         textSize = 13f
                         setTextColor(Color.parseColor("#F5F5F5"))
-                        maxLines = 3
+                        maxLines = 2
                         ellipsize = android.text.TextUtils.TruncateAt.END
                     }
                     detailsCol.addView(filenameText)
 
-                    // Badges Layout Row
+                    // Horizontal Badges Layout Row
                     val badgesRow = LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = android.view.Gravity.CENTER_VERTICAL
                         setPadding(0, dp(6), 0, 0)
                     }
 
-                    val qualityBadge = TextView(this@MainActivity).apply {
-                        text = "🎬 ${stream.quality}"
-                        UITheme.applyCaptionStyle(this)
-                        textSize = 10f
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                        background = UITheme.createCardShape(this@MainActivity, "#064E3B", 8, "#10B981", 1)
-                        setTextColor(Color.parseColor("#10B981"))
-                        setPadding(dp(8), dp(3), dp(8), dp(3))
-                        val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 0, dp(6), 0)
+                    if (stream.quality.isNotBlank()) {
+                        val qualityBadge = TextView(this@MainActivity).apply {
+                            text = "🎬 ${stream.quality}"
+                            UITheme.applyCaptionStyle(this)
+                            textSize = 10f
+                            setSingleLine(true)
+                            setTypeface(null, android.graphics.Typeface.BOLD)
+                            background = UITheme.createCardShape(this@MainActivity, "#064E3B", 8, "#10B981", 1)
+                            setTextColor(Color.parseColor("#10B981"))
+                            setPadding(dp(8), dp(3), dp(8), dp(3))
+                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                                setMargins(0, 0, dp(6), 0)
+                            }
                         }
-                        layoutParams = lp
+                        badgesRow.addView(qualityBadge)
                     }
-                    badgesRow.addView(qualityBadge)
-
-                    val sizeBadge = TextView(this@MainActivity).apply {
-                        text = "💾 ${stream.size}"
-                        UITheme.applyCaptionStyle(this)
-                        textSize = 10f
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                        background = UITheme.createCardShape(this@MainActivity, "#1E293B", 8, "#3B82F6", 1)
-                        setTextColor(Color.parseColor("#3B82F6"))
-                        setPadding(dp(8), dp(3), dp(8), dp(3))
-                        val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 0, dp(6), 0)
-                        }
-                        layoutParams = lp
-                    }
-                    badgesRow.addView(sizeBadge)
 
                     if (stream.isSplit) {
                         val splitBadge = TextView(this@MainActivity).apply {
                             text = "📦 SPLIT PACK"
                             UITheme.applyCaptionStyle(this)
                             textSize = 10f
+                            setSingleLine(true)
                             setTypeface(null, android.graphics.Typeface.BOLD)
                             background = UITheme.createCardShape(this@MainActivity, "#451A03", 8, "#F59E0B", 1)
                             setTextColor(Color.parseColor("#F59E0B"))
                             setPadding(dp(8), dp(3), dp(8), dp(3))
-                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                                setMargins(0, 0, dp(6), 0)
+                            }
                         }
                         badgesRow.addView(splitBadge)
+                    } else if (stream.isZip) {
+                        val zipBadge = TextView(this@MainActivity).apply {
+                            text = "🤐 ZIP"
+                            UITheme.applyCaptionStyle(this)
+                            textSize = 10f
+                            setSingleLine(true)
+                            setTypeface(null, android.graphics.Typeface.BOLD)
+                            background = UITheme.createCardShape(this@MainActivity, "#312E81", 8, "#6366F1", 1)
+                            setTextColor(Color.parseColor("#818CF8"))
+                            setPadding(dp(8), dp(3), dp(8), dp(3))
+                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                                setMargins(0, 0, dp(6), 0)
+                            }
+                        }
+                        badgesRow.addView(zipBadge)
+                    }
+
+                    if (stream.size.isNotBlank()) {
+                        val sizeBadge = TextView(this@MainActivity).apply {
+                            text = "💾 ${stream.size}"
+                            UITheme.applyCaptionStyle(this)
+                            textSize = 10f
+                            setSingleLine(true)
+                            setTypeface(null, android.graphics.Typeface.BOLD)
+                            background = UITheme.createCardShape(this@MainActivity, "#1E293B", 8, "#3B82F6", 1)
+                            setTextColor(Color.parseColor("#3B82F6"))
+                            setPadding(dp(8), dp(3), dp(8), dp(3))
+                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                        }
+                        badgesRow.addView(sizeBadge)
                     }
 
                     detailsCol.addView(badgesRow)
                     card.addView(detailsCol)
 
-                    // Right Play Action Button
+                    // Right Play Action Button (Fixed dimensions: 95dp x 44dp)
                     val playAction = TextView(this@MainActivity).apply {
                         text = if (isDownloadMode) "⚡ DOWN" else "▶ PLAY"
                         textSize = 12f
@@ -2249,8 +2269,7 @@ class MainActivity : AppCompatActivity() {
                         background = UITheme.createCardShape(this@MainActivity, "#E50914", 12, "#E50914", 1)
                         setTextColor(Color.WHITE)
                         gravity = android.view.Gravity.CENTER
-                        setPadding(dp(14), dp(8), dp(14), dp(8))
-                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                        layoutParams = LinearLayout.LayoutParams(dp(95), dp(44))
                     }
                     card.addView(playAction)
 
