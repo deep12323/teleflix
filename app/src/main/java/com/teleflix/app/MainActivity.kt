@@ -2530,87 +2530,30 @@ class MainActivity : AppCompatActivity() {
         return list
     }
 
-    // Grouped history loader — groups items with the same title, showing original file names
     private fun loadWatchHistory(): List<MediaItem> {
         val rawList = loadRawWatchHistory()
         if (rawList.isEmpty()) return rawList
 
-        // Normalize title for grouping (strip episode/part prefixes & suffixes & bracket noise)
-        fun normalizeTitle(title: String): String {
-            var clean = title.trim()
-                .removePrefix("Select:")
-                .removePrefix("Select")
-                .removePrefix("📦")
-                .removePrefix("🗄️")
-                .removePrefix("📂")
-                .trim()
-            clean = clean.removeSuffix(" (Combined)").trim()
-            clean = clean.replace(Regex("""[\._\s-]*(?:part|pt|cd)[\._\s-]*\d+.*$""", RegexOption.IGNORE_CASE), "")
-                         .replace(Regex("""\.\d{3,4}$"""), "")
-                         .replace(Regex("""\.(mkv|mp4|avi|mov|wmv|ts|flv)$""", RegexOption.IGNORE_CASE), "")
-                         .replace(Regex("""\[.*?\]"""), " ")
-                         .replace(Regex("""\(.*?\)"""), " ")
-                         .replace(Regex("""[\[\]\(\)\{\}\._\s-]+"""), " ")
-                         .trim()
-            return if (clean.isNotBlank()) clean.lowercase() else title.lowercase()
-        }
-
-        // Group items by normalized title, preserving insertion order
-        val groupMap = LinkedHashMap<String, MutableList<MediaItem>>()
-        fun findHistoryGroupKey(key: String): String {
-            if (key.isBlank()) return key
-            if (groupMap.containsKey(key)) return key
-            for (existingKey in groupMap.keys) {
-                if (existingKey.isNotBlank()) {
-                    if (key.startsWith(existingKey) || existingKey.startsWith(key)) {
-                        return existingKey
-                    }
-                }
-            }
-            return key
-        }
-
-        for (item in rawList) {
-            val rawKey = normalizeTitle(item.title)
-            val groupKey = findHistoryGroupKey(rawKey)
-            groupMap.getOrPut(groupKey) { mutableListOf() }.add(item)
-        }
-
         val result = mutableListOf<MediaItem>()
-        for ((_, items) in groupMap) {
-            if (items.size == 1) {
-                // Single file — show as-is but add file name to overview if available
-                val single = items.first()
-                val fileInfo = if (single.originalFileName.isNotBlank()) {
-                    "📁 ${single.originalFileName}"
-                } else ""
-                val enhancedOverview = if (fileInfo.isNotBlank() && !single.overview.contains(single.originalFileName)) {
-                    "$fileInfo\n${single.overview}"
-                } else single.overview
-                result.add(single.copy(overview = enhancedOverview))
+        for (single in rawList) {
+            val displayName = single.originalFileName.ifBlank { single.title }
+            val cleanTitle = displayName.removePrefix("Select:").removePrefix("Select").removePrefix("📦 ").removePrefix("🗄️ ").removePrefix("📂 ").removeSuffix(" (Combined)").trim()
+            
+            val overviewText = if (single.overview.isNotBlank() && !single.overview.contains("Playing stream")) {
+                single.overview
             } else {
-                // Multiple files for the same title — create a group entry
-                val mostRecent = items.first() // First item is the most recently watched
-                val fileNames = items.mapIndexed { index, it ->
-                    val name = it.originalFileName.ifBlank { it.title }
-                    "${index + 1}. $name"
-                }
-                val filesOverview = "📂 ${items.size} different files:\n${fileNames.joinToString("\n")}"
-                result.add(
-                    MediaItem(
-                        id = "history_group_${mostRecent.id}",
-                        title = mostRecent.title,
-                        posterUrl = mostRecent.posterUrl,
-                        year = "📂 ${items.size} files",
-                        rating = "▶",
-                        overview = filesOverview,
-                        type = "history_group",
-                        streamUrl = mostRecent.streamUrl,
-                        originalFileName = mostRecent.originalFileName,
-                        groupedFiles = items
-                    )
-                )
+                "Playing stream:\n► $cleanTitle"
             }
+            
+            result.add(
+                single.copy(
+                    title = cleanTitle,
+                    year = "Watched",
+                    rating = "▶",
+                    overview = overviewText,
+                    type = "telegram_media"
+                )
+            )
         }
         return result
     }
@@ -3804,7 +3747,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (item.type == "telegram_media") {
+        if (item.type == "telegram_media" || item.streamUrl.contains("/stream") || item.streamUrl.contains("http") || item.id.contains("_")) {
             val streamInfo = telegramStreamCache[item.id]
             val rawUrl = streamInfo?.first ?: item.streamUrl
             val fileId = extractFileIdFromUrl(rawUrl)
