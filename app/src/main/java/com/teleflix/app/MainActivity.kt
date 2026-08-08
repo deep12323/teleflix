@@ -2628,167 +2628,30 @@ class MainActivity : AppCompatActivity() {
         return result
     }
 
-    // Show a file picker dialog for grouped history entries
+    // Show a file picker dialog for grouped history entries (uses standard showGroupPartsSelectionDialog)
     private fun showHistoryGroupFilesPicker(groupItem: MediaItem) {
         val files = groupItem.groupedFiles
         if (files.isEmpty()) return
 
-        if (files.size == 1) {
-            playHistoryItem(files.first())
-            return
+        val parts = files.mapIndexed { index, file ->
+            val pId = file.id.removePrefix("single_").removePrefix("stream_")
+            val pParts = pId.split("_")
+            val cId = pParts.getOrNull(0)?.toLongOrNull() ?: 0L
+            val mId = pParts.getOrNull(1)?.toLongOrNull() ?: 0L
+            val fId = extractFileIdFromUrl(file.streamUrl) ?: 0
+            val sz = if (file.fileSize > 0) file.fileSize else extractSizeFromUrl(file.streamUrl)
+            TelegramVideoMessage(
+                messageId = mId,
+                chatId = cId,
+                fileName = file.originalFileName.ifBlank { file.title },
+                fileSize = sz,
+                duration = 0,
+                fileId = fId,
+                mimeType = "video/mp4",
+                caption = ""
+            )
         }
-
-        val cleanTitle = groupItem.title.trim()
-            .removePrefix("Select:")
-            .removePrefix("Select")
-            .removePrefix("📦")
-            .removePrefix("🗄️")
-            .removePrefix("📂")
-            .trim()
-            .removeSuffix(" (Combined)")
-            .replace(Regex("""[\._\s-]*(?:part|pt|cd)[\._\s-]*\d+.*$""", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("""\.(mkv|mp4|avi|mov|wmv|ts|flv)$""", RegexOption.IGNORE_CASE), "")
-            .trim()
-
-        val scrollView = ScrollView(this).apply {
-            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
-        }
-        val cardList = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            val pad = UITheme.dpToPx(this@MainActivity, 16)
-            setPadding(pad, pad, pad, pad)
-        }
-
-        val headerText = TextView(this).apply {
-            text = "📂 $cleanTitle"
-            UITheme.applySectionTitleStyle(this)
-            setTextColor(Color.WHITE)
-            textSize = 15f
-        }
-        cardList.addView(headerText)
-
-        val subHeaderText = TextView(this).apply {
-            text = "This video has ${files.size} parts. Select an option:"
-            UITheme.applyMetadataStyle(this)
-            setPadding(0, 4, 0, 14)
-        }
-        cardList.addView(subHeaderText)
-
-        var dialog: AlertDialog? = null
-
-        // Combined Stream Option Card
-        val streamCombinedCard = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            background = UITheme.createRippleCardShape(this@MainActivity, UITheme.SURFACE, 14, UITheme.PRIMARY)
-            val p = UITheme.dpToPx(this@MainActivity, 12)
-            setPadding(p, p, p, p)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
-            }
-            isClickable = true
-            setOnClickListener {
-                dialog?.dismiss()
-                playHistoryItem(files.first().copy(title = "📦 $cleanTitle (Combined)"))
-            }
-        }
-
-        val stIcon = TextView(this).apply {
-            text = "🎬 ▶"
-            textSize = 18f
-            setPadding(0, 0, 12, 0)
-        }
-        streamCombinedCard.addView(stIcon)
-
-        val stInfo = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        val stTitle = TextView(this).apply {
-            text = "Stream Full Combined Video"
-            UITheme.applyCardTitleStyle(this)
-            textSize = 14f
-            setTextColor(Color.WHITE)
-        }
-        stInfo.addView(stTitle)
-
-        val stSub = TextView(this).apply {
-            text = "Stream continuous merged playback of all ${files.size} parts"
-            UITheme.applyMetadataStyle(this)
-            setTextColor(Color.parseColor(UITheme.PRIMARY))
-        }
-        stInfo.addView(stSub)
-        streamCombinedCard.addView(stInfo)
-
-        cardList.addView(streamCombinedCard)
-
-        // Individual Parts Options
-        for ((index, file) in files.withIndex()) {
-            val displayName = file.originalFileName.ifBlank { file.title }
-            val partTitle = if (displayName.contains(cleanTitle, ignoreCase = true)) displayName else "$cleanTitle - Part ${index + 1}"
-
-            val partCard = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 12, UITheme.STROKE_COLOR)
-                val p = UITheme.dpToPx(this@MainActivity, 10)
-                setPadding(p, p, p, p)
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 6))
-                }
-                isClickable = true
-                setOnClickListener {
-                    dialog?.dismiss()
-                    playHistoryItem(file)
-                }
-            }
-
-            val iconText = TextView(this).apply {
-                text = "▶ Part ${index + 1}"
-                UITheme.applyCardTitleStyle(this)
-                textSize = 13f
-                setTextColor(Color.parseColor(UITheme.PRIMARY))
-                setPadding(0, 0, 12, 0)
-            }
-            partCard.addView(iconText)
-
-            val partInfo = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-
-            val pTitle = TextView(this).apply {
-                text = partTitle
-                UITheme.applyCardTitleStyle(this)
-                textSize = 13f
-            }
-            partInfo.addView(pTitle)
-
-            val pSub = TextView(this).apply {
-                text = "📁 $displayName"
-                UITheme.applyMetadataStyle(this)
-                textSize = 11f
-            }
-            partInfo.addView(pSub)
-
-            partCard.addView(partInfo)
-            cardList.addView(partCard)
-        }
-
-        scrollView.addView(cardList)
-
-        dialog = AlertDialog.Builder(this)
-            .setView(scrollView)
-            .setNegativeButton("Cancel", null)
-            .create()
-
-        dialog.show()
-        val metrics = resources.displayMetrics
-        val w = (metrics.widthPixels * 0.92).toInt()
-        val h = (metrics.heightPixels * 0.82).toInt()
-        dialog.window?.setLayout(w, h)
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.parseColor(UITheme.BACKGROUND)))
+        showGroupPartsSelectionDialog(groupItem, parts, groupItem.title)
     }
 
     // Play a specific history item (resolves fresh URLs if needed)
