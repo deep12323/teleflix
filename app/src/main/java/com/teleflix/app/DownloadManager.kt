@@ -803,6 +803,27 @@ object DownloadManager {
         }
     }
 
+    fun clearAllDownloads(context: Context) {
+        synchronized(downloadsMap) {
+            val allIds = downloadsMap.keys.toList()
+            for (id in allIds) {
+                val item = downloadsMap.remove(id) ?: continue
+                try {
+                    val file = File(item.localPath)
+                    if (file.exists()) file.delete()
+                    for (i in 0 until item.partFileIds.size) {
+                        val temp = getPartTempFile(context, item.id, i)
+                        if (temp.exists()) temp.delete()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to delete local file: ${item.localPath}", e)
+                }
+            }
+            saveToPrefs(context)
+            updateFlow()
+        }
+    }
+
     fun onFileUpdate(context: Context, file: TdApi.File) {
         synchronized(downloadsMap) {
             var updated = false
