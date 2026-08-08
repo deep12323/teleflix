@@ -3143,7 +3143,7 @@ class MainActivity : AppCompatActivity() {
                             for (p in parts) {
                                 val pId = "${p.chatId}_${p.messageId}"
                                 val pName = p.fileName.ifBlank { "Part ${p.fileId}" }
-                                val pTitle = if (pName.contains(cleanTitle, ignoreCase = true)) pName else "$cleanTitle - $pName"
+                                val pTitle = pName
                                 val pUrl = TelegramRepository.getStreamUrl(p.fileId, p.fileName, p.fileSize, p.chatId, p.messageId)
                                 saveToHistory(
                                     MediaItem(

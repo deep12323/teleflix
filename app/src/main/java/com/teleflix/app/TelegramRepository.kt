@@ -1146,7 +1146,10 @@ object TelegramRepository {
         val zPattern = Regex("""^(.+?)\.z(\d{1,3})$""", RegexOption.IGNORE_CASE) // matches file.z01, file.z1
         
         fun normalizeKey(name: String): String {
-            return name.lowercase().replace(Regex("""[\[\]\(\)\{\}\._\s-]+"""), " ").trim()
+            return name.lowercase()
+                .replace(Regex("""\.(mkv|mp4|avi|mov|wmv|ts|flv|rar|zip|7z)$""", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("""[\[\]\(\)\{\}\._\s-]+"""), " ")
+                .trim()
         }
 
         val groups = mutableMapOf<String, Pair<String, MutableList<Pair<Int, TelegramVideoMessage>>>>()
@@ -1201,16 +1204,30 @@ object TelegramRepository {
                 }
             }
         }
+
+        // Reconcile single base files (Part 1 without explicit 'part' suffix) with their matching split group
+        val remainingSingles = mutableListOf<TelegramVideoMessage>()
+        for (singleMsg in singles) {
+            val singleKey = normalizeKey(singleMsg.fileName)
+            val matchingGroupEntry = groups[singleKey]
+            if (matchingGroupEntry != null && matchingGroupEntry.second.none { it.second.messageId == singleMsg.messageId }) {
+                val hasPart1 = matchingGroupEntry.second.any { it.first == 1 }
+                val assignedPartNum = if (!hasPart1) 1 else 0
+                matchingGroupEntry.second.add(assignedPartNum to singleMsg)
+            } else {
+                remainingSingles.add(singleMsg)
+            }
+        }
         
         val splitGroups = mutableListOf<SplitFileGroup>()
         
         for ((_, pair) in groups) {
             val (baseName, parts) = pair
             if (parts.size < 2) {
-                singles.addAll(parts.map { it.second })
+                remainingSingles.addAll(parts.map { it.second })
                 continue
             }
-            val sorted = parts.sortedBy { it.first }.map { it.second }
+            val sorted = parts.sortedWith(compareBy({ it.first }, { it.second.messageId })).map { it.second }
             splitGroups.add(SplitFileGroup(
                 baseName = baseName,
                 parts = sorted,
@@ -1218,7 +1235,8 @@ object TelegramRepository {
             ))
         }
 
-        return splitGroups to singles
+        return splitGroups to remainingSingles
+    }
     }
 
     fun isZipArchiveFilename(filename: String?, mimeType: String? = null): Boolean {
