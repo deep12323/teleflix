@@ -2549,7 +2549,7 @@ class MainActivity : AppCompatActivity() {
                          .replace(Regex("""\.\d{3,4}$"""), "")
                          .replace(Regex("""\.(mkv|mp4|avi|mov|wmv|ts|flv)$""", RegexOption.IGNORE_CASE), "")
                          .replace(Regex("""\[.*?\]"""), " ")
-                         .replace(Regex("""\(.*?\)`""), " ")
+                         .replace(Regex("""\(.*?\)"""), " ")
                          .replace(Regex("""[\[\]\(\)\{\}\._\s-]+"""), " ")
                          .trim()
             return if (clean.isNotBlank()) clean.lowercase() else title.lowercase()
