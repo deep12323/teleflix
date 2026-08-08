@@ -3738,7 +3738,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val cachedParts = telegramGroupPartsCache[item.id]
-        val cleanTitle = item.title.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
+        val cleanTitle = item.title.removePrefix("Select:").removePrefix("Select").removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
         if (item.id.startsWith("group_") || (cachedParts != null && cachedParts.size > 1)) {
             val parts = cachedParts ?: emptyList()
             if (parts.isNotEmpty()) {
@@ -3747,60 +3747,66 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (item.type == "telegram_media" || item.streamUrl.contains("/stream") || item.streamUrl.contains("http") || item.id.contains("_")) {
-            val streamInfo = telegramStreamCache[item.id]
-            val rawUrl = streamInfo?.first ?: item.streamUrl
-            val fileId = extractFileIdFromUrl(rawUrl)
+        val streamInfo = telegramStreamCache[item.id]
+        val rawUrl = streamInfo?.first ?: item.streamUrl
+        val fileId = extractFileIdFromUrl(rawUrl)
 
-            val cleanTitle = item.title.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
+        if (fileId != null && fileId != 0) {
             val fileName = item.originalFileName.ifBlank { "$cleanTitle.mp4" }
-
             val rest = item.id.removePrefix("single_").removePrefix("stream_")
             val parts = rest.split("_")
             val chatId = parts.getOrNull(0)?.toLongOrNull() ?: 0L
             val messageId = parts.getOrNull(1)?.toLongOrNull() ?: 0L
 
-            if (fileId != null && fileId != 0) {
-                DownloadManager.startDownload(
-                    context = this,
-                    title = cleanTitle,
-                    fileName = fileName,
-                    fileId = fileId,
-                    chatId = chatId,
-                    messageId = messageId,
-                    posterUrl = item.posterUrl
-                )
-                Toast.makeText(this, "Started downloading '$cleanTitle' 📥", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "Resolving video link for download...", Toast.LENGTH_SHORT).show()
-                if (chatId != 0L && messageId != 0L) {
-                    CoroutineScope(Dispatchers.Main).launch {
-                        val freshUrl = withContext(Dispatchers.IO) {
-                            TelegramRepository.getFreshMediaUrl(chatId, messageId)
-                        }
-                        if (freshUrl != null) {
-                            val freshId = extractFileIdFromUrl(freshUrl)
-                            if (freshId != null && freshId != 0) {
-                                DownloadManager.startDownload(
-                                    context = this@MainActivity,
-                                    title = cleanTitle,
-                                    fileName = fileName,
-                                    fileId = freshId,
-                                    chatId = chatId,
-                                    messageId = messageId,
-                                    posterUrl = item.posterUrl
-                                )
-                                Toast.makeText(this@MainActivity, "Started downloading '$cleanTitle' 📥", Toast.LENGTH_SHORT).show()
-                                return@launch
-                            }
-                        }
-                        Toast.makeText(this@MainActivity, "Failed to resolve download link", Toast.LENGTH_SHORT).show()
+            DownloadManager.startDownload(
+                context = this,
+                title = cleanTitle,
+                fileName = fileName,
+                fileId = fileId,
+                chatId = chatId,
+                messageId = messageId,
+                posterUrl = item.posterUrl
+            )
+            Toast.makeText(this, "Started downloading '$cleanTitle' 📥", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (item.type == "telegram_media" || item.streamUrl.contains("/stream") || item.streamUrl.contains("http") || item.id.contains("_")) {
+            val fileName = item.originalFileName.ifBlank { "$cleanTitle.mp4" }
+            val rest = item.id.removePrefix("single_").removePrefix("stream_")
+            val parts = rest.split("_")
+            val chatId = parts.getOrNull(0)?.toLongOrNull() ?: 0L
+            val messageId = parts.getOrNull(1)?.toLongOrNull() ?: 0L
+
+            Toast.makeText(this, "Resolving video link for download...", Toast.LENGTH_SHORT).show()
+            if (chatId != 0L && messageId != 0L) {
+                CoroutineScope(Dispatchers.Main).launch {
+                    val freshUrl = withContext(Dispatchers.IO) {
+                        TelegramRepository.getFreshMediaUrl(chatId, messageId)
                     }
-                } else {
-                    Toast.makeText(this, "Unable to download this stream item", Toast.LENGTH_SHORT).show()
+                    if (freshUrl != null) {
+                        val freshId = extractFileIdFromUrl(freshUrl)
+                        if (freshId != null && freshId != 0) {
+                            DownloadManager.startDownload(
+                                context = this@MainActivity,
+                                title = cleanTitle,
+                                fileName = fileName,
+                                fileId = freshId,
+                                chatId = chatId,
+                                messageId = messageId,
+                                posterUrl = item.posterUrl
+                            )
+                            Toast.makeText(this@MainActivity, "Started downloading '$cleanTitle' 📥", Toast.LENGTH_SHORT).show()
+                            return@launch
+                        }
+                    }
+                    Toast.makeText(this@MainActivity, "Failed to resolve download link", Toast.LENGTH_SHORT).show()
                 }
+                return
             }
-        } else if (item.type == "series" || item.type == "tv") {
+        }
+
+        if (item.type == "series" || item.type == "tv") {
             fetchSeriesEpisodes(item, isDownloadMode = true)
         } else {
             showStreamOptions(item.title, null, null, item.posterUrl, isDownloadMode = true)
