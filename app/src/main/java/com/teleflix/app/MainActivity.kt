@@ -2535,12 +2535,21 @@ class MainActivity : AppCompatActivity() {
         val rawList = loadRawWatchHistory()
         if (rawList.isEmpty()) return rawList
 
-        // Normalize title for grouping (strip episode/part prefixes & suffixes)
+        // Normalize title for grouping (strip episode/part prefixes & suffixes & bracket noise)
         fun normalizeTitle(title: String): String {
-            var clean = title.trim().removePrefix("📦 ").removePrefix("🗄️ ").removeSuffix(" (Combined)").trim()
+            var clean = title.trim()
+                .removePrefix("Select:")
+                .removePrefix("Select")
+                .removePrefix("📦")
+                .removePrefix("🗄️")
+                .removePrefix("📂")
+                .trim()
+            clean = clean.removeSuffix(" (Combined)").trim()
             clean = clean.replace(Regex("""[\._\s-]*(?:part|pt|cd)[\._\s-]*\d+.*$""", RegexOption.IGNORE_CASE), "")
                          .replace(Regex("""\.\d{3,4}$"""), "")
                          .replace(Regex("""\.(mkv|mp4|avi|mov|wmv|ts|flv)$""", RegexOption.IGNORE_CASE), "")
+                         .replace(Regex("""\[.*?\]"""), " ")
+                         .replace(Regex("""\(.*?\)`""), " ")
                          .replace(Regex("""[\[\]\(\)\{\}\._\s-]+"""), " ")
                          .trim()
             return if (clean.isNotBlank()) clean.lowercase() else title.lowercase()
@@ -2548,9 +2557,23 @@ class MainActivity : AppCompatActivity() {
 
         // Group items by normalized title, preserving insertion order
         val groupMap = LinkedHashMap<String, MutableList<MediaItem>>()
+        fun findHistoryGroupKey(key: String): String {
+            if (key.isBlank()) return key
+            if (groupMap.containsKey(key)) return key
+            for (existingKey in groupMap.keys) {
+                if (existingKey.isNotBlank()) {
+                    if (key.startsWith(existingKey) || existingKey.startsWith(key)) {
+                        return existingKey
+                    }
+                }
+            }
+            return key
+        }
+
         for (item in rawList) {
-            val key = normalizeTitle(item.title)
-            groupMap.getOrPut(key) { mutableListOf() }.add(item)
+            val rawKey = normalizeTitle(item.title)
+            val groupKey = findHistoryGroupKey(rawKey)
+            groupMap.getOrPut(groupKey) { mutableListOf() }.add(item)
         }
 
         val result = mutableListOf<MediaItem>()
