@@ -2625,7 +2625,17 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val cleanTitle = groupItem.title.removePrefix("📦 ").removePrefix("🗄️ ").removeSuffix(" (Combined)").trim()
+        val cleanTitle = groupItem.title.trim()
+            .removePrefix("Select:")
+            .removePrefix("Select")
+            .removePrefix("📦")
+            .removePrefix("🗄️")
+            .removePrefix("📂")
+            .trim()
+            .removeSuffix(" (Combined)")
+            .replace(Regex("""[\._\s-]*(?:part|pt|cd)[\._\s-]*\d+.*$""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\.(mkv|mp4|avi|mov|wmv|ts|flv)$""", RegexOption.IGNORE_CASE), "")
+            .trim()
 
         val scrollView = ScrollView(this).apply {
             setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
