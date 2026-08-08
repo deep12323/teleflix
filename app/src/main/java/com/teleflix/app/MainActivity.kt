@@ -2098,10 +2098,9 @@ class MainActivity : AppCompatActivity() {
 
                 for (stream in streams) {
                     val card = LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = android.view.Gravity.CENTER_VERTICAL
-                        background = UITheme.createRippleCardShape(this@MainActivity, "#11151D", 16, "#21262D")
-                        val pad = dp(12)
+                        orientation = LinearLayout.VERTICAL
+                        background = UITheme.createRippleCardShape(this@MainActivity, "#11151D", 14, "#21262D")
+                        val pad = dp(14)
                         setPadding(pad, pad, pad, pad)
                         val lp = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2157,26 +2156,6 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
-                    // Left Source/Media Icon Box (48x48dp fixed)
-                    val iconBox = TextView(this@MainActivity).apply {
-                        text = if (stream.isZip) "🤐" else if (stream.isSplit) "📦" else "🎬"
-                        textSize = 18f
-                        gravity = android.view.Gravity.CENTER
-                        background = UITheme.createCardShape(this@MainActivity, "#1A202C", 14, "#21262D", 1)
-                        layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)).apply {
-                            setMargins(0, 0, dp(12), 0)
-                        }
-                    }
-                    card.addView(iconBox)
-
-                    // Center Details Column (Flexible width weight = 1f)
-                    val detailsCol = LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.VERTICAL
-                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                            setMargins(0, 0, dp(10), 0)
-                        }
-                    }
-
                     val filenameText = TextView(this@MainActivity).apply {
                         text = stream.fileName
                         UITheme.applyCardTitleStyle(this)
@@ -2185,13 +2164,13 @@ class MainActivity : AppCompatActivity() {
                         maxLines = 2
                         ellipsize = android.text.TextUtils.TruncateAt.END
                     }
-                    detailsCol.addView(filenameText)
+                    card.addView(filenameText)
 
                     // Horizontal Badges Layout Row
                     val badgesRow = LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = android.view.Gravity.CENTER_VERTICAL
-                        setPadding(0, dp(6), 0, 0)
+                        setPadding(0, dp(8), 0, 0)
                     }
 
                     if (stream.quality.isNotBlank()) {
@@ -2258,20 +2237,7 @@ class MainActivity : AppCompatActivity() {
                         badgesRow.addView(sizeBadge)
                     }
 
-                    detailsCol.addView(badgesRow)
-                    card.addView(detailsCol)
-
-                    // Right Play Action Button (Fixed dimensions: 95dp x 44dp)
-                    val playAction = TextView(this@MainActivity).apply {
-                        text = if (isDownloadMode) "⚡ DOWN" else "▶ PLAY"
-                        textSize = 12f
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                        background = UITheme.createCardShape(this@MainActivity, "#E50914", 12, "#E50914", 1)
-                        setTextColor(Color.WHITE)
-                        gravity = android.view.Gravity.CENTER
-                        layoutParams = LinearLayout.LayoutParams(dp(95), dp(44))
-                    }
-                    card.addView(playAction)
+                    card.addView(badgesRow)
 
                     cardList.addView(card)
                 }
