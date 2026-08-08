@@ -1237,7 +1237,6 @@ object TelegramRepository {
 
         return splitGroups to remainingSingles
     }
-    }
 
     fun isZipArchiveFilename(filename: String?, mimeType: String? = null): Boolean {
         if (filename.isNullOrBlank()) return false
