@@ -557,14 +557,20 @@ class MainActivity : AppCompatActivity() {
                             val chatId = parts.getOrNull(0)?.toLongOrNull()
                             val messageId = parts.getOrNull(1)?.toLongOrNull()
 
-                            if (chatId != null && messageId != null && streamInfo == null) {
+                            if (chatId != null && messageId != null && (groupParts == null || groupParts.isEmpty())) {
                                 CoroutineScope(Dispatchers.Main).launch {
                                     val mediaMessages = withContext(Dispatchers.IO) {
-                                        TelegramRepository.fetchChannelMedia(chatId.toString(), limit = 200).first
+                                        val around = TelegramRepository.fetchChannelMedia(chatId.toString(), fromMessageId = maxOf(0L, messageId + 50), limit = 200).first
+                                        if (around.any { it.messageId == messageId }) {
+                                            around
+                                        } else {
+                                            val latest = TelegramRepository.fetchChannelMedia(chatId.toString(), fromMessageId = 0L, limit = 200).first
+                                            (around + latest).distinctBy { it.messageId }
+                                        }
                                     }
                                     val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
                                     val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
-                                        .find { g -> g.group.parts.any { it.messageId == messageId } }
+                                        .find { g -> g.group.parts.any { it.messageId == messageId } || (item.originalFileName.isNotBlank() && g.group.baseName.equals(item.originalFileName.substringBeforeLast("."), ignoreCase = true)) }
 
                                     if (matchGroup != null && matchGroup.group.parts.size > 1) {
                                         telegramGroupPartsCache[item.id] = matchGroup.group.parts
@@ -1673,7 +1679,8 @@ class MainActivity : AppCompatActivity() {
                                         rating = badge,
                                         overview = msg.caption.ifBlank { "Telegram Search Match: ${msg.fileName}\nSize: $formattedSize" },
                                         type = "telegram_media",
-                                        streamUrl = url
+                                        streamUrl = url,
+                                        originalFileName = msg.fileName
                                     )
                                 )
                             }
@@ -2528,9 +2535,15 @@ class MainActivity : AppCompatActivity() {
         val rawList = loadRawWatchHistory()
         if (rawList.isEmpty()) return rawList
 
-        // Normalize title for grouping (strip episode prefixes like emojis, trim whitespace)
+        // Normalize title for grouping (strip episode/part prefixes & suffixes)
         fun normalizeTitle(title: String): String {
-            return title.trim().removePrefix("📦 ").removePrefix("🗄️ ").trim().lowercase()
+            var clean = title.trim().removePrefix("📦 ").removePrefix("🗄️ ").removeSuffix(" (Combined)").trim()
+            clean = clean.replace(Regex("""[\._\s-]*(?:part|pt|cd)[\._\s-]*\d+.*$""", RegexOption.IGNORE_CASE), "")
+                         .replace(Regex("""\.\d{3,4}$"""), "")
+                         .replace(Regex("""\.(mkv|mp4|avi|mov|wmv|ts|flv)$""", RegexOption.IGNORE_CASE), "")
+                         .replace(Regex("""[\[\]\(\)\{\}\._\s-]+"""), " ")
+                         .trim()
+            return if (clean.isNotBlank()) clean.lowercase() else title.lowercase()
         }
 
         // Group items by normalized title, preserving insertion order
@@ -2584,116 +2597,152 @@ class MainActivity : AppCompatActivity() {
         val files = groupItem.groupedFiles
         if (files.isEmpty()) return
 
-        // If only 1 file somehow, just play it directly
         if (files.size == 1) {
-            val single = files.first()
-            playHistoryItem(single)
+            playHistoryItem(files.first())
             return
         }
 
+        val cleanTitle = groupItem.title.removePrefix("📦 ").removePrefix("🗄️ ").removeSuffix(" (Combined)").trim()
+
         val scrollView = ScrollView(this).apply {
-            setBackgroundColor(android.graphics.Color.parseColor("#090A0F"))
+            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
         }
         val cardList = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 24, 24, 24)
+            val pad = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(pad, pad, pad, pad)
         }
 
         val headerText = TextView(this).apply {
-            text = "📂 ${files.size} Files for: ${groupItem.title.removePrefix("📦 ").removePrefix("🗄️ ")}"
-            textSize = 16f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor(android.graphics.Color.parseColor("#E2E8F0"))
-            setPadding(8, 8, 8, 24)
+            text = "📂 $cleanTitle"
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.WHITE)
+            textSize = 15f
         }
         cardList.addView(headerText)
 
         val subHeaderText = TextView(this).apply {
-            text = "Tap a file to play it"
-            textSize = 12f
-            setTextColor(android.graphics.Color.parseColor("#9CA3AF"))
-            setPadding(8, 0, 8, 24)
+            text = "This video has ${files.size} parts. Select an option:"
+            UITheme.applyMetadataStyle(this)
+            setPadding(0, 4, 0, 14)
         }
         cardList.addView(subHeaderText)
 
-        val fileDialog = AlertDialog.Builder(this)
-            .setView(scrollView)
-            .setNegativeButton("Close", null)
-            .create()
+        var dialog: AlertDialog? = null
 
+        // Combined Stream Option Card
+        val streamCombinedCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = UITheme.createRippleCardShape(this@MainActivity, UITheme.SURFACE, 14, UITheme.PRIMARY)
+            val p = UITheme.dpToPx(this@MainActivity, 12)
+            setPadding(p, p, p, p)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
+            }
+            isClickable = true
+            setOnClickListener {
+                dialog?.dismiss()
+                playHistoryItem(files.first().copy(title = "📦 $cleanTitle (Combined)"))
+            }
+        }
+
+        val stIcon = TextView(this).apply {
+            text = "🎬 ▶"
+            textSize = 18f
+            setPadding(0, 0, 12, 0)
+        }
+        streamCombinedCard.addView(stIcon)
+
+        val stInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val stTitle = TextView(this).apply {
+            text = "Stream Full Combined Video"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 14f
+            setTextColor(Color.WHITE)
+        }
+        stInfo.addView(stTitle)
+
+        val stSub = TextView(this).apply {
+            text = "Stream continuous merged playback of all ${files.size} parts"
+            UITheme.applyMetadataStyle(this)
+            setTextColor(Color.parseColor(UITheme.PRIMARY))
+        }
+        stInfo.addView(stSub)
+        streamCombinedCard.addView(stInfo)
+
+        cardList.addView(streamCombinedCard)
+
+        // Individual Parts Options
         for ((index, file) in files.withIndex()) {
             val displayName = file.originalFileName.ifBlank { file.title }
+            val partTitle = if (displayName.contains(cleanTitle, ignoreCase = true)) displayName else "$cleanTitle - Part ${index + 1}"
 
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setBackgroundColor(android.graphics.Color.parseColor("#1E293B"))
-                setPadding(32, 24, 32, 24)
-                val lp = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(0, 0, 0, 16) }
-                layoutParams = lp
+            val partCard = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 12, UITheme.STROKE_COLOR)
+                val p = UITheme.dpToPx(this@MainActivity, 10)
+                setPadding(p, p, p, p)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 6))
+                }
                 isClickable = true
-                isFocusable = true
                 setOnClickListener {
-                    fileDialog.dismiss()
+                    dialog?.dismiss()
                     playHistoryItem(file)
                 }
             }
 
-            val indexBadge = TextView(this).apply {
-                text = "#${index + 1}"
-                textSize = 11f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                setTextColor(android.graphics.Color.parseColor("#F59E0B"))
-                setPadding(0, 0, 0, 6)
-            }
-            card.addView(indexBadge)
-
-            val fileNameText = TextView(this).apply {
-                text = "📁 $displayName"
-                textSize = 14f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                setTextColor(android.graphics.Color.WHITE)
-                setPadding(0, 0, 0, 8)
-            }
-            card.addView(fileNameText)
-
-            val infoRow = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-            }
-
-            val idBadge = TextView(this).apply {
-                text = "🆔 ${file.id.take(30)}${if (file.id.length > 30) "…" else ""}"
-                textSize = 10f
-                setTextColor(android.graphics.Color.parseColor("#9CA3AF"))
-                val badgeLp = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(0, 0, 24, 0) }
-                layoutParams = badgeLp
-            }
-            infoRow.addView(idBadge)
-
-            val spacer = android.view.View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
-            }
-            infoRow.addView(spacer)
-
-            val playAction = TextView(this).apply {
-                text = "▶ PLAY"
+            val iconText = TextView(this).apply {
+                text = "▶ Part ${index + 1}"
+                UITheme.applyCardTitleStyle(this)
                 textSize = 13f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                setTextColor(android.graphics.Color.parseColor("#E50914"))
+                setTextColor(Color.parseColor(UITheme.PRIMARY))
+                setPadding(0, 0, 12, 0)
             }
-            infoRow.addView(playAction)
+            partCard.addView(iconText)
 
-            card.addView(infoRow)
-            cardList.addView(card)
+            val partInfo = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val pTitle = TextView(this).apply {
+                text = partTitle
+                UITheme.applyCardTitleStyle(this)
+                textSize = 13f
+            }
+            partInfo.addView(pTitle)
+
+            val pSub = TextView(this).apply {
+                text = "📁 $displayName"
+                UITheme.applyMetadataStyle(this)
+                textSize = 11f
+            }
+            partInfo.addView(pSub)
+
+            partCard.addView(partInfo)
+            cardList.addView(partCard)
         }
 
         scrollView.addView(cardList)
-        fileDialog.show()
+
+        dialog = AlertDialog.Builder(this)
+            .setView(scrollView)
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        dialog.show()
+        val metrics = resources.displayMetrics
+        val w = (metrics.widthPixels * 0.92).toInt()
+        val h = (metrics.heightPixels * 0.82).toInt()
+        dialog.window?.setLayout(w, h)
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.parseColor(UITheme.BACKGROUND)))
     }
 
     // Play a specific history item (resolves fresh URLs if needed)
@@ -3091,6 +3140,25 @@ class MainActivity : AppCompatActivity() {
                         if (freshUrl != null && freshUrl.isNotBlank()) {
                             val groupId = if (item.id.startsWith("group_")) item.id else "group_${part.chatId}_$cleanTitle"
                             telegramGroupPartsCache[groupId] = parts
+                            for (p in parts) {
+                                val pId = "${p.chatId}_${p.messageId}"
+                                val pName = p.fileName.ifBlank { "Part ${p.fileId}" }
+                                val pTitle = if (pName.contains(cleanTitle, ignoreCase = true)) pName else "$cleanTitle - $pName"
+                                val pUrl = TelegramRepository.getStreamUrl(p.fileId, p.fileName, p.fileSize, p.chatId, p.messageId)
+                                saveToHistory(
+                                    MediaItem(
+                                        id = pId,
+                                        title = pTitle,
+                                        posterUrl = item.posterUrl,
+                                        year = "Watched",
+                                        rating = "▶",
+                                        overview = "Telegram file: $pName",
+                                        type = "telegram_media",
+                                        streamUrl = pUrl,
+                                        originalFileName = p.fileName
+                                    )
+                                )
+                            }
                             checkResumeAndSelectPlayer(freshUrl, displayPartTitle, item.posterUrl, partMediaId, part.fileName)
                         } else {
                             Toast.makeText(this@MainActivity, "Media link expired", Toast.LENGTH_SHORT).show()
