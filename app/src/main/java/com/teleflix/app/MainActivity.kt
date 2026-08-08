@@ -560,11 +560,17 @@ class MainActivity : AppCompatActivity() {
                             if (chatId != null && messageId != null && (groupParts == null || groupParts.isEmpty())) {
                                 CoroutineScope(Dispatchers.Main).launch {
                                     val mediaMessages = withContext(Dispatchers.IO) {
-                                        TelegramRepository.fetchChannelMedia(chatId.toString(), limit = 200).first
+                                        val around = TelegramRepository.fetchChannelMedia(chatId.toString(), fromMessageId = maxOf(0L, messageId + 50), limit = 200).first
+                                        if (around.any { it.messageId == messageId }) {
+                                            around
+                                        } else {
+                                            val latest = TelegramRepository.fetchChannelMedia(chatId.toString(), fromMessageId = 0L, limit = 200).first
+                                            (around + latest).distinctBy { it.messageId }
+                                        }
                                     }
                                     val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
                                     val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
-                                        .find { g -> g.group.parts.any { it.messageId == messageId } || g.group.baseName.equals(item.originalFileName.substringBeforeLast("."), ignoreCase = true) }
+                                        .find { g -> g.group.parts.any { it.messageId == messageId } || (item.originalFileName.isNotBlank() && g.group.baseName.equals(item.originalFileName.substringBeforeLast("."), ignoreCase = true)) }
 
                                     if (matchGroup != null && matchGroup.group.parts.size > 1) {
                                         telegramGroupPartsCache[item.id] = matchGroup.group.parts
@@ -1673,7 +1679,8 @@ class MainActivity : AppCompatActivity() {
                                         rating = badge,
                                         overview = msg.caption.ifBlank { "Telegram Search Match: ${msg.fileName}\nSize: $formattedSize" },
                                         type = "telegram_media",
-                                        streamUrl = url
+                                        streamUrl = url,
+                                        originalFileName = msg.fileName
                                     )
                                 )
                             }
