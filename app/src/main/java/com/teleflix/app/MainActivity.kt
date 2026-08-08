@@ -49,6 +49,7 @@ data class MediaItem(
     val type: String = "movie",  // "movie" or "series" or "telegram_media" or "history_group"
     val streamUrl: String = "",
     val originalFileName: String = "",
+    val fileSize: Long = 0L,
     val groupedFiles: List<MediaItem> = emptyList()
 )
 
@@ -2490,6 +2491,7 @@ class MainActivity : AppCompatActivity() {
                     put("type", m.type)
                     put("streamUrl", m.streamUrl)
                     put("originalFileName", m.originalFileName)
+                    put("fileSize", m.fileSize)
                 }
                 jsonArray.put(obj)
             }
@@ -2510,6 +2512,8 @@ class MainActivity : AppCompatActivity() {
                 val obj = array.optJSONObject(i) ?: continue
                 val itemType = obj.optString("type", "movie")
                 if (itemType == "channel") continue
+                val sUrl = TelegramStreamingProxy.refreshUrl(obj.optString("streamUrl", ""))
+                val parsedSize = obj.optLong("fileSize", 0L).let { if (it > 0) it else extractSizeFromUrl(sUrl) }
                 list.add(
                     MediaItem(
                         id = obj.optString("id", ""),
@@ -2519,8 +2523,9 @@ class MainActivity : AppCompatActivity() {
                         rating = obj.optString("rating", ""),
                         overview = obj.optString("overview", ""),
                         type = itemType,
-                        streamUrl = TelegramStreamingProxy.refreshUrl(obj.optString("streamUrl", "")),
-                        originalFileName = obj.optString("originalFileName", "")
+                        streamUrl = sUrl,
+                        originalFileName = obj.optString("originalFileName", ""),
+                        fileSize = parsedSize
                     )
                 )
             }
@@ -3796,6 +3801,12 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    private fun extractSizeFromUrl(url: String): Long {
+        if (url.isBlank()) return 0L
+        val match = Regex("""[?&]size=(\d+)""", RegexOption.IGNORE_CASE).find(url)
+        return match?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
+    }
+
     private fun handleDownloadItem(item: MediaItem) {
         if (item.type == "channel") {
             Toast.makeText(this, "Select a video inside the channel to download", Toast.LENGTH_SHORT).show()
@@ -3810,11 +3821,12 @@ class MainActivity : AppCompatActivity() {
                 val cId = pParts.getOrNull(0)?.toLongOrNull() ?: 0L
                 val mId = pParts.getOrNull(1)?.toLongOrNull() ?: 0L
                 val fId = extractFileIdFromUrl(it.streamUrl) ?: 0
+                val sz = if (it.fileSize > 0) it.fileSize else extractSizeFromUrl(it.streamUrl)
                 TelegramVideoMessage(
                     messageId = mId,
                     chatId = cId,
                     fileName = it.originalFileName.ifBlank { it.title },
-                    fileSize = 0L,
+                    fileSize = sz,
                     duration = 0,
                     fileId = fId,
                     mimeType = "video/mp4",
@@ -3828,7 +3840,7 @@ class MainActivity : AppCompatActivity() {
         val cleanTitle = item.title.removePrefix("Select:").removePrefix("Select").removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
         if (item.id.startsWith("group_") || item.type == "history_group" || parts.size > 1) {
             if (parts.isNotEmpty()) {
-                showGroupDownloadOptionsDialog(item, parts, cleanTitle)
+                showGroupPartsSelectionDialog(item, parts, cleanTitle)
                 return
             }
         }
