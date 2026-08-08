@@ -1145,11 +1145,7 @@ object TelegramRepository {
         val parenPattern = Regex("""^(.+?)[\._\s-]*\((?:part|pt)?\s*(\d{1,4})\)(\.[a-zA-Z0-9]+)?$""", RegexOption.IGNORE_CASE)  // matches file (1).mkv, file (part 1).mkv
         val zPattern = Regex("""^(.+?)\.z(\d{1,3})$""", RegexOption.IGNORE_CASE) // matches file.z01, file.z1
         
-        fun normalizeKey(name: String): String {
-            return name.lowercase().replace(Regex("""[\[\]\(\)\{\}\._\s-]+"""), " ").trim()
-        }
-
-        val groups = mutableMapOf<String, Pair<String, MutableList<Pair<Int, TelegramVideoMessage>>>>()
+        val groups = mutableMapOf<String, MutableList<Pair<Int, TelegramVideoMessage>>>()
         val singles = mutableListOf<TelegramVideoMessage>()
         
         for (msg in messages) {
@@ -1163,8 +1159,7 @@ object TelegramRepository {
                 splitMatch != null -> {
                     val baseName = splitMatch.groupValues[1]
                     val partNum = splitMatch.groupValues[2].toIntOrNull() ?: 0
-                    val key = normalizeKey(baseName)
-                    groups.getOrPut(key) { Pair(baseName, mutableListOf()) }.second.add(partNum to msg)
+                    groups.getOrPut(baseName) { mutableListOf() }.add(partNum to msg)
                 }
                 partMatch != null -> {
                     val rawBase = partMatch.groupValues[1]
@@ -1175,8 +1170,7 @@ object TelegramRepository {
                     } else {
                         rawBase
                     }
-                    val key = normalizeKey(baseName)
-                    groups.getOrPut(key) { Pair(baseName, mutableListOf()) }.second.add(partNum to msg)
+                    groups.getOrPut(baseName) { mutableListOf() }.add(partNum to msg)
                 }
                 parenMatch != null -> {
                     val rawBase = parenMatch.groupValues[1]
@@ -1187,14 +1181,12 @@ object TelegramRepository {
                     } else {
                         rawBase
                     }
-                    val key = normalizeKey(baseName)
-                    groups.getOrPut(key) { Pair(baseName, mutableListOf()) }.second.add(partNum to msg)
+                    groups.getOrPut(baseName) { mutableListOf() }.add(partNum to msg)
                 }
                 zMatch != null -> {
                     val baseName = zMatch.groupValues[1]
                     val partNum = zMatch.groupValues[2].toIntOrNull() ?: 0
-                    val key = normalizeKey(baseName)
-                    groups.getOrPut(key) { Pair(baseName, mutableListOf()) }.second.add(partNum to msg)
+                    groups.getOrPut(baseName) { mutableListOf() }.add(partNum to msg)
                 }
                 else -> {
                     singles.add(msg)
@@ -1204,8 +1196,7 @@ object TelegramRepository {
         
         val splitGroups = mutableListOf<SplitFileGroup>()
         
-        for ((_, pair) in groups) {
-            val (baseName, parts) = pair
+        for ((baseName, parts) in groups) {
             if (parts.size < 2) {
                 singles.addAll(parts.map { it.second })
                 continue

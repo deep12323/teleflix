@@ -557,20 +557,14 @@ class MainActivity : AppCompatActivity() {
                             val chatId = parts.getOrNull(0)?.toLongOrNull()
                             val messageId = parts.getOrNull(1)?.toLongOrNull()
 
-                            if (chatId != null && messageId != null && (groupParts == null || groupParts.isEmpty())) {
+                            if (chatId != null && messageId != null && streamInfo == null) {
                                 CoroutineScope(Dispatchers.Main).launch {
                                     val mediaMessages = withContext(Dispatchers.IO) {
-                                        val around = TelegramRepository.fetchChannelMedia(chatId.toString(), fromMessageId = maxOf(0L, messageId + 50), limit = 200).first
-                                        if (around.any { it.messageId == messageId }) {
-                                            around
-                                        } else {
-                                            val latest = TelegramRepository.fetchChannelMedia(chatId.toString(), fromMessageId = 0L, limit = 200).first
-                                            (around + latest).distinctBy { it.messageId }
-                                        }
+                                        TelegramRepository.fetchChannelMedia(chatId.toString(), limit = 200).first
                                     }
                                     val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
                                     val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
-                                        .find { g -> g.group.parts.any { it.messageId == messageId } || (item.originalFileName.isNotBlank() && g.group.baseName.equals(item.originalFileName.substringBeforeLast("."), ignoreCase = true)) }
+                                        .find { g -> g.group.parts.any { it.messageId == messageId } }
 
                                     if (matchGroup != null && matchGroup.group.parts.size > 1) {
                                         telegramGroupPartsCache[item.id] = matchGroup.group.parts
@@ -1679,8 +1673,7 @@ class MainActivity : AppCompatActivity() {
                                         rating = badge,
                                         overview = msg.caption.ifBlank { "Telegram Search Match: ${msg.fileName}\nSize: $formattedSize" },
                                         type = "telegram_media",
-                                        streamUrl = url,
-                                        originalFileName = msg.fileName
+                                        streamUrl = url
                                     )
                                 )
                             }
@@ -2535,15 +2528,9 @@ class MainActivity : AppCompatActivity() {
         val rawList = loadRawWatchHistory()
         if (rawList.isEmpty()) return rawList
 
-        // Normalize title for grouping (strip episode/part prefixes & suffixes)
+        // Normalize title for grouping (strip episode prefixes like emojis, trim whitespace)
         fun normalizeTitle(title: String): String {
-            var clean = title.trim().removePrefix("📦 ").removePrefix("🗄️ ").removeSuffix(" (Combined)").trim()
-            clean = clean.replace(Regex("""[\._\s-]*(?:part|pt|cd)[\._\s-]*\d+.*$""", RegexOption.IGNORE_CASE), "")
-                         .replace(Regex("""\.\d{3,4}$"""), "")
-                         .replace(Regex("""\.(mkv|mp4|avi|mov|wmv|ts|flv)$""", RegexOption.IGNORE_CASE), "")
-                         .replace(Regex("""[\[\]\(\)\{\}\._\s-]+"""), " ")
-                         .trim()
-            return if (clean.isNotBlank()) clean.lowercase() else title.lowercase()
+            return title.trim().removePrefix("📦 ").removePrefix("🗄️ ").trim().lowercase()
         }
 
         // Group items by normalized title, preserving insertion order
@@ -3104,25 +3091,6 @@ class MainActivity : AppCompatActivity() {
                         if (freshUrl != null && freshUrl.isNotBlank()) {
                             val groupId = if (item.id.startsWith("group_")) item.id else "group_${part.chatId}_$cleanTitle"
                             telegramGroupPartsCache[groupId] = parts
-                            for (p in parts) {
-                                val pId = "${p.chatId}_${p.messageId}"
-                                val pName = p.fileName.ifBlank { "Part ${p.fileId}" }
-                                val pTitle = if (pName.contains(cleanTitle, ignoreCase = true)) pName else "$cleanTitle - $pName"
-                                val pUrl = TelegramRepository.getStreamUrl(p.fileId, p.fileName, p.fileSize, p.chatId, p.messageId)
-                                saveToHistory(
-                                    MediaItem(
-                                        id = pId,
-                                        title = pTitle,
-                                        posterUrl = item.posterUrl,
-                                        year = "Watched",
-                                        rating = "▶",
-                                        overview = "Telegram file: $pName",
-                                        type = "telegram_media",
-                                        streamUrl = pUrl,
-                                        originalFileName = p.fileName
-                                    )
-                                )
-                            }
                             checkResumeAndSelectPlayer(freshUrl, displayPartTitle, item.posterUrl, partMediaId, part.fileName)
                         } else {
                             Toast.makeText(this@MainActivity, "Media link expired", Toast.LENGTH_SHORT).show()
