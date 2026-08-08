@@ -3780,41 +3780,64 @@ class MainActivity : AppCompatActivity() {
         val context = this
         val builder = AlertDialog.Builder(context)
 
+        fun dp(v: Int) = UITheme.dpToPx(context, v)
+
+        // Main container panel
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0B0B0F"))
-            setPadding(UITheme.dpToPx(context, 16), UITheme.dpToPx(context, 16), UITheme.dpToPx(context, 16), UITheme.dpToPx(context, 16))
+            background = UITheme.createCardShape(context, "#050608", 20, "#1F2633", 1)
+            setPadding(dp(20), dp(20), dp(20), dp(16))
         }
 
+        // Header Row
         val titleRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, UITheme.dpToPx(context, 12))
+            setPadding(0, 0, 0, dp(14))
+        }
+
+        val headerCol = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         val titleText = TextView(context).apply {
             text = "📥 Offline Downloads"
             UITheme.applySectionTitleStyle(this)
             setTextColor(Color.WHITE)
-            textSize = 18f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            textSize = 19f
         }
+
+        val subtitleText = TextView(context).apply {
+            text = "Watch your content anytime, anywhere"
+            UITheme.applyMetadataStyle(this)
+            textSize = 12f
+            setTextColor(Color.parseColor("#9CA3AF"))
+            setPadding(0, dp(2), 0, 0)
+        }
+
+        headerCol.addView(titleText)
+        headerCol.addView(subtitleText)
 
         val closeBtn = TextView(context).apply {
             text = "✕"
-            textSize = 18f
-            setTextColor(Color.parseColor(UITheme.TEXT_SECONDARY))
-            setPadding(UITheme.dpToPx(context, 8), UITheme.dpToPx(context, 8), UITheme.dpToPx(context, 8), UITheme.dpToPx(context, 8))
+            textSize = 16f
+            setTextColor(Color.parseColor("#9CA3AF"))
+            gravity = android.view.Gravity.CENTER
+            background = UITheme.createCardShape(context, "#161B22", 10, "#21262D", 1)
+            layoutParams = LinearLayout.LayoutParams(dp(34), dp(34))
             isClickable = true
             isFocusable = true
         }
 
-        titleRow.addView(titleText)
+        titleRow.addView(headerCol)
         titleRow.addView(closeBtn)
         container.addView(titleRow)
 
+        // Scrollable Download Items Area
         val scrollView = ScrollView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, UITheme.dpToPx(context, 420))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+            isVerticalScrollBarEnabled = true
         }
 
         val itemsListLayout = LinearLayout(context).apply {
@@ -3824,23 +3847,79 @@ class MainActivity : AppCompatActivity() {
         scrollView.addView(itemsListLayout)
         container.addView(scrollView)
 
-        val dialog = builder.setView(container).create()
+        // Footer Summary Section
+        val footerDivider = android.view.View(context).apply {
+            setBackgroundColor(Color.parseColor("#21262D"))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                setMargins(0, dp(10), 0, dp(12))
+            }
+        }
+        container.addView(footerDivider)
 
+        val footerRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+
+        val summaryText = TextView(context).apply {
+            UITheme.applyMetadataStyle(this)
+            textSize = 12f
+            setTextColor(Color.parseColor("#9CA3AF"))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val clearAllBtn = TextView(context).apply {
+            text = "🗑 Clear All"
+            textSize = 12f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor(Color.parseColor("#FF3B30"))
+            background = UITheme.createCardShape(context, "#261014", 10, "#E50914", 1)
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            isClickable = true
+        }
+
+        footerRow.addView(summaryText)
+        footerRow.addView(clearAllBtn)
+        container.addView(footerRow)
+
+        val dialog = builder.setView(container).create()
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         closeBtn.setOnClickListener { dialog.dismiss() }
+
+        clearAllBtn.setOnClickListener {
+            AlertDialog.Builder(context)
+                .setTitle("Clear All Downloads?")
+                .setMessage("Are you sure you want to delete all offline downloaded files?")
+                .setPositiveButton("Yes, Clear All") { d, _ ->
+                    DownloadManager.clearAllDownloads(context)
+                    Toast.makeText(context, "All downloads cleared", Toast.LENGTH_SHORT).show()
+                    d.dismiss()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
 
         downloadsObserveJob?.cancel()
         downloadsObserveJob = CoroutineScope(Dispatchers.Main).launch {
             DownloadManager.downloadsFlow.collect { downloads ->
                 itemsListLayout.removeAllViews()
                 if (downloads.isEmpty()) {
+                    summaryText.text = "📥 0 Downloads • 0 B Available Offline"
+                    clearAllBtn.visibility = android.view.View.GONE
                     val emptyView = TextView(context).apply {
                         text = "No active or saved downloads.\nTap 📥 on any movie card to start downloading!"
                         UITheme.applyMetadataStyle(this)
                         gravity = android.view.Gravity.CENTER
-                        setPadding(0, UITheme.dpToPx(context, 50), 0, UITheme.dpToPx(context, 50))
+                        setPadding(0, dp(50), 0, dp(50))
                     }
                     itemsListLayout.addView(emptyView)
                 } else {
+                    val completedCount = downloads.count { it.status == DownloadStatus.COMPLETED }
+                    val totalBytes = downloads.sumOf { if (it.status == DownloadStatus.COMPLETED) it.downloadedBytes else 0L }
+                    val totalSizeStr = formatFileSize(totalBytes)
+                    summaryText.text = "📥 $completedCount/${downloads.size} Downloads • $totalSizeStr Available Offline"
+                    clearAllBtn.visibility = android.view.View.VISIBLE
+
                     for (item in downloads) {
                         val card = createDownloadItemCard(context, item, dialog)
                         itemsListLayout.addView(card)
@@ -3854,6 +3933,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         dialog.show()
+
+        val metrics = resources.displayMetrics
+        val w = (metrics.widthPixels * 0.92).toInt()
+        val h = (metrics.heightPixels * 0.78).toInt()
+        dialog.window?.setLayout(w, h)
     }
 
     private fun createDownloadItemCard(context: android.content.Context, item: DownloadItem, dialog: AlertDialog): android.view.View {
@@ -3861,7 +3945,7 @@ class MainActivity : AppCompatActivity() {
 
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = UITheme.createCardShape(context, UITheme.CARD, 14, UITheme.STROKE_COLOR, 1)
+            background = UITheme.createCardShape(context, "#0F1218", 16, "#21262D", 1)
             setPadding(dp(12), dp(12), dp(12), dp(12))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -3874,18 +3958,27 @@ class MainActivity : AppCompatActivity() {
             gravity = android.view.Gravity.CENTER_VERTICAL
         }
 
-        val iconText = TextView(context).apply {
+        // Left Status Icon Container
+        val statusContainer = TextView(context).apply {
             text = when (item.status) {
-                DownloadStatus.COMPLETED -> "✅"
+                DownloadStatus.COMPLETED -> "✔"
                 DownloadStatus.DOWNLOADING -> "📥"
-                DownloadStatus.PAUSED -> "⏸️"
+                DownloadStatus.PAUSED -> "⏸"
                 DownloadStatus.FAILED -> "⚠️"
                 DownloadStatus.QUEUED -> "⏳"
             }
-            textSize = 20f
+            textSize = 18f
             gravity = android.view.Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply {
-                setMargins(0, 0, dp(10), 0)
+            val (bg, stroke) = when (item.status) {
+                DownloadStatus.COMPLETED -> "#064E3B" to "#10B981"
+                DownloadStatus.DOWNLOADING -> "#3B0A0E" to "#E50914"
+                DownloadStatus.PAUSED -> "#1F2937" to "#4B5563"
+                DownloadStatus.FAILED -> "#451A03" to "#F59E0B"
+                DownloadStatus.QUEUED -> "#1F2937" to "#4B5563"
+            }
+            background = UITheme.createCardShape(context, bg, 12, stroke, 1)
+            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+                setMargins(0, 0, dp(12), 0)
             }
         }
 
@@ -3904,8 +3997,9 @@ class MainActivity : AppCompatActivity() {
 
         val subText = TextView(context).apply {
             UITheme.applyMetadataStyle(this)
+            textSize = 11f
             text = when (item.status) {
-                DownloadStatus.COMPLETED -> "Completed (${item.getFormattedSize()})"
+                DownloadStatus.COMPLETED -> "Completed • ${item.getFormattedSize()}"
                 DownloadStatus.DOWNLOADING -> "${item.getFormattedSpeed()} • ${item.progressPercent}% (${item.getFormattedSize()})"
                 DownloadStatus.PAUSED -> "Paused • ${item.progressPercent}%"
                 DownloadStatus.FAILED -> "Download Failed"
@@ -3916,7 +4010,7 @@ class MainActivity : AppCompatActivity() {
         textCol.addView(titleView)
         textCol.addView(subText)
 
-        topRow.addView(iconText)
+        topRow.addView(statusContainer)
         topRow.addView(textCol)
         card.addView(topRow)
 
@@ -3924,10 +4018,10 @@ class MainActivity : AppCompatActivity() {
             val progressBar = android.widget.ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
                 max = 100
                 progress = item.progressPercent
-                progressTintList = android.content.res.ColorStateList.valueOf(Color.parseColor(UITheme.ACCENT_BLUE))
+                progressTintList = android.content.res.ColorStateList.valueOf(Color.parseColor(if (item.status == DownloadStatus.DOWNLOADING) "#E50914" else "#4B5563"))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(6)
+                    dp(4)
                 ).apply { setMargins(0, dp(8), 0, dp(8)) }
             }
             card.addView(progressBar)
@@ -3943,8 +4037,9 @@ class MainActivity : AppCompatActivity() {
             val playBtn = TextView(context).apply {
                 text = "▶ Play Offline"
                 textSize = 12f
+                setTypeface(null, android.graphics.Typeface.BOLD)
                 setTextColor(Color.WHITE)
-                background = UITheme.createCardShape(context, UITheme.SUCCESS, 10, UITheme.SUCCESS, 1)
+                background = UITheme.createCardShape(context, "#10B981", 10, "#10B981", 1)
                 setPadding(dp(12), dp(6), dp(12), dp(6))
                 isClickable = true
                 setOnClickListener {
@@ -3955,8 +4050,9 @@ class MainActivity : AppCompatActivity() {
             val delBtn = TextView(context).apply {
                 text = "🗑 Delete"
                 textSize = 12f
-                setTextColor(Color.parseColor(UITheme.PRIMARY))
-                background = UITheme.createCardShape(context, UITheme.SURFACE, 10, UITheme.STROKE_COLOR, 1)
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setTextColor(Color.parseColor("#FF3B30"))
+                background = UITheme.createCardShape(context, "#261014", 10, "#E50914", 1)
                 val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                     setMargins(dp(8), 0, 0, 0)
                 }
@@ -3974,7 +4070,7 @@ class MainActivity : AppCompatActivity() {
                 text = "⏸ Pause"
                 textSize = 12f
                 setTextColor(Color.WHITE)
-                background = UITheme.createCardShape(context, UITheme.SECONDARY, 10, UITheme.STROKE_COLOR, 1)
+                background = UITheme.createCardShape(context, "#1F2937", 10, "#4B5563", 1)
                 setPadding(dp(10), dp(6), dp(10), dp(6))
                 isClickable = true
                 setOnClickListener {
@@ -3984,8 +4080,8 @@ class MainActivity : AppCompatActivity() {
             val cancelBtn = TextView(context).apply {
                 text = "✖ Cancel"
                 textSize = 12f
-                setTextColor(Color.parseColor(UITheme.PRIMARY))
-                background = UITheme.createCardShape(context, UITheme.SURFACE, 10, UITheme.STROKE_COLOR, 1)
+                setTextColor(Color.parseColor("#FF3B30"))
+                background = UITheme.createCardShape(context, "#261014", 10, "#E50914", 1)
                 val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                     setMargins(dp(8), 0, 0, 0)
                 }
@@ -4003,7 +4099,7 @@ class MainActivity : AppCompatActivity() {
                 text = "▶ Resume"
                 textSize = 12f
                 setTextColor(Color.WHITE)
-                background = UITheme.createCardShape(context, UITheme.ACCENT_BLUE, 10, UITheme.ACCENT_BLUE, 1)
+                background = UITheme.createCardShape(context, "#2563EB", 10, "#2563EB", 1)
                 setPadding(dp(10), dp(6), dp(10), dp(6))
                 isClickable = true
                 setOnClickListener {
@@ -4013,8 +4109,9 @@ class MainActivity : AppCompatActivity() {
             val delBtn = TextView(context).apply {
                 text = "🗑 Delete"
                 textSize = 12f
-                setTextColor(Color.parseColor(UITheme.PRIMARY))
-                background = UITheme.createCardShape(context, UITheme.SURFACE, 10, UITheme.STROKE_COLOR, 1)
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setTextColor(Color.parseColor("#FF3B30"))
+                background = UITheme.createCardShape(context, "#261014", 10, "#E50914", 1)
                 val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                     setMargins(dp(8), 0, 0, 0)
                 }
