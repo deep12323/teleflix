@@ -2534,6 +2534,7 @@ class MainActivity : AppCompatActivity() {
             clean = clean.replace(Regex("""[\._\s-]*(?:part|pt|cd)[\._\s-]*\d+.*$""", RegexOption.IGNORE_CASE), "")
                          .replace(Regex("""\.\d{3,4}$"""), "")
                          .replace(Regex("""\.(mkv|mp4|avi|mov|wmv|ts|flv)$""", RegexOption.IGNORE_CASE), "")
+                         .replace(Regex("""[\[\]\(\)\{\}\._\s-]+"""), " ")
                          .trim()
             return if (clean.isNotBlank()) clean.lowercase() else title.lowercase()
         }
