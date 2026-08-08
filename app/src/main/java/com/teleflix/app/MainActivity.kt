@@ -2017,38 +2017,96 @@ class MainActivity : AppCompatActivity() {
                     return@withContext
                 }
 
-                val scrollView = ScrollView(this@MainActivity).apply {
-                    setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
-                }
-                val cardList = LinearLayout(this@MainActivity).apply {
+                fun dp(v: Int) = UITheme.dpToPx(this@MainActivity, v)
+
+                // Main container panel
+                val container = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL
-                    val pad = UITheme.dpToPx(this@MainActivity, 16)
-                    setPadding(pad, pad, pad, pad)
+                    background = UITheme.createCardShape(this@MainActivity, "#050608", 22, "#1F2633", 1)
+                    setPadding(dp(18), dp(18), dp(18), dp(12))
                 }
 
-                val headerText = TextView(this@MainActivity).apply {
-                    text = if (isDownloadMode) "Select Stream to Download for $displayTitle (${streams.size})" else "Streams Found for $displayTitle (${streams.size})"
+                // Header Row
+                val titleRow = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    setPadding(0, 0, 0, dp(14))
+                }
+
+                val headerCol = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+
+                val subHeaderLabel = TextView(this@MainActivity).apply {
+                    text = if (isDownloadMode) "Select Stream to Download for" else "Streams Found for"
+                    UITheme.applyMetadataStyle(this)
+                    textSize = 12f
+                    setTextColor(Color.parseColor("#9CA3AF"))
+                }
+                headerCol.addView(subHeaderLabel)
+
+                val mainTitleText = TextView(this@MainActivity).apply {
+                    text = displayTitle
                     UITheme.applySectionTitleStyle(this)
                     setTextColor(Color.WHITE)
-                    setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 14))
+                    textSize = 18f
                 }
-                cardList.addView(headerText)
+                headerCol.addView(mainTitleText)
+
+                val streamCountBadge = TextView(this@MainActivity).apply {
+                    text = "🎬 ${streams.size} streams available"
+                    UITheme.applyMetadataStyle(this)
+                    textSize = 12f
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                    setTextColor(Color.parseColor("#10B981"))
+                    setPadding(0, dp(2), 0, 0)
+                }
+                headerCol.addView(streamCountBadge)
+
+                val closeBtn = TextView(this@MainActivity).apply {
+                    text = "✕"
+                    textSize = 16f
+                    setTextColor(Color.parseColor("#9CA3AF"))
+                    gravity = android.view.Gravity.CENTER
+                    background = UITheme.createCardShape(this@MainActivity, "#161B22", 10, "#21262D", 1)
+                    layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
+                    isClickable = true
+                    isFocusable = true
+                }
+
+                titleRow.addView(headerCol)
+                titleRow.addView(closeBtn)
+                container.addView(titleRow)
+
+                // Scrollable Stream Cards Area
+                val scrollView = ScrollView(this@MainActivity).apply {
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+                    isVerticalScrollBarEnabled = true
+                }
+
+                val cardList = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                }
 
                 val streamDialog = AlertDialog.Builder(this@MainActivity)
-                    .setView(scrollView)
-                    .setNegativeButton("Close", null)
+                    .setView(container)
                     .create()
+
+                streamDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+                closeBtn.setOnClickListener { streamDialog.dismiss() }
 
                 for (stream in streams) {
                     val card = LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.VERTICAL
-                        background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 16, UITheme.STROKE_COLOR)
-                        val pad = UITheme.dpToPx(this@MainActivity, 14)
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        background = UITheme.createRippleCardShape(this@MainActivity, "#11151D", 16, "#21262D")
+                        val pad = dp(12)
                         setPadding(pad, pad, pad, pad)
                         val lp = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply { setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 10)) }
+                        ).apply { setMargins(0, 0, 0, dp(10)) }
                         layoutParams = lp
                         isClickable = true
                         isFocusable = true
@@ -2099,65 +2157,166 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
-                    val titleText = TextView(this@MainActivity).apply {
+                    // Left Source/Media Icon Box
+                    val iconBox = TextView(this@MainActivity).apply {
+                        text = if (stream.isSplit) "📦" else "🎬"
+                        textSize = 18f
+                        gravity = android.view.Gravity.CENTER
+                        background = UITheme.createCardShape(this@MainActivity, "#1A202C", 12, "#21262D", 1)
+                        layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply {
+                            setMargins(0, 0, dp(12), 0)
+                        }
+                    }
+                    card.addView(iconBox)
+
+                    // Center Details Column
+                    val detailsCol = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                            setMargins(0, 0, dp(10), 0)
+                        }
+                    }
+
+                    val filenameText = TextView(this@MainActivity).apply {
                         text = stream.fileName
                         UITheme.applyCardTitleStyle(this)
-                        setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
+                        textSize = 13f
+                        setTextColor(Color.parseColor("#F5F5F5"))
+                        maxLines = 3
+                        ellipsize = android.text.TextUtils.TruncateAt.END
                     }
-                    card.addView(titleText)
+                    detailsCol.addView(filenameText)
 
-                    val infoRow = LinearLayout(this@MainActivity).apply {
+                    // Badges Layout Row
+                    val badgesRow = LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = android.view.Gravity.CENTER_VERTICAL
+                        setPadding(0, dp(6), 0, 0)
                     }
 
                     val qualityBadge = TextView(this@MainActivity).apply {
                         text = "🎬 ${stream.quality}"
                         UITheme.applyCaptionStyle(this)
-                        background = UITheme.createBadgeDrawable(this@MainActivity, "#059669", 8)
-                        setTextColor(Color.WHITE)
-                        val badgeLp = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply { setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 8), 0) }
-                        layoutParams = badgeLp
+                        textSize = 10f
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        background = UITheme.createCardShape(this@MainActivity, "#064E3B", 8, "#10B981", 1)
+                        setTextColor(Color.parseColor("#10B981"))
+                        setPadding(dp(8), dp(3), dp(8), dp(3))
+                        val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(0, 0, dp(6), 0)
+                        }
+                        layoutParams = lp
                     }
-                    infoRow.addView(qualityBadge)
+                    badgesRow.addView(qualityBadge)
 
                     val sizeBadge = TextView(this@MainActivity).apply {
                         text = "💾 ${stream.size}"
                         UITheme.applyCaptionStyle(this)
-                        background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.SECONDARY, 8)
-                        setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
-                        val badgeLp = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply { setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 8), 0) }
-                        layoutParams = badgeLp
+                        textSize = 10f
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        background = UITheme.createCardShape(this@MainActivity, "#1E293B", 8, "#3B82F6", 1)
+                        setTextColor(Color.parseColor("#3B82F6"))
+                        setPadding(dp(8), dp(3), dp(8), dp(3))
+                        val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(0, 0, dp(6), 0)
+                        }
+                        layoutParams = lp
                     }
-                    infoRow.addView(sizeBadge)
+                    badgesRow.addView(sizeBadge)
 
-                    val spacer = android.view.View(this@MainActivity).apply {
-                        layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+                    if (stream.isSplit) {
+                        val splitBadge = TextView(this@MainActivity).apply {
+                            text = "📦 SPLIT PACK"
+                            UITheme.applyCaptionStyle(this)
+                            textSize = 10f
+                            setTypeface(null, android.graphics.Typeface.BOLD)
+                            background = UITheme.createCardShape(this@MainActivity, "#451A03", 8, "#F59E0B", 1)
+                            setTextColor(Color.parseColor("#F59E0B"))
+                            setPadding(dp(8), dp(3), dp(8), dp(3))
+                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                        }
+                        badgesRow.addView(splitBadge)
                     }
-                    infoRow.addView(spacer)
 
+                    detailsCol.addView(badgesRow)
+                    card.addView(detailsCol)
+
+                    // Right Play Action Button
                     val playAction = TextView(this@MainActivity).apply {
-                        text = "▶ PLAY"
-                        UITheme.applyCaptionStyle(this)
-                        background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.PRIMARY, 8)
+                        text = if (isDownloadMode) "⚡ DOWN" else "▶ PLAY"
+                        textSize = 12f
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        background = UITheme.createCardShape(this@MainActivity, "#E50914", 12, "#E50914", 1)
                         setTextColor(Color.WHITE)
+                        gravity = android.view.Gravity.CENTER
+                        setPadding(dp(14), dp(8), dp(14), dp(8))
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
                     }
-                    infoRow.addView(playAction)
+                    card.addView(playAction)
 
-                    card.addView(infoRow)
                     cardList.addView(card)
                 }
 
                 scrollView.addView(cardList)
+                container.addView(scrollView)
+
+                // Sticky Footer Section
+                val footerDivider = android.view.View(this@MainActivity).apply {
+                    setBackgroundColor(Color.parseColor("#21262D"))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                        setMargins(0, dp(10), 0, dp(10))
+                    }
+                }
+                container.addView(footerDivider)
+
+                val footerRow = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                }
+
+                val footerInfoCol = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+
+                val footerTitle = TextView(this@MainActivity).apply {
+                    text = "🎬 ${streams.size} Streams Found"
+                    UITheme.applyCardTitleStyle(this)
+                    textSize = 13f
+                    setTextColor(Color.WHITE)
+                }
+                footerInfoCol.addView(footerTitle)
+
+                val footerSub = TextView(this@MainActivity).apply {
+                    text = "Select a stream to start watching"
+                    UITheme.applyMetadataStyle(this)
+                    textSize = 11f
+                    setTextColor(Color.parseColor("#9CA3AF"))
+                }
+                footerInfoCol.addView(footerSub)
+
+                val footerCloseBtn = TextView(this@MainActivity).apply {
+                    text = "CLOSE"
+                    textSize = 12f
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                    setTextColor(Color.WHITE)
+                    background = UITheme.createCardShape(this@MainActivity, "#E50914", 10, "#E50914", 1)
+                    setPadding(dp(16), dp(8), dp(16), dp(8))
+                    isClickable = true
+                    setOnClickListener { streamDialog.dismiss() }
+                }
+
+                footerRow.addView(footerInfoCol)
+                footerRow.addView(footerCloseBtn)
+                container.addView(footerRow)
+
                 if (!isFinishing && !isDestroyed) {
                     try {
                         streamDialog.show()
+                        val metrics = resources.displayMetrics
+                        val w = (metrics.widthPixels * 0.92).toInt()
+                        val h = (metrics.heightPixels * 0.82).toInt()
+                        streamDialog.window?.setLayout(w, h)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
