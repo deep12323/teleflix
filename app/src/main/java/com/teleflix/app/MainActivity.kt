@@ -3817,7 +3817,8 @@ class MainActivity : AppCompatActivity() {
                     fileSize = 0L,
                     duration = 0,
                     fileId = fId,
-                    mimeType = "video/mp4"
+                    mimeType = "video/mp4",
+                    caption = ""
                 )
             }
         } else {
