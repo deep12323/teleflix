@@ -567,20 +567,6 @@ object DownloadManager {
                     lastSpeedCalcTimeMap[item.id] = now
                 }
 
-    private fun formatEtaTime(remainingBytes: Long, speedBytesPerSec: Long): String {
-        if (remainingBytes <= 0L) return "0s"
-        if (speedBytesPerSec <= 0L) return "Calculating..."
-        val remainingSecs = remainingBytes / speedBytesPerSec
-        val hours = remainingSecs / 3600
-        val mins = (remainingSecs % 3600) / 60
-        val secs = remainingSecs % 60
-        return when {
-            hours > 0 -> String.format(java.util.Locale.US, "%dh %02dm", hours, mins)
-            mins > 0 -> String.format(java.util.Locale.US, "%02dm %02ds", mins, secs)
-            else -> String.format(java.util.Locale.US, "%02ds", secs)
-        }
-    }
-
                 val expectedPartSize = item.partFileSizes.getOrNull(idx) ?: 0L
                 val lastLogTime = lastProgressLogTimeMap[item.id] ?: 0L
                 if (now - lastLogTime >= 5000L && item.status == DownloadStatus.DOWNLOADING && item.downloadedBytes > 0) {
@@ -946,6 +932,20 @@ object DownloadManager {
     fun getActiveDownloadsCount(): Int {
         synchronized(downloadsMap) {
             return downloadsMap.values.count { it.status == DownloadStatus.DOWNLOADING }
+        }
+    }
+
+    private fun formatEtaTime(remainingBytes: Long, speedBytesPerSec: Long): String {
+        if (remainingBytes <= 0L) return "0s"
+        if (speedBytesPerSec <= 0L) return "Calculating..."
+        val remainingSecs = remainingBytes / speedBytesPerSec
+        val hours = remainingSecs / 3600
+        val mins = (remainingSecs % 3600) / 60
+        val secs = remainingSecs % 60
+        return when {
+            hours > 0 -> String.format(java.util.Locale.US, "%dh %02dm", hours, mins)
+            mins > 0 -> String.format(java.util.Locale.US, "%02dm %02ds", mins, secs)
+            else -> String.format(java.util.Locale.US, "%02ds", secs)
         }
     }
 
