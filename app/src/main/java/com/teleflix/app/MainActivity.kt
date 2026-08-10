@@ -3637,8 +3637,17 @@ class MainActivity : AppCompatActivity() {
 
         val cachedParts = telegramGroupPartsCache[stream.id]
         if ((stream.isSplit || stream.id.startsWith("group_")) && cachedParts != null && cachedParts.isNotEmpty()) {
-            DownloadManager.startMultiPartDownload(this, cleanDisplayTitle, cleanFileName, cachedParts, posterUrl)
-            Toast.makeText(this, "Started multi-part download '$cleanDisplayTitle' 📥", Toast.LENGTH_SHORT).show()
+            val mediaItem = MediaItem(
+                id = stream.id,
+                title = cleanDisplayTitle,
+                posterUrl = posterUrl,
+                year = stream.size,
+                rating = stream.quality,
+                overview = "Multi-part video pack: $cleanDisplayTitle",
+                type = "telegram_media",
+                streamUrl = stream.url
+            )
+            showGroupDownloadOptionsDialog(mediaItem, cachedParts, cleanDisplayTitle)
             return
         }
 
@@ -3667,7 +3676,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showGroupDownloadOptionsDialog(item: MediaItem, parts: List<TelegramVideoMessage>, cleanTitle: String) {
-        val totalSize = parts.sumOf { it.fileSize }
+        val validParts = parts
+            .filter { it.fileSize > 0 }
+            .distinctBy { if (it.messageId != 0L) "${it.chatId}_${it.messageId}" else it.fileName }
+            .sortedWith(compareBy({ extractPartNumber(it.fileName) }, { it.messageId }, { it.fileName }))
+        val finalParts = if (validParts.isNotEmpty()) validParts else parts
+
+        val totalSize = finalParts.sumOf { it.fileSize }
         val totalSizeStr = formatFileSize(totalSize)
 
         val scrollView = ScrollView(this).apply {
@@ -3688,7 +3703,7 @@ class MainActivity : AppCompatActivity() {
         cardList.addView(headerText)
 
         val subHeaderText = TextView(this).apply {
-            text = "'$cleanTitle' has ${parts.size} parts (Total: $totalSizeStr)."
+            text = "'$cleanTitle' has ${finalParts.size} parts (Total: $totalSizeStr)."
             UITheme.applyMetadataStyle(this)
             setPadding(0, 4, 0, 14)
         }
@@ -3709,7 +3724,7 @@ class MainActivity : AppCompatActivity() {
             isClickable = true
             setOnClickListener {
                 dialog?.dismiss()
-                DownloadManager.startMultiPartDownload(this@MainActivity, cleanTitle, item.originalFileName.ifBlank { cleanTitle }, parts, item.posterUrl)
+                DownloadManager.startMultiPartDownload(this@MainActivity, cleanTitle, item.originalFileName.ifBlank { cleanTitle }, finalParts, item.posterUrl)
                 Toast.makeText(this@MainActivity, "Started downloading & combining '$cleanTitle' 📥", Toast.LENGTH_SHORT).show()
             }
         }
@@ -3722,7 +3737,7 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         val t1 = TextView(this).apply { text = "Combine & Save as 1 Video File"; UITheme.applyCardTitleStyle(this); textSize = 14f; setTextColor(Color.WHITE) }
-        val s1 = TextView(this).apply { text = "Downloads all ${parts.size} parts and merges into single file ($totalSizeStr)"; UITheme.applyMetadataStyle(this); setTextColor(Color.parseColor(UITheme.PRIMARY)) }
+        val s1 = TextView(this).apply { text = "Downloads all ${finalParts.size} parts and merges into single file ($totalSizeStr)"; UITheme.applyMetadataStyle(this); setTextColor(Color.parseColor(UITheme.PRIMARY)) }
         info1.addView(t1); info1.addView(s1)
         optCombine.addView(info1)
         cardList.addView(optCombine)
@@ -3740,12 +3755,12 @@ class MainActivity : AppCompatActivity() {
             isClickable = true
             setOnClickListener {
                 dialog?.dismiss()
-                parts.forEachIndexed { idx, part ->
+                finalParts.forEachIndexed { idx, part ->
                     val partTitle = "${cleanTitle} (Part ${idx + 1})"
                     val fileName = part.fileName.ifBlank { "${cleanTitle}_part${idx + 1}.mp4" }
                     DownloadManager.startDownload(this@MainActivity, partTitle, fileName, part.fileId, part.chatId, part.messageId, item.posterUrl, part.fileSize)
                 }
-                Toast.makeText(this@MainActivity, "Started downloading ${parts.size} separate parts 📥", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "Started downloading ${finalParts.size} separate parts 📥", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -3757,7 +3772,7 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         val t2 = TextView(this).apply { text = "Download All Parts Separately"; UITheme.applyCardTitleStyle(this); textSize = 14f; setTextColor(Color.WHITE) }
-        val s2 = TextView(this).apply { text = "Saves ${parts.size} individual files to your Downloads folder"; UITheme.applyMetadataStyle(this); setTextColor(Color.parseColor(UITheme.TEXT_SECONDARY)) }
+        val s2 = TextView(this).apply { text = "Saves ${finalParts.size} individual files to your Downloads folder"; UITheme.applyMetadataStyle(this); setTextColor(Color.parseColor(UITheme.TEXT_SECONDARY)) }
         info2.addView(t2); info2.addView(s2)
         optSep.addView(info2)
         cardList.addView(optSep)
@@ -3771,7 +3786,7 @@ class MainActivity : AppCompatActivity() {
         }
         cardList.addView(partsTitle)
 
-        parts.forEachIndexed { index, part ->
+        finalParts.forEachIndexed { index, part ->
             val partTitle = part.fileName.ifBlank { "Part ${index + 1}" }
             val partSize = formatFileSize(part.fileSize)
 
@@ -3871,7 +3886,7 @@ class MainActivity : AppCompatActivity() {
         val cleanTitle = item.title.removePrefix("Select:").removePrefix("Select").removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
         if (item.id.startsWith("group_") || item.type == "history_group" || parts.size > 1) {
             if (parts.isNotEmpty()) {
-                showGroupPartsSelectionDialog(item, parts, cleanTitle)
+                showGroupDownloadOptionsDialog(item, parts, cleanTitle)
                 return
             }
         }
