@@ -567,6 +567,20 @@ object DownloadManager {
                     lastSpeedCalcTimeMap[item.id] = now
                 }
 
+    private fun formatEtaTime(remainingBytes: Long, speedBytesPerSec: Long): String {
+        if (remainingBytes <= 0L) return "0s"
+        if (speedBytesPerSec <= 0L) return "Calculating..."
+        val remainingSecs = remainingBytes / speedBytesPerSec
+        val hours = remainingSecs / 3600
+        val mins = (remainingSecs % 3600) / 60
+        val secs = remainingSecs % 60
+        return when {
+            hours > 0 -> String.format(java.util.Locale.US, "%dh %02dm", hours, mins)
+            mins > 0 -> String.format(java.util.Locale.US, "%02dm %02ds", mins, secs)
+            else -> String.format(java.util.Locale.US, "%02ds", secs)
+        }
+    }
+
                 val expectedPartSize = item.partFileSizes.getOrNull(idx) ?: 0L
                 val lastLogTime = lastProgressLogTimeMap[item.id] ?: 0L
                 if (now - lastLogTime >= 5000L && item.status == DownloadStatus.DOWNLOADING && item.downloadedBytes > 0) {
@@ -577,7 +591,9 @@ object DownloadManager {
                     val dlMB = String.format(java.util.Locale.US, "%.2f MB", item.downloadedBytes / (1024.0 * 1024.0))
                     val totMB = if (item.totalBytes > 0) String.format(java.util.Locale.US, "%.2f MB", item.totalBytes / (1024.0 * 1024.0)) else "Unknown"
                     val speedMBs = String.format(java.util.Locale.US, "%.2f MB/s", item.speedBytesPerSec / (1024.0 * 1024.0))
-                    TeleflixLogger.log(TAG, "Multipart download progress for '${item.title}': Part ${idx + 1}/${item.partFileIds.size} ($partPct) | Overall: $totalPct ($dlMB / $totMB) at $speedMBs | fileId=$partFileId")
+                    val remainingBytes = (item.totalBytes - item.downloadedBytes).coerceAtLeast(0L)
+                    val etaStr = formatEtaTime(remainingBytes, item.speedBytesPerSec)
+                    TeleflixLogger.log(TAG, "Multipart download progress for '${item.title}': Part ${idx + 1}/${item.partFileIds.size} ($partPct) | Overall: $totalPct ($dlMB / $totMB) at $speedMBs | ETA: $etaStr | fileId=$partFileId")
                 }
 
                 val tdlibPath = fileObj.local?.path ?: ""
@@ -871,7 +887,9 @@ object DownloadManager {
                         val dlMB = String.format(java.util.Locale.US, "%.2f MB", item.downloadedBytes / (1024.0 * 1024.0))
                         val totMB = if (item.totalBytes > 0) String.format(java.util.Locale.US, "%.2f MB", item.totalBytes / (1024.0 * 1024.0)) else "Unknown"
                         val speedMBs = String.format(java.util.Locale.US, "%.2f MB/s", item.speedBytesPerSec / (1024.0 * 1024.0))
-                        TeleflixLogger.log(TAG, "Download progress for '${item.title}': $pct ($dlMB / $totMB) at $speedMBs | fileId=${file.id}")
+                        val remainingBytes = (item.totalBytes - item.downloadedBytes).coerceAtLeast(0L)
+                        val etaStr = formatEtaTime(remainingBytes, item.speedBytesPerSec)
+                        TeleflixLogger.log(TAG, "Download progress for '${item.title}': $pct ($dlMB / $totMB) at $speedMBs | ETA: $etaStr | fileId=${file.id}")
                     }
 
                     val tdlibPath = file.local?.path ?: ""
