@@ -770,42 +770,27 @@ object DownloadManager {
                         finalizeMultiPartMerge(context, item)
                     } else {
                         val nextFileId = item.partFileIds.getOrNull(item.currentPartIndex) ?: 0
+                        val nextChatId = item.partChatIds.getOrNull(item.currentPartIndex) ?: 0L
+                        val nextMsgId = item.partMessageIds.getOrNull(item.currentPartIndex) ?: 0L
                         if (nextFileId != 0) {
                             try {
-                                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                    req.fileId = nextFileId
-                                    req.priority = 32
-                                    req.offset = 0
-                                    req.limit = 0
-                                    req.synchronous = false
-                                })
+                                if (nextChatId != 0L && nextMsgId != 0L) {
+                                    TelegramClient.sendRequest(TdApi.AddFileToDownloads(nextFileId, nextChatId, nextMsgId, 32))
+                                } else {
+                                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                        req.fileId = nextFileId
+                                        req.priority = 32
+                                        req.offset = 0
+                                        req.limit = 0
+                                        req.synchronous = false
+                                    })
+                                }
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed DownloadFile for next part $nextFileId", e)
                             }
                         }
                     }
                 } else {
-                    // Pre-fetch next part in advance while current part is downloading
-                    val nextIdx = idx + 1
-                    if (nextIdx < item.partFileIds.size) {
-                        val nextFileId = item.partFileIds.getOrNull(nextIdx) ?: 0
-                        if (nextFileId != 0) {
-                            val lastPrefetch = lastDownloadRetryTimeMap[nextFileId] ?: 0L
-                            if (now - lastPrefetch > 10000L) {
-                                lastDownloadRetryTimeMap[nextFileId] = now
-                                try {
-                                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                        req.fileId = nextFileId
-                                        req.priority = 16
-                                        req.offset = 0
-                                        req.limit = 0
-                                        req.synchronous = false
-                                    })
-                                } catch (_: Exception) {}
-                            }
-                        }
-                    }
-
                     val partKey = "${item.id}_part_$idx"
                     val lastBytes = lastBytesCountMap[partKey] ?: -1L
                     if (fileObj.local.downloadedSize > lastBytes) {
