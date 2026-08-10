@@ -412,27 +412,29 @@ object DownloadManager {
     }
 
     private fun startDownloadLoop(context: Context) {
-        if (downloadLoopJob?.isActive == true) return
-        val appContext = context.applicationContext
-        downloadLoopJob = CoroutineScope(Dispatchers.IO).launch {
-            while (isActive && hasActiveDownloads()) {
-                val activeItems = synchronized(downloadsMap) {
-                    downloadsMap.values.filter { it.status == DownloadStatus.DOWNLOADING }
-                }
-
-                val now = System.currentTimeMillis()
-                for (item in activeItems) {
-                    try {
-                        if (item.isMultiPart) {
-                            processMultiPartDownloadStep(appContext, item, now)
-                        } else {
-                            processSinglePartDownloadStep(appContext, item, now)
-                        }
-                    } catch (e: Exception) {
-                        TeleflixLogger.log(TAG, "Error in download loop for item ${item.id}: ${e.message}", isError = true)
+        synchronized(this) {
+            if (downloadLoopJob?.isActive == true) return
+            val appContext = context.applicationContext
+            downloadLoopJob = CoroutineScope(Dispatchers.IO).launch {
+                while (isActive && hasActiveDownloads()) {
+                    val activeItems = synchronized(downloadsMap) {
+                        downloadsMap.values.filter { it.status == DownloadStatus.DOWNLOADING }
                     }
+
+                    val now = System.currentTimeMillis()
+                    for (item in activeItems) {
+                        try {
+                            if (item.isMultiPart) {
+                                processMultiPartDownloadStep(appContext, item, now)
+                            } else {
+                                processSinglePartDownloadStep(appContext, item, now)
+                            }
+                        } catch (e: Exception) {
+                            TeleflixLogger.log(TAG, "Error in download loop for item ${item.id}: ${e.message}", isError = true)
+                        }
+                    }
+                    delay(300)
                 }
-                delay(300)
             }
         }
     }
@@ -945,6 +947,10 @@ object DownloadManager {
                     }
                 }
                 TeleflixDownloadService.start(context)
+                synchronized(this) {
+                    downloadLoopJob?.cancel()
+                    downloadLoopJob = null
+                }
                 startDownloadLoop(context)
             }
         }
@@ -1020,15 +1026,25 @@ object DownloadManager {
             val now = System.currentTimeMillis()
 
             for (item in downloadsMap.values) {
-                if (!item.isMultiPart && (item.fileId == file.id || (item.fileId == 0 && file.id != 0))) {
-                    if (item.fileId == 0) {
-                        item.fileId = file.id
-                    }
+                val matchesSingle = !item.isMultiPart && (item.fileId == file.id || (item.fileId == 0 && file.id != 0))
+                val matchesMulti = item.isMultiPart && item.partFileIds.contains(file.id)
 
-                    item.downloadedBytes = file.local.downloadedSize
-                    val reportedSize = if (file.expectedSize > 0) file.expectedSize else if (file.size > 0) file.size else 0L
-                    if (reportedSize > item.totalBytes || item.totalBytes == 0L) {
-                        item.totalBytes = reportedSize
+                if (matchesSingle || matchesMulti) {
+                    if (matchesSingle) {
+                        if (item.fileId == 0) {
+                            item.fileId = file.id
+                        }
+                        item.downloadedBytes = file.local.downloadedSize
+                        val reportedSize = if (file.expectedSize > 0) file.expectedSize else if (file.size > 0) file.size else 0L
+                        if (reportedSize > item.totalBytes || item.totalBytes == 0L) {
+                            item.totalBytes = reportedSize
+                        }
+                    } else if (matchesMulti) {
+                        val partIdx = item.partFileIds.indexOf(file.id)
+                        if (partIdx >= 0 && partIdx == item.currentPartIndex) {
+                            val sumCompletedParts = item.partFileSizes.take(partIdx).sum()
+                            item.downloadedBytes = sumCompletedParts + file.local.downloadedSize
+                        }
                     }
 
                     val lastCalcTime = lastSpeedCalcTimeMap[item.id] ?: 0L
@@ -1053,38 +1069,42 @@ object DownloadManager {
                         TeleflixLogger.log(TAG, "Download progress for '${item.title}': $pct ($dlMB / $totMB) at $speedMBs | ETA: $etaStr | fileId=${file.id}")
                     }
 
-                    val tdlibPath = file.local?.path ?: ""
+                    if (matchesSingle) {
+                        val tdlibPath = file.local?.path ?: ""
 
-                    val isCompleted = file.local.isDownloadingCompleted || 
-                        (item.totalBytes > 0 && file.local.downloadedSize >= item.totalBytes)
+                        val isCompleted = file.local.isDownloadingCompleted || 
+                            (item.totalBytes > 0 && file.local.downloadedSize >= item.totalBytes)
 
-                    if (isCompleted) {
-                        item.status = DownloadStatus.COMPLETED
-                        if (item.totalBytes > 0) item.downloadedBytes = item.totalBytes
-                        item.speedBytesPerSec = 0L
-                        TeleflixLogger.log(TAG, "Download COMPLETED for '${item.title}': downloaded=${item.downloadedBytes}/${item.totalBytes} bytes")
+                        if (isCompleted) {
+                            item.status = DownloadStatus.COMPLETED
+                            if (item.totalBytes > 0) item.downloadedBytes = item.totalBytes
+                            item.speedBytesPerSec = 0L
+                            TeleflixLogger.log(TAG, "Download COMPLETED for '${item.title}': downloaded=${item.downloadedBytes}/${item.totalBytes} bytes")
 
-                        if (tdlibPath.isNotBlank()) {
-                            try {
-                                val source = File(tdlibPath)
-                                val cleanPath = if (item.localPath.endsWith(".mp4.mp4", ignoreCase = true)) {
-                                    item.localPath.substring(0, item.localPath.length - 4)
-                                } else {
-                                    item.localPath
+                            if (tdlibPath.isNotBlank()) {
+                                try {
+                                    val source = File(tdlibPath)
+                                    val cleanPath = if (item.localPath.endsWith(".mp4.mp4", ignoreCase = true)) {
+                                        item.localPath.substring(0, item.localPath.length - 4)
+                                    } else {
+                                        item.localPath
+                                    }
+                                    val target = File(cleanPath)
+                                    if (target.parentFile?.exists() == false) {
+                                        target.parentFile?.mkdirs()
+                                    }
+                                    if (source.exists() && source.absolutePath != target.absolutePath) {
+                                        fastCopyFile(source, target)
+                                        TeleflixLogger.log(TAG, "Copied completed download to ${target.absolutePath}")
+                                    }
+                                } catch (e: Exception) {
+                                    TeleflixLogger.log(TAG, "Failed copying completed download: ${e.message}", isError = true)
                                 }
-                                val target = File(cleanPath)
-                                if (target.parentFile?.exists() == false) {
-                                    target.parentFile?.mkdirs()
-                                }
-                                if (source.exists() && source.absolutePath != target.absolutePath) {
-                                    fastCopyFile(source, target)
-                                    TeleflixLogger.log(TAG, "Copied completed download to ${target.absolutePath}")
-                                }
-                            } catch (e: Exception) {
-                                TeleflixLogger.log(TAG, "Failed copying completed download: ${e.message}", isError = true)
                             }
+                        } else if (file.local.isDownloadingActive) {
+                            item.status = DownloadStatus.DOWNLOADING
                         }
-                    } else if (file.local.isDownloadingActive) {
+                    } else if (matchesMulti && file.local.isDownloadingActive && item.status == DownloadStatus.PAUSED) {
                         item.status = DownloadStatus.DOWNLOADING
                     }
                     updated = true
