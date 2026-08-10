@@ -480,9 +480,9 @@ object DownloadManager {
                     lastBytesIncreaseTimeMap[item.id] = now
                 } else if (fileObj.local.downloadedSize > 0 && !fileObj.local.isDownloadingCompleted) {
                     val lastIncrease = lastBytesIncreaseTimeMap[item.id] ?: now
-                    if (now - lastIncrease > 15000L) {
+                    if (now - lastIncrease > 5000L) {
                         lastBytesIncreaseTimeMap[item.id] = now
-                        TeleflixLogger.log(TAG, "[DownloadManager] Download stall detected for '${item.title}' at ${fileObj.local.downloadedSize} bytes (stalled >15s). Recovering TDLib download for fileId=$currentFileId...")
+                        TeleflixLogger.log(TAG, "[DownloadManager] Speed drop / stall detected for '${item.title}' at ${fileObj.local.downloadedSize} bytes (stalled >5s). Re-triggering TDLib download for fileId=$currentFileId...")
                         try {
                             TelegramClient.sendRequest(TdApi.CancelDownloadFile(currentFileId, false))
                             val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
@@ -674,9 +674,9 @@ object DownloadManager {
                         lastBytesIncreaseTimeMap[partKey] = now
                     } else if (fileObj.local.downloadedSize > 0 && !fileObj.local.isDownloadingCompleted) {
                         val lastIncrease = lastBytesIncreaseTimeMap[partKey] ?: now
-                        if (now - lastIncrease > 15000L) {
+                        if (now - lastIncrease > 5000L) {
                             lastBytesIncreaseTimeMap[partKey] = now
-                            TeleflixLogger.log(TAG, "[DownloadManager] Multipart stall detected for '${item.title}' (Part ${idx + 1}/${item.partFileIds.size}) at ${fileObj.local.downloadedSize} bytes (stalled >15s). Recovering TDLib download for partFileId=$partFileId...")
+                            TeleflixLogger.log(TAG, "[DownloadManager] Multipart speed drop / stall detected for '${item.title}' (Part ${idx + 1}/${item.partFileIds.size}) at ${fileObj.local.downloadedSize} bytes (stalled >5s). Re-triggering TDLib download for partFileId=$partFileId...")
                             try {
                                 TelegramClient.sendRequest(TdApi.CancelDownloadFile(partFileId, false))
                                 val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
