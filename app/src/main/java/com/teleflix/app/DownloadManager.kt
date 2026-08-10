@@ -902,9 +902,11 @@ object DownloadManager {
                     val activeId = if (item.isMultiPart) item.partFileIds.getOrNull(item.currentPartIndex) ?: item.fileId else item.fileId
                     if (activeId != 0) {
                         try {
+                            TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(activeId, true))
                             TelegramClient.sendRequest(TdApi.CancelDownloadFile(activeId, false))
                         } catch (_: Exception) {}
                     }
+                    TeleflixLogger.log(TAG, "Download PAUSED for '${item.title}'")
                 }
             }
         }
@@ -919,18 +921,27 @@ object DownloadManager {
                 updateFlow()
 
                 val activeId = if (item.isMultiPart) item.partFileIds.getOrNull(item.currentPartIndex) ?: item.fileId else item.fileId
+                val chatId = if (item.isMultiPart) item.partChatIds.getOrNull(item.currentPartIndex) ?: item.chatId else item.chatId
+                val messageId = if (item.isMultiPart) item.partMessageIds.getOrNull(item.currentPartIndex) ?: item.messageId else item.messageId
+
                 if (activeId != 0) {
                     lastDownloadRetryTimeMap[activeId] = System.currentTimeMillis()
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = activeId
-                                req.priority = 32
-                                req.offset = 0
-                                req.limit = 0
-                                req.synchronous = false
-                            })
+                            TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(activeId, false))
+                            if (chatId != 0L && messageId != 0L) {
+                                TelegramClient.sendRequest(TdApi.AddFileToDownloads(activeId, chatId, messageId, 32))
+                            } else {
+                                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                    req.fileId = activeId
+                                    req.priority = 32
+                                    req.offset = 0
+                                    req.limit = 0
+                                    req.synchronous = false
+                                })
+                            }
                         } catch (_: Exception) {}
+                        TeleflixLogger.log(TAG, "Download RESUMED for '${item.title}'")
                     }
                 }
                 TeleflixDownloadService.start(context)
@@ -949,6 +960,7 @@ object DownloadManager {
                 val activeId = if (item.isMultiPart) item.partFileIds.getOrNull(item.currentPartIndex) ?: item.fileId else item.fileId
                 if (activeId != 0) {
                     try {
+                        TelegramClient.sendRequest(TdApi.RemoveFileFromDownloads(activeId, true))
                         TelegramClient.sendRequest(TdApi.CancelDownloadFile(activeId, true))
                     } catch (_: Exception) {}
                 }
