@@ -584,6 +584,38 @@ object DownloadManager {
                             req.limit = chunkSize
                             req.synchronous = false
                         })
+                        // Worker 7: Pre-fetch +120MB
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = currentFileId
+                            req.priority = 20
+                            req.offset = currentPos + (chunkSize * 6)
+                            req.limit = chunkSize
+                            req.synchronous = false
+                        })
+                        // Worker 8: Pre-fetch +140MB
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = currentFileId
+                            req.priority = 18
+                            req.offset = currentPos + (chunkSize * 7)
+                            req.limit = chunkSize
+                            req.synchronous = false
+                        })
+                        // Worker 9: Pre-fetch +160MB
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = currentFileId
+                            req.priority = 16
+                            req.offset = currentPos + (chunkSize * 8)
+                            req.limit = chunkSize
+                            req.synchronous = false
+                        })
+                        // Worker 10: Pre-fetch +180MB
+                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                            req.fileId = currentFileId
+                            req.priority = 14
+                            req.offset = currentPos + (chunkSize * 9)
+                            req.limit = chunkSize
+                            req.synchronous = false
+                        })
                     } catch (_: Exception) {}
                 }
 
@@ -853,6 +885,38 @@ object DownloadManager {
                                 req.fileId = partFileId
                                 req.priority = 22
                                 req.offset = currentPos + (chunkSize * 5)
+                                req.limit = chunkSize
+                                req.synchronous = false
+                            })
+                            // Worker 7: Pre-fetch +120MB
+                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = partFileId
+                                req.priority = 20
+                                req.offset = currentPos + (chunkSize * 6)
+                                req.limit = chunkSize
+                                req.synchronous = false
+                            })
+                            // Worker 8: Pre-fetch +140MB
+                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = partFileId
+                                req.priority = 18
+                                req.offset = currentPos + (chunkSize * 7)
+                                req.limit = chunkSize
+                                req.synchronous = false
+                            })
+                            // Worker 9: Pre-fetch +160MB
+                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = partFileId
+                                req.priority = 16
+                                req.offset = currentPos + (chunkSize * 8)
+                                req.limit = chunkSize
+                                req.synchronous = false
+                            })
+                            // Worker 10: Pre-fetch +180MB
+                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = partFileId
+                                req.priority = 14
+                                req.offset = currentPos + (chunkSize * 9)
                                 req.limit = chunkSize
                                 req.synchronous = false
                             })
