@@ -463,6 +463,9 @@ object DownloadManager {
                 if (refreshedId != null && refreshedId != 0) {
                     currentFileId = refreshedId
                     item.fileId = refreshedId
+                    if (item.isMultiPart && item.partFileIds.size > item.currentPartIndex) {
+                        item.partFileIds[item.currentPartIndex] = refreshedId
+                    }
                     try { TelegramClient.sendRequest(TdApi.AddFileToDownloads(refreshedId, item.chatId, item.messageId, 32)) } catch (_: Exception) {}
                     TeleflixLogger.log(TAG, "Resolved fresh video fileId=$refreshedId for item ${item.id}")
                 }
@@ -486,6 +489,9 @@ object DownloadManager {
                     if (refreshedId != null && refreshedId != 0) {
                         currentFileId = refreshedId
                         item.fileId = refreshedId
+                        if (item.isMultiPart && item.partFileIds.size > item.currentPartIndex) {
+                            item.partFileIds[item.currentPartIndex] = refreshedId
+                        }
                         try { TelegramClient.sendRequest(TdApi.AddFileToDownloads(refreshedId, item.chatId, item.messageId, 32)) } catch (_: Exception) {}
                         fileObj = TelegramClient.sendRequest(TdApi.GetFile(currentFileId)) as? TdApi.File
                         TeleflixLogger.log(TAG, "Successfully refreshed & queued fileId for item ${item.id}: new fileId=$refreshedId")
