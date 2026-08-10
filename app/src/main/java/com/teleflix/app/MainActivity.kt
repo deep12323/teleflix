@@ -168,6 +168,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) {
+            TeleflixLogger.clearLogsOnExit()
+        }
 
         val rootView = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -3589,8 +3592,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        if (isFinishing && !DownloadManager.hasActiveDownloads()) {
-            try { TelegramClient.clearMediaCacheSync(this) } catch (_: Exception) {}
+        if (isFinishing) {
+            TeleflixLogger.clearLogsOnExit()
+            if (!DownloadManager.hasActiveDownloads()) {
+                try { TelegramClient.clearMediaCacheSync(this) } catch (_: Exception) {}
+            }
         }
         super.onDestroy()
     }

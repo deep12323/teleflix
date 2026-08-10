@@ -54,4 +54,9 @@ object TeleflixLogger {
         logQueue.clear()
         log("TeleflixLogger", "Logs cleared by user")
     }
+
+    fun clearLogsOnExit() {
+        logQueue.clear()
+        Log.d("TeleflixLogger", "Diagnostic logs automatically cleared on app exit")
+    }
 }
