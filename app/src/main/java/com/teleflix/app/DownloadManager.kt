@@ -34,6 +34,7 @@ object DownloadManager {
     private var lastSpeedCalcTimeMap = HashMap<String, Long>()
     private var lastDownloadedBytesMap = HashMap<String, Long>()
     private var lastDownloadRetryTimeMap = HashMap<Int, Long>()
+    private var lastProgressLogTimeMap = HashMap<String, Long>()
     private var downloadLoopJob: Job? = null
 
     fun init(context: Context) {
@@ -566,9 +567,21 @@ object DownloadManager {
                     lastSpeedCalcTimeMap[item.id] = now
                 }
 
+                val expectedPartSize = item.partFileSizes.getOrNull(idx) ?: 0L
+                val lastLogTime = lastProgressLogTimeMap[item.id] ?: 0L
+                if (now - lastLogTime >= 5000L && item.status == DownloadStatus.DOWNLOADING && item.downloadedBytes > 0) {
+                    lastProgressLogTimeMap[item.id] = now
+                    val currentPartSize = if (expectedPartSize > 0) expectedPartSize else if (fileObj.expectedSize > 0) fileObj.expectedSize else fileObj.size
+                    val partPct = if (currentPartSize > 0) String.format(java.util.Locale.US, "%.1f%%", (currentPartDownloaded.toDouble() / currentPartSize) * 100) else "N/A"
+                    val totalPct = if (item.totalBytes > 0) String.format(java.util.Locale.US, "%.1f%%", (item.downloadedBytes.toDouble() / item.totalBytes) * 100) else "N/A"
+                    val dlMB = String.format(java.util.Locale.US, "%.2f MB", item.downloadedBytes / (1024.0 * 1024.0))
+                    val totMB = if (item.totalBytes > 0) String.format(java.util.Locale.US, "%.2f MB", item.totalBytes / (1024.0 * 1024.0)) else "Unknown"
+                    val speedMBs = String.format(java.util.Locale.US, "%.2f MB/s", item.speedBytesPerSec / (1024.0 * 1024.0))
+                    TeleflixLogger.log(TAG, "Multipart download progress for '${item.title}': Part ${idx + 1}/${item.partFileIds.size} ($partPct) | Overall: $totalPct ($dlMB / $totMB) at $speedMBs | fileId=$partFileId")
+                }
+
                 val tdlibPath = fileObj.local?.path ?: ""
 
-                val expectedPartSize = item.partFileSizes.getOrNull(idx) ?: 0L
                 val isPartDone = fileObj.local.isDownloadingCompleted || 
                     (expectedPartSize > 0 && fileObj.local.downloadedSize >= expectedPartSize)
 
@@ -849,6 +862,16 @@ object DownloadManager {
                         item.speedBytesPerSec = (bytesDiff * 1000) / elapsed
                         lastDownloadedBytesMap[item.id] = item.downloadedBytes
                         lastSpeedCalcTimeMap[item.id] = now
+                    }
+
+                    val lastLogTime = lastProgressLogTimeMap[item.id] ?: 0L
+                    if (now - lastLogTime >= 5000L && item.status == DownloadStatus.DOWNLOADING && item.downloadedBytes > 0) {
+                        lastProgressLogTimeMap[item.id] = now
+                        val pct = if (item.totalBytes > 0) String.format(java.util.Locale.US, "%.1f%%", (item.downloadedBytes.toDouble() / item.totalBytes) * 100) else "N/A"
+                        val dlMB = String.format(java.util.Locale.US, "%.2f MB", item.downloadedBytes / (1024.0 * 1024.0))
+                        val totMB = if (item.totalBytes > 0) String.format(java.util.Locale.US, "%.2f MB", item.totalBytes / (1024.0 * 1024.0)) else "Unknown"
+                        val speedMBs = String.format(java.util.Locale.US, "%.2f MB/s", item.speedBytesPerSec / (1024.0 * 1024.0))
+                        TeleflixLogger.log(TAG, "Download progress for '${item.title}': $pct ($dlMB / $totMB) at $speedMBs | fileId=${file.id}")
                     }
 
                     val tdlibPath = file.local?.path ?: ""
