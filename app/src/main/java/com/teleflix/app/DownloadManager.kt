@@ -545,11 +545,14 @@ object DownloadManager {
                 }
 
                 val lastPing = lastDownloadRetryTimeMap[currentFileId] ?: 0L
-                if (now - lastPing > 1500L && fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
+                if (now - lastPing > 1500L && !fileObj.local.isDownloadingCompleted) {
                     lastDownloadRetryTimeMap[currentFileId] = now
                     val currentPos = fileObj.local.downloadedSize
                     val chunkSize = 20L * 1024L * 1024L
                     try {
+                        if (!fileObj.local.isDownloadingActive) {
+                            TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(currentFileId, false))
+                        }
                         // Worker 1: Active offset (+0MB)
                         TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                             req.fileId = currentFileId
@@ -849,11 +852,14 @@ object DownloadManager {
                     }
 
                     val lastPing = lastDownloadRetryTimeMap[partFileId] ?: 0L
-                    if (now - lastPing > 1500L && fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
+                    if (now - lastPing > 1500L && !fileObj.local.isDownloadingCompleted) {
                         lastDownloadRetryTimeMap[partFileId] = now
                         val currentPos = fileObj.local.downloadedSize
                         val chunkSize = 20L * 1024L * 1024L
                         try {
+                            if (!fileObj.local.isDownloadingActive) {
+                                TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(partFileId, false))
+                            }
                             // Worker 1: Active offset (+0MB)
                             TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                                 req.fileId = partFileId
