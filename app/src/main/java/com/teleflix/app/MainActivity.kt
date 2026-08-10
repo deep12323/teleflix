@@ -2777,7 +2777,12 @@ class MainActivity : AppCompatActivity() {
         val files = groupItem.groupedFiles
         if (files.isEmpty()) return
 
-        val parts = files.mapIndexed { index, file ->
+        val parts = files.filter { file ->
+            !file.streamUrl.contains("/merged/") &&
+            !file.title.contains("(Combined)") &&
+            !file.originalFileName.contains("(Combined)") &&
+            (file.fileSize > 0 || extractSizeFromUrl(file.streamUrl) > 0)
+        }.map { file ->
             val pId = file.id.removePrefix("single_").removePrefix("stream_")
             val pParts = pId.split("_")
             val cId = pParts.getOrNull(0)?.toLongOrNull() ?: 0L
@@ -2794,7 +2799,13 @@ class MainActivity : AppCompatActivity() {
                 mimeType = "video/mp4",
                 caption = ""
             )
+        }.distinctBy { if (it.messageId != 0L) "${it.chatId}_${it.messageId}" else it.fileName }
+
+        if (parts.isEmpty()) {
+            playHistoryItem(groupItem)
+            return
         }
+
         showGroupPartsSelectionDialog(groupItem, parts, groupItem.title)
     }
 
@@ -3024,7 +3035,20 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    private fun extractPartNumber(name: String): Int {
+        val partMatch = Regex("""[\._\s-]*(?:part|pt|cd)[\._\s-]*(\d{1,4})""", RegexOption.IGNORE_CASE).find(name)
+            ?: Regex("""\((?:part|pt)?\s*(\d{1,4})\)""", RegexOption.IGNORE_CASE).find(name)
+            ?: Regex("""\.\d{1,4}$""").find(name)
+        return partMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+    }
+
     private fun showGroupPartsSelectionDialog(item: MediaItem, parts: List<TelegramVideoMessage>, baseName: String) {
+        val validParts = parts
+            .filter { it.fileSize > 0 }
+            .distinctBy { if (it.messageId != 0L) "${it.chatId}_${it.messageId}" else it.fileName }
+            .sortedWith(compareBy({ extractPartNumber(it.fileName) }, { it.messageId }, { it.fileName }))
+        val finalParts = if (validParts.isNotEmpty()) validParts else parts
+
         val scrollView = ScrollView(this).apply {
             setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
         }
@@ -3044,11 +3068,11 @@ class MainActivity : AppCompatActivity() {
         }
         cardList.addView(headerText)
 
-        val totalSize = parts.sumOf { it.fileSize }
+        val totalSize = finalParts.sumOf { it.fileSize }
         val totalSizeStr = formatFileSize(totalSize)
 
         val subHeaderText = TextView(this).apply {
-            text = "This video has ${parts.size} parts (Total: $totalSizeStr). Select an option:"
+            text = "This video has ${finalParts.size} parts (Total: $totalSizeStr). Select an option:"
             UITheme.applyMetadataStyle(this)
             setPadding(0, 4, 0, 14)
         }
@@ -3073,15 +3097,15 @@ class MainActivity : AppCompatActivity() {
                 val titleToPlay = streamInfo?.second ?: item.title
                 val fileName = item.originalFileName.ifBlank { titleToPlay }
                 val groupInfo = telegramGroupCache[item.id]
-                val combinedMediaId = if (item.id.startsWith("group_")) item.id else "group_${parts.firstOrNull()?.chatId ?: 0}_$cleanTitle"
+                val combinedMediaId = if (item.id.startsWith("group_")) item.id else "group_${finalParts.firstOrNull()?.chatId ?: 0}_$cleanTitle"
                 CoroutineScope(Dispatchers.Main).launch {
                     val urlToPlay = if (groupInfo != null) {
                         TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second) ?: item.streamUrl
                     } else {
-                        val freshIds = parts.map { it.fileId }
-                        val partSizes = parts.map { it.fileSize }
-                        val groupChats = parts.map { it.chatId }
-                        val groupMsgs = parts.map { it.messageId }
+                        val freshIds = finalParts.map { it.fileId }
+                        val partSizes = finalParts.map { it.fileSize }
+                        val groupChats = finalParts.map { it.chatId }
+                        val groupMsgs = finalParts.map { it.messageId }
                         TelegramRepository.getMergedStreamUrl(freshIds, cleanTitle, partSizes, groupChats, groupMsgs)
                     }
                     val freshUrl = TelegramStreamingProxy.refreshUrl(urlToPlay)
@@ -3111,7 +3135,7 @@ class MainActivity : AppCompatActivity() {
         stInfo.addView(stTitle)
 
         val stSub = TextView(this).apply {
-            text = "Stream continuous merged playback of all ${parts.size} parts ($totalSizeStr)"
+            text = "Stream continuous merged playback of all ${finalParts.size} parts ($totalSizeStr)"
             UITheme.applyMetadataStyle(this)
             setTextColor(Color.parseColor(UITheme.PRIMARY))
         }
@@ -3133,7 +3157,7 @@ class MainActivity : AppCompatActivity() {
             isClickable = true
             setOnClickListener {
                 dialog?.dismiss()
-                DownloadManager.startMultiPartDownload(this@MainActivity, cleanTitle, baseName, parts, item.posterUrl)
+                DownloadManager.startMultiPartDownload(this@MainActivity, cleanTitle, baseName, finalParts, item.posterUrl)
                 Toast.makeText(this@MainActivity, "Started downloading full combined video ($totalSizeStr) 📥", Toast.LENGTH_SHORT).show()
             }
         }
@@ -3159,7 +3183,7 @@ class MainActivity : AppCompatActivity() {
         dlInfo.addView(dlTitle)
 
         val dlSub = TextView(this).apply {
-            text = "Combines all ${parts.size} parts into a single file ($totalSizeStr)"
+            text = "Combines all ${finalParts.size} parts into a single file ($totalSizeStr)"
             UITheme.applyMetadataStyle(this)
             setTextColor(Color.parseColor(UITheme.PRIMARY))
         }
@@ -3169,7 +3193,7 @@ class MainActivity : AppCompatActivity() {
         cardList.addView(downloadCombinedCard)
 
         // Individual Parts Options
-        parts.forEachIndexed { index, part ->
+        finalParts.forEachIndexed { index, part ->
             val partNumStr = String.format("%03d", index + 1)
             val partTitle = part.fileName.ifBlank { "Part $partNumStr" }
             val partSize = formatFileSize(part.fileSize)
@@ -3192,8 +3216,8 @@ class MainActivity : AppCompatActivity() {
                         val freshUrl = TelegramRepository.getFreshMediaUrl(part.chatId, part.messageId)
                         if (freshUrl != null && freshUrl.isNotBlank()) {
                             val groupId = if (item.id.startsWith("group_")) item.id else "group_${part.chatId}_$cleanTitle"
-                            telegramGroupPartsCache[groupId] = parts
-                            for (p in parts) {
+                            telegramGroupPartsCache[groupId] = finalParts
+                            for (p in finalParts) {
                                 val pId = "${p.chatId}_${p.messageId}"
                                 val pName = p.fileName.ifBlank { "Part ${p.fileId}" }
                                 val pTitle = pName

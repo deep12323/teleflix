@@ -1210,10 +1210,13 @@ object TelegramRepository {
         for (singleMsg in singles) {
             val singleKey = normalizeKey(singleMsg.fileName)
             val matchingGroupEntry = groups[singleKey]
-            if (matchingGroupEntry != null && matchingGroupEntry.second.none { it.second.messageId == singleMsg.messageId }) {
+            if (matchingGroupEntry != null && singleMsg.fileSize > 0 && matchingGroupEntry.second.none { it.second.messageId == singleMsg.messageId }) {
                 val hasPart1 = matchingGroupEntry.second.any { it.first == 1 }
-                val assignedPartNum = if (!hasPart1) 1 else 0
-                matchingGroupEntry.second.add(assignedPartNum to singleMsg)
+                if (!hasPart1) {
+                    matchingGroupEntry.second.add(1 to singleMsg)
+                } else {
+                    remainingSingles.add(singleMsg)
+                }
             } else {
                 remainingSingles.add(singleMsg)
             }
@@ -1223,11 +1226,12 @@ object TelegramRepository {
         
         for ((_, pair) in groups) {
             val (baseName, parts) = pair
-            if (parts.size < 2) {
-                remainingSingles.addAll(parts.map { it.second })
+            val validParts = parts.filter { it.second.fileSize > 0 }
+            if (validParts.size < 2) {
+                remainingSingles.addAll(validParts.map { it.second })
                 continue
             }
-            val sorted = parts.sortedWith(compareBy({ it.first }, { it.second.messageId })).map { it.second }
+            val sorted = validParts.sortedWith(compareBy({ it.first }, { it.second.messageId })).map { it.second }
             splitGroups.add(SplitFileGroup(
                 baseName = baseName,
                 parts = sorted,
