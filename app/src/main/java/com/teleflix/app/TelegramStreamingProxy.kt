@@ -1544,21 +1544,17 @@ object TelegramStreamingProxy {
                 // Check if download is active
                 val isDownloading = file?.local?.isDownloadingActive == true
 
-                // Re-trigger DownloadFile on attempt 0 and periodically (every 6 attempts = 300ms if not downloading)
-                if (attempts % 6 == 0) {
+                // Re-trigger DownloadFile on attempt 0 and periodically (every 10 attempts = 500ms if not downloading)
+                if (attempts % 10 == 0) {
                     metrics?.chunksRetried = (metrics?.chunksRetried ?: 0) + 1
                     val fileInfo = getFileInfo(activeFileId)
                     val totalSize = fileInfo?.second?.takeIf { it > 0 } ?: fileInfo?.third?.takeIf { it > 0 } ?: 0L
                     val alignedOffset = offset - (offset % (1024 * 1024))
                     val safeLimit = calculateSafeTdlibLimit(alignedOffset, totalSize, prefetchSizeMb, limit)
 
-                    val isStalled = attempts > 0 && attempts % 30 == 0
+                    val isStalled = attempts > 0 && attempts % 60 == 0
                     if (isStalled) {
-                        TeleflixLogger.log(TAG, "downloadChunk stall check for fileId=$activeFileId offset=$offset at attempt $attempts. Fast re-triggering TDLib download...")
-                        val refreshed = refreshFileId(activeFileId)
-                        if (refreshed != null && refreshed != 0) {
-                            activeFileId = refreshed
-                        }
+                        TeleflixLogger.log(TAG, "downloadChunk stall check for fileId=$activeFileId offset=$offset at attempt $attempts. Resetting TDLib TCP stream...")
                         if (!DownloadManager.isFileIdActive(activeFileId)) {
                             runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(activeFileId, false)) }
                         }
