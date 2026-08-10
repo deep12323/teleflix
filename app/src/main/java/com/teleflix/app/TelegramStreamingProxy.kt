@@ -1559,6 +1559,10 @@ object TelegramStreamingProxy {
                         if (refreshed != null && refreshed != 0) {
                             activeFileId = refreshed
                         }
+                        if (!DownloadManager.isFileIdActive(activeFileId)) {
+                            runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(activeFileId, false)) }
+                        }
+                        lastDownloadRequestOffset.remove(activeFileId)
                     }
 
                     val forceRequest = (attempts == 0 || isStalled)
