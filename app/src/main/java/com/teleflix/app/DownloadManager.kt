@@ -480,9 +480,10 @@ object DownloadManager {
                     lastBytesIncreaseTimeMap[item.id] = now
                 } else if (fileObj.local.downloadedSize > 0 && !fileObj.local.isDownloadingCompleted) {
                     val lastIncrease = lastBytesIncreaseTimeMap[item.id] ?: now
-                    if (now - lastIncrease > 5000L) {
+                    val stallDuration = now - lastIncrease
+                    if (stallDuration > 25000L) {
                         lastBytesIncreaseTimeMap[item.id] = now
-                        TeleflixLogger.log(TAG, "[DownloadManager] Speed drop / stall detected for '${item.title}' at ${fileObj.local.downloadedSize} bytes (stalled >5s). Re-triggering TDLib download for fileId=$currentFileId...")
+                        TeleflixLogger.log(TAG, "[DownloadManager] Frozen socket detected for '${item.title}' at ${fileObj.local.downloadedSize} bytes (stalled >25s). Resetting TDLib connection for fileId=$currentFileId...")
                         try {
                             TelegramClient.sendRequest(TdApi.CancelDownloadFile(currentFileId, false))
                             val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
@@ -492,9 +493,23 @@ object DownloadManager {
                                 req.limit = 0
                                 req.synchronous = false
                             })
-                            TeleflixLogger.log(TAG, "[DownloadManager] Re-issued DownloadFile after stall recovery for fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
+                            TeleflixLogger.log(TAG, "[DownloadManager] Re-issued DownloadFile after hard stall recovery for fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
                         } catch (e: Exception) {
                             TeleflixLogger.log(TAG, "Failed stall recovery DownloadFile request for $currentFileId: ${e.message}", isError = true)
+                        }
+                    } else if (stallDuration > 10000L && !fileObj.local.isDownloadingActive) {
+                        val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
+                        if (now - lastRetry > 5000L) {
+                            lastDownloadRetryTimeMap[currentFileId] = now
+                            try {
+                                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                    req.fileId = currentFileId
+                                    req.priority = 32
+                                    req.offset = 0
+                                    req.limit = 0
+                                    req.synchronous = false
+                                })
+                            } catch (_: Exception) {}
                         }
                     }
                 }
@@ -674,9 +689,10 @@ object DownloadManager {
                         lastBytesIncreaseTimeMap[partKey] = now
                     } else if (fileObj.local.downloadedSize > 0 && !fileObj.local.isDownloadingCompleted) {
                         val lastIncrease = lastBytesIncreaseTimeMap[partKey] ?: now
-                        if (now - lastIncrease > 5000L) {
+                        val stallDuration = now - lastIncrease
+                        if (stallDuration > 25000L) {
                             lastBytesIncreaseTimeMap[partKey] = now
-                            TeleflixLogger.log(TAG, "[DownloadManager] Multipart speed drop / stall detected for '${item.title}' (Part ${idx + 1}/${item.partFileIds.size}) at ${fileObj.local.downloadedSize} bytes (stalled >5s). Re-triggering TDLib download for partFileId=$partFileId...")
+                            TeleflixLogger.log(TAG, "[DownloadManager] Multipart frozen socket detected for '${item.title}' (Part ${idx + 1}/${item.partFileIds.size}) at ${fileObj.local.downloadedSize} bytes (stalled >25s). Resetting TDLib connection for partFileId=$partFileId...")
                             try {
                                 TelegramClient.sendRequest(TdApi.CancelDownloadFile(partFileId, false))
                                 val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
@@ -686,9 +702,23 @@ object DownloadManager {
                                     req.limit = 0
                                     req.synchronous = false
                                 })
-                                TeleflixLogger.log(TAG, "[DownloadManager] Re-issued DownloadFile after stall recovery for partFileId=$partFileId: res=${res?.javaClass?.simpleName}")
+                                TeleflixLogger.log(TAG, "[DownloadManager] Re-issued DownloadFile after hard stall recovery for partFileId=$partFileId: res=${res?.javaClass?.simpleName}")
                             } catch (e: Exception) {
                                 TeleflixLogger.log(TAG, "Failed stall recovery DownloadFile request for partFileId=$partFileId: ${e.message}", isError = true)
+                            }
+                        } else if (stallDuration > 10000L && !fileObj.local.isDownloadingActive) {
+                            val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
+                            if (now - lastRetry > 5000L) {
+                                lastDownloadRetryTimeMap[partFileId] = now
+                                try {
+                                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                        req.fileId = partFileId
+                                        req.priority = 32
+                                        req.offset = 0
+                                        req.limit = 0
+                                        req.synchronous = false
+                                    })
+                                } catch (_: Exception) {}
                             }
                         }
                     }
