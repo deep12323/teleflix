@@ -447,6 +447,7 @@ object DownloadManager {
                 if (refreshedId != null && refreshedId != 0) {
                     currentFileId = refreshedId
                     item.fileId = refreshedId
+                    try { TelegramClient.sendRequest(TdApi.AddFileToDownloads(refreshedId, item.chatId, item.messageId, 32)) } catch (_: Exception) {}
                     TeleflixLogger.log(TAG, "Resolved fresh video fileId=$refreshedId for item ${item.id}")
                 }
             } catch (e: Exception) {
@@ -469,8 +470,9 @@ object DownloadManager {
                     if (refreshedId != null && refreshedId != 0) {
                         currentFileId = refreshedId
                         item.fileId = refreshedId
+                        try { TelegramClient.sendRequest(TdApi.AddFileToDownloads(refreshedId, item.chatId, item.messageId, 32)) } catch (_: Exception) {}
                         fileObj = TelegramClient.sendRequest(TdApi.GetFile(currentFileId)) as? TdApi.File
-                        TeleflixLogger.log(TAG, "Successfully refreshed fileId for item ${item.id}: new fileId=$refreshedId")
+                        TeleflixLogger.log(TAG, "Successfully refreshed & queued fileId for item ${item.id}: new fileId=$refreshedId")
                     }
                 } catch (e: Exception) {
                     TeleflixLogger.log(TAG, "Message refresh after GetFile failure failed for ${item.id}: ${e.message}", isError = true)
@@ -607,6 +609,7 @@ object DownloadManager {
                     partFileId = refreshedId
                     item.partFileIds[idx] = refreshedId
                     item.fileId = refreshedId
+                    try { TelegramClient.sendRequest(TdApi.AddFileToDownloads(refreshedId, chatId, messageId, 32)) } catch (_: Exception) {}
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error fetching part message for download item ${item.id}", e)
@@ -629,6 +632,7 @@ object DownloadManager {
                         partFileId = refreshedId
                         item.partFileIds[idx] = refreshedId
                         item.fileId = refreshedId
+                        try { TelegramClient.sendRequest(TdApi.AddFileToDownloads(refreshedId, chatId, messageId, 32)) } catch (_: Exception) {}
                         fileObj = TelegramClient.sendRequest(TdApi.GetFile(partFileId)) as? TdApi.File
                     }
                 } catch (e: Exception) {
