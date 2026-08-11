@@ -120,7 +120,7 @@ class MediaAdapter(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply {
-                        setMargins(dp(6), dp(6), dp(6), dp(14))
+                        setMargins(dp(2), dp(4), dp(2), dp(12))
                     }
                 }
 
