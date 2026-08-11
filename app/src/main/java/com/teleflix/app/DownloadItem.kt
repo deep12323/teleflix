@@ -44,4 +44,20 @@ data class DownloadItem(
         val kb = speedBytesPerSec / 1024.0
         return if (kb >= 1024) String.format("%.1f MB/s", kb / 1024.0) else String.format("%.0f KB/s", kb)
     }
+
+    fun getFormattedEta(): String {
+        if (status != DownloadStatus.DOWNLOADING || speedBytesPerSec <= 0L || totalBytes <= 0L) return ""
+        val remainingBytes = (totalBytes - downloadedBytes).coerceAtLeast(0L)
+        if (remainingBytes <= 0L) return "0s"
+        val remainingSecs = remainingBytes / speedBytesPerSec
+        val hours = remainingSecs / 3600
+        val mins = (remainingSecs % 3600) / 60
+        val secs = remainingSecs % 60
+        return when {
+            hours > 0 -> String.format(java.util.Locale.US, "%dh %02dm", hours, mins)
+            mins > 0 -> String.format(java.util.Locale.US, "%02dm %02ds", mins, secs)
+            else -> String.format(java.util.Locale.US, "%02ds", secs)
+        }
+    }
 }
+

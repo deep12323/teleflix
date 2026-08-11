@@ -243,6 +243,7 @@ object DownloadManager {
             )
 
             downloadsMap[downloadId] = item
+            resetSpeedTracking(downloadId)
             saveToPrefs(context)
             updateFlow()
 
@@ -354,6 +355,7 @@ object DownloadManager {
             )
 
             downloadsMap[downloadId] = item
+            resetSpeedTracking(downloadId)
             saveToPrefs(context)
             updateFlow()
 
@@ -628,15 +630,7 @@ object DownloadManager {
                 val currentPartDownloaded = fileObj.local.downloadedSize
                 item.downloadedBytes = sumCompletedParts + currentPartDownloaded
 
-                val lastCalcTime = lastSpeedCalcTimeMap[item.id] ?: 0L
-                if (now - lastCalcTime >= 1000L) {
-                    val lastBytes = lastDownloadedBytesMap[item.id] ?: item.downloadedBytes
-                    val bytesDiff = (item.downloadedBytes - lastBytes).coerceAtLeast(0)
-                    val elapsed = (now - lastCalcTime).coerceAtLeast(1)
-                    item.speedBytesPerSec = (bytesDiff * 1000) / elapsed
-                    lastDownloadedBytesMap[item.id] = item.downloadedBytes
-                    lastSpeedCalcTimeMap[item.id] = now
-                }
+                updateDownloadSpeed(item, now)
 
                 val expectedPartSize = item.partFileSizes.getOrNull(idx) ?: 0L
                 val lastLogTime = lastProgressLogTimeMap[item.id] ?: 0L
@@ -807,6 +801,7 @@ object DownloadManager {
                 item.status = DownloadStatus.COMPLETED
                 item.downloadedBytes = item.totalBytes
                 item.speedBytesPerSec = 0L
+                resetSpeedTracking(item.id)
                 saveToPrefs(context)
                 updateFlow()
                 Log.d(TAG, "Successfully merged all ${item.partFileIds.size} parts for ${item.title} into ${item.localPath}")
@@ -827,6 +822,7 @@ object DownloadManager {
             if (item.status == DownloadStatus.DOWNLOADING) {
                 item.status = DownloadStatus.PAUSED
                 item.speedBytesPerSec = 0L
+                resetSpeedTracking(downloadId)
                 saveToPrefs(context)
                 updateFlow()
 
@@ -864,6 +860,7 @@ object DownloadManager {
                 }
 
                 item.status = DownloadStatus.DOWNLOADING
+                resetSpeedTracking(downloadId)
                 saveToPrefs(context)
                 updateFlow()
 
@@ -919,6 +916,7 @@ object DownloadManager {
     fun cancelDownload(context: Context, downloadId: String) {
         synchronized(downloadsMap) {
             val item = downloadsMap.remove(downloadId) ?: return
+            resetSpeedTracking(downloadId)
             saveToPrefs(context)
             updateFlow()
 
@@ -945,6 +943,7 @@ object DownloadManager {
     fun deleteDownloadedFile(context: Context, downloadId: String) {
         synchronized(downloadsMap) {
             val item = downloadsMap.remove(downloadId) ?: return
+            resetSpeedTracking(downloadId)
             saveToPrefs(context)
             updateFlow()
 
@@ -1009,15 +1008,7 @@ object DownloadManager {
                         }
                     }
 
-                    val lastCalcTime = lastSpeedCalcTimeMap[item.id] ?: 0L
-                    if (now - lastCalcTime >= 1000L) {
-                        val lastBytes = lastDownloadedBytesMap[item.id] ?: item.downloadedBytes
-                        val bytesDiff = (item.downloadedBytes - lastBytes).coerceAtLeast(0)
-                        val elapsed = (now - lastCalcTime).coerceAtLeast(1)
-                        item.speedBytesPerSec = (bytesDiff * 1000) / elapsed
-                        lastDownloadedBytesMap[item.id] = item.downloadedBytes
-                        lastSpeedCalcTimeMap[item.id] = now
-                    }
+                    updateDownloadSpeed(item, now)
 
                     val lastLogTime = lastProgressLogTimeMap[item.id] ?: 0L
                     if (now - lastLogTime >= 5000L && item.status == DownloadStatus.DOWNLOADING && item.downloadedBytes > 0) {
@@ -1041,6 +1032,7 @@ object DownloadManager {
                             item.status = DownloadStatus.COMPLETED
                             if (item.totalBytes > 0) item.downloadedBytes = item.totalBytes
                             item.speedBytesPerSec = 0L
+                            resetSpeedTracking(item.id)
                             TeleflixLogger.log(TAG, "Download COMPLETED for '${item.title}': downloaded=${item.downloadedBytes}/${item.totalBytes} bytes")
 
                             if (tdlibPath.isNotBlank()) {
@@ -1105,6 +1097,55 @@ object DownloadManager {
             mins > 0 -> String.format(java.util.Locale.US, "%02dm %02ds", mins, secs)
             else -> String.format(java.util.Locale.US, "%02ds", secs)
         }
+    }
+
+    private fun updateDownloadSpeed(item: DownloadItem, now: Long) {
+        val lastCalcTime = lastSpeedCalcTimeMap[item.id] ?: 0L
+        if (lastCalcTime == 0L) {
+            lastSpeedCalcTimeMap[item.id] = now
+            lastDownloadedBytesMap[item.id] = item.downloadedBytes
+            if (item.downloadedBytes > 0) {
+                lastBytesIncreaseTimeMap[item.id] = now
+                lastBytesCountMap[item.id] = item.downloadedBytes
+            }
+            return
+        }
+
+        val elapsed = now - lastCalcTime
+        if (elapsed >= 1000L) {
+            val lastBytes = lastDownloadedBytesMap[item.id] ?: item.downloadedBytes
+            val bytesDiff = item.downloadedBytes - lastBytes
+
+            if (bytesDiff > 0) {
+                val instantSpeed = (bytesDiff * 1000) / elapsed
+                val prevSpeed = item.speedBytesPerSec
+                item.speedBytesPerSec = if (prevSpeed <= 0L) {
+                    instantSpeed
+                } else {
+                    (0.35 * instantSpeed + 0.65 * prevSpeed).toLong()
+                }
+                lastDownloadedBytesMap[item.id] = item.downloadedBytes
+                lastSpeedCalcTimeMap[item.id] = now
+                lastBytesIncreaseTimeMap[item.id] = now
+            } else {
+                val lastIncrease = lastBytesIncreaseTimeMap[item.id] ?: now
+                val stallDuration = now - lastIncrease
+                if (stallDuration > 15000L) {
+                    item.speedBytesPerSec = 0L
+                } else {
+                    item.speedBytesPerSec = (item.speedBytesPerSec * 0.85).toLong()
+                }
+                lastSpeedCalcTimeMap[item.id] = now
+            }
+        }
+    }
+
+    private fun resetSpeedTracking(downloadId: String) {
+        lastSpeedCalcTimeMap.remove(downloadId)
+        lastDownloadedBytesMap.remove(downloadId)
+        lastBytesIncreaseTimeMap.remove(downloadId)
+        lastBytesCountMap.remove(downloadId)
+        lastProgressLogTimeMap.remove(downloadId)
     }
 
     fun isFileIdActive(fileId: Int): Boolean {
