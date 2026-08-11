@@ -1481,74 +1481,250 @@ class MainActivity : AppCompatActivity() {
             channelId
         }
 
+        var dialog: AlertDialog? = null
+
         val optionsView = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = UITheme.createCardShape(this@MainActivity, UITheme.CARD, 18, UITheme.STROKE_COLOR, 1)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#151821"))
+                cornerRadius = UITheme.dpToPx(this@MainActivity, 22).toFloat()
+                setStroke(UITheme.dpToPx(this@MainActivity, 1), Color.parseColor("#262C3D"))
+            }
             val pad = UITheme.dpToPx(this@MainActivity, 20)
             setPadding(pad, pad, pad, pad)
         }
 
-        val title = TextView(this).apply {
-            text = "💬 Channel Options"
-            UITheme.applySectionTitleStyle(this)
-            setTextColor(Color.WHITE)
+        // 1. Top Pill Handle Bar
+        val handlePill = android.view.View(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#3A3F4D"))
+                cornerRadius = UITheme.dpToPx(this@MainActivity, 2).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                UITheme.dpToPx(this@MainActivity, 36),
+                UITheme.dpToPx(this@MainActivity, 4)
+            ).apply {
+                gravity = android.view.Gravity.CENTER_HORIZONTAL
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 16))
+            }
         }
-        optionsView.addView(title)
+        optionsView.addView(handlePill)
+
+        // 2. Header Row (Speech bubble icon + Title + Subtitle)
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 18))
+        }
+
+        val headerIconBox = TextView(this).apply {
+            text = "💬"
+            textSize = 18f
+            gravity = android.view.Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#222736"))
+                cornerRadius = UITheme.dpToPx(this@MainActivity, 12).toFloat()
+            }
+            val sz = UITheme.dpToPx(this@MainActivity, 44)
+            layoutParams = LinearLayout.LayoutParams(sz, sz).apply {
+                setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 12), 0)
+            }
+        }
+        headerRow.addView(headerIconBox)
+
+        val headerTextCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        val mainTitle = TextView(this).apply {
+            text = "Channel Options"
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+        headerTextCol.addView(mainTitle)
 
         val subTitle = TextView(this).apply {
-            text = "Channel: $titleClean"
-            UITheme.applyMetadataStyle(this)
-            setPadding(0, 2, 0, UITheme.dpToPx(this@MainActivity, 16))
+            text = "Channel: 🔵 $titleClean"
+            setTextColor(Color.parseColor("#8E8E93"))
+            textSize = 12f
+            setPadding(0, UITheme.dpToPx(this@MainActivity, 2), 0, 0)
         }
-        optionsView.addView(subTitle)
+        headerTextCol.addView(subTitle)
 
-        var dialog: AlertDialog? = null
+        headerRow.addView(headerTextCol)
+        optionsView.addView(headerRow)
 
-        fun createOptionCard(iconTitle: String, description: String, onClick: () -> Unit): TextView {
-            return TextView(this).apply {
-                text = "$iconTitle\n$description"
-                UITheme.applyCardTitleStyle(this)
-                textSize = 14f
-                background = UITheme.createRippleCardShape(this@MainActivity, UITheme.SURFACE, 14, UITheme.STROKE_COLOR)
-                val pV = UITheme.dpToPx(this@MainActivity, 12)
-                val pH = UITheme.dpToPx(this@MainActivity, 16)
+        // Builder function for item cards matching screenshot
+        fun createOptionCard(
+            iconText: String,
+            iconBgHex: String,
+            accentStrokeHex: String,
+            titleText: String,
+            subText: String,
+            onClick: () -> Unit
+        ): View {
+            val container = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.parseColor("#1C212E"))
+                    cornerRadius = UITheme.dpToPx(this@MainActivity, 14).toFloat()
+                    setStroke(UITheme.dpToPx(this@MainActivity, 1), Color.parseColor("#293042"))
+                }
+                val pV = UITheme.dpToPx(this@MainActivity, 14)
+                val pH = UITheme.dpToPx(this@MainActivity, 14)
                 setPadding(pH, pV, pH, pV)
                 isClickable = true
                 isFocusable = true
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 10)) }
+                ).apply {
+                    setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 12))
+                }
                 setOnClickListener {
                     dialog?.dismiss()
                     onClick()
                 }
             }
+
+            // Left Vertical Colored Line
+            val accentLine = android.view.View(this).apply {
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.parseColor(accentStrokeHex))
+                    cornerRadius = UITheme.dpToPx(this@MainActivity, 2).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    UITheme.dpToPx(this@MainActivity, 4),
+                    UITheme.dpToPx(this@MainActivity, 36)
+                ).apply {
+                    setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 12), 0)
+                }
+            }
+            container.addView(accentLine)
+
+            // Left Icon Square
+            val iconBox = TextView(this).apply {
+                text = iconText
+                textSize = 16f
+                gravity = android.view.Gravity.CENTER
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.parseColor(iconBgHex))
+                    cornerRadius = UITheme.dpToPx(this@MainActivity, 10).toFloat()
+                }
+                val sz = UITheme.dpToPx(this@MainActivity, 40)
+                layoutParams = LinearLayout.LayoutParams(sz, sz).apply {
+                    setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 12), 0)
+                }
+            }
+            container.addView(iconBox)
+
+            // Middle Column (Title & Description)
+            val textCol = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val titleTv = TextView(this).apply {
+                text = titleText
+                setTextColor(Color.WHITE)
+                textSize = 15f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            }
+            textCol.addView(titleTv)
+
+            val subTv = TextView(this).apply {
+                text = subText
+                setTextColor(Color.parseColor("#8E8E93"))
+                textSize = 12f
+                setPadding(0, UITheme.dpToPx(this@MainActivity, 2), 0, 0)
+            }
+            textCol.addView(subTv)
+
+            container.addView(textCol)
+
+            // Right Chevron Arrow
+            val arrowTv = TextView(this).apply {
+                text = "›"
+                setTextColor(Color.parseColor("#8E8E93"))
+                textSize = 20f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setPadding(UITheme.dpToPx(this@MainActivity, 8), 0, 0, 0)
+            }
+            container.addView(arrowTv)
+
+            return container
         }
 
-        // Option 1: Go to beginning
-        val beginningCard = createOptionCard("📍 Go to the Beginning", "Jump to the oldest messages in this channel") {
+        // Option 1: Go to the Beginning (Red Flag / Bookmark)
+        val beginningCard = createOptionCard(
+            "🔖",
+            "#2F181E",
+            "#FF3B30",
+            "Go to the Beginning",
+            "Jump to the oldest messages in this channel"
+        ) {
             loadChannelMediaFromBeginning(channelId, currentOpenTopicId, titleClean)
         }
         optionsView.addView(beginningCard)
 
-        // Option 2: Search this channel
-        val searchCard = createOptionCard("🔍 Search This Channel", "Search video & audio files in this channel") {
+        // Option 2: Search This Channel (Blue Search)
+        val searchCard = createOptionCard(
+            "🔍",
+            "#142538",
+            "#007AFF",
+            "Search This Channel",
+            "Search video & audio files in this channel"
+        ) {
             showChannelSearchDialog(channelId, currentOpenTopicId, titleClean)
         }
         optionsView.addView(searchCard)
 
-        // Option 3: Pinned Messages
-        val pinnedCard = createOptionCard("📌 Pinned Messages (Video / Audio)", "View pinned video & audio messages directly") {
+        // Option 3: Pinned Messages (Purple Pin)
+        val pinnedCard = createOptionCard(
+            "📌",
+            "#2A1A38",
+            "#AF52DE",
+            "Pinned Messages (Video / Audio)",
+            "View pinned video & audio messages directly"
+        ) {
             showPinnedMessagesDialog(channelId, currentOpenTopicId, titleClean)
         }
         optionsView.addView(pinnedCard)
 
+        // Cancel Button (Red X)
+        val cancelBtn = TextView(this).apply {
+            text = "✖  Cancel"
+            setTextColor(Color.parseColor("#FF3B30"))
+            textSize = 15f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = android.view.Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#1C212E"))
+                cornerRadius = UITheme.dpToPx(this@MainActivity, 14).toFloat()
+                setStroke(UITheme.dpToPx(this@MainActivity, 1), Color.parseColor("#293042"))
+            }
+            val pV = UITheme.dpToPx(this@MainActivity, 14)
+            setPadding(0, pV, 0, pV)
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, UITheme.dpToPx(this@MainActivity, 4), 0, 0)
+            }
+            setOnClickListener { dialog?.dismiss() }
+        }
+        optionsView.addView(cancelBtn)
+
         dialog = AlertDialog.Builder(this)
             .setView(optionsView)
-            .setNegativeButton("Cancel", null)
             .create()
-        dialog.show()
+
+        dialog?.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        dialog?.show()
     }
 
     private fun loadChannelMediaFromBeginning(channelUsername: String, topicId: Int, title: String) {
