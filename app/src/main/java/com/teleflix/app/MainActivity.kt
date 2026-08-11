@@ -73,6 +73,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tabScroll: HorizontalScrollView
     private lateinit var tabRow: LinearLayout
     private lateinit var fabSelectChats: ImageButton
+    private lateinit var searchContainer: LinearLayout
+    private lateinit var channelMenuButton: TextView
     private var isTelegramCatalogMode = false
     private var currentOpenChannelId: String? = null
     private var currentOpenTopicId: Int = 0
@@ -254,13 +256,38 @@ class MainActivity : AppCompatActivity() {
         headerLayout.addView(statusButton)
         rootView.addView(headerLayout)
 
-        // Category Banner / Current Selection Header
+        // Category Banner / Current Selection Header Layout
+        val categoryHeaderLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, UITheme.dpToPx(this@MainActivity, 4), 0, UITheme.dpToPx(this@MainActivity, 10))
+        }
+
         categoryLabel = TextView(this).apply {
             text = selectedLabel
             UITheme.applySectionTitleStyle(this)
-            setPadding(0, UITheme.dpToPx(this@MainActivity, 4), 0, UITheme.dpToPx(this@MainActivity, 10))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        rootView.addView(categoryLabel)
+        categoryHeaderLayout.addView(categoryLabel)
+
+        channelMenuButton = TextView(this).apply {
+            text = "⋮"
+            textSize = 20f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = UITheme.createCardShape(this@MainActivity, UITheme.SURFACE, 12, UITheme.STROKE_COLOR, 1)
+            val pV = UITheme.dpToPx(this@MainActivity, 4)
+            val pH = UITheme.dpToPx(this@MainActivity, 12)
+            setPadding(pH, pV, pH, pV)
+            visibility = android.view.View.GONE
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                showChannelOptionsMenu()
+            }
+        }
+        categoryHeaderLayout.addView(channelMenuButton)
+        rootView.addView(categoryHeaderLayout)
 
         // Loading and Search Spinner / Text
         loadingText = TextView(this).apply {
@@ -275,7 +302,7 @@ class MainActivity : AppCompatActivity() {
         rootView.addView(loadingText)
 
         // Search Box (Cinemeta Search)
-        val searchContainer = LinearLayout(this).apply {
+        searchContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
             background = UITheme.createInputBackground(this@MainActivity)
@@ -920,6 +947,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadInitialCinemeta(catalogId: String, label: String) {
         isInSearchMode = false
+        currentOpenChannelId = null
+        if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+        if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
         currentSkip = 0
         hasMoreItems = true
         isLoadingMore = true
@@ -1148,9 +1178,18 @@ class MainActivity : AppCompatActivity() {
             categoryLabel.text = "Monitored Telegram Channels"
             categoryLabel.isClickable = false
             searchInput.hint = "Default Telegram search (all chats & channels)..."
-            loadTelegramChannelsCatalog()
+            if (currentOpenChannelId != null) {
+                if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
+                if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.VISIBLE
+            } else {
+                if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+                if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
+                loadTelegramChannelsCatalog()
+            }
         } else {
             currentOpenChannelId = null
+            if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+            if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
             tabScroll.visibility = android.view.View.VISIBLE
             modeToggleButton.text = "🎬 Cinemeta"
             modeToggleButton.setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
@@ -1169,6 +1208,8 @@ class MainActivity : AppCompatActivity() {
         currentOpenChannelId = null
         hasMoreItems = false
         isLoadingMore = false
+        if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+        if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
         mediaList.clear()
         mediaAdapter?.notifyDataSetChanged()
         loadingText.visibility = android.view.View.VISIBLE
@@ -1221,6 +1262,8 @@ class MainActivity : AppCompatActivity() {
         lastTelegramFromMessageId = 0L
         hasMoreItems = true
         isLoadingMore = true
+        if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
+        if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.VISIBLE
         mediaList.clear()
         mediaAdapter?.notifyDataSetChanged()
         loadingText.visibility = android.view.View.VISIBLE
@@ -1294,75 +1337,363 @@ class MainActivity : AppCompatActivity() {
                     loadingText.text = "No video or audio files found in $channelUsername."
                 } else {
                     hasMoreItems = (nextFromId > 0L)
-                    groupedItems.forEach { dItem ->
-                        when (dItem) {
-                            is DisplayItem.Group -> {
-                                val group = dItem.group
-                                val firstMsg = group.parts.first()
-                                val key = "group_${firstMsg.chatId}_${group.baseName}"
-                                val freshIds = group.parts.map { it.fileId }
-                                val partSizes = group.parts.map { it.fileSize }
-                                val groupChats = group.parts.map { it.chatId }
-                                val groupMsgs = group.parts.map { it.messageId }
-                                val formattedSize = formatFileSize(group.totalSize)
-                                val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes, groupChats, groupMsgs)
-                                telegramStreamCache[key] = Pair(url, group.baseName)
-                                telegramGroupCache[key] = Pair(group.parts.map { Pair(it.chatId, it.messageId) }, partSizes)
-                                telegramGroupPartsCache[key] = group.parts
-                                val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
-                                    TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
-                                } else ""
-                                val isZipGroup = group.parts.any { TelegramRepository.isZipArchiveFilename(it.fileName) }
-                                mediaList.add(
-                                    MediaItem(
-                                        id = key,
-                                        title = "📦 ${group.baseName}",
-                                        posterUrl = thumbUrl,
-                                        year = formattedSize,
-                                        rating = "📦 Split Pack (${group.parts.size} parts)",
-                                        overview = if (isZipGroup) "Split ZIP" else "Split Video",
-                                        type = "telegram_media",
-                                        streamUrl = url
-                                    )
-                                )
-                            }
-                            is DisplayItem.Single -> {
-                                val msg = dItem.message
-                                val key = "${msg.chatId}_${msg.messageId}"
-                                val ext = msg.fileName.substringAfterLast('.', "").lowercase()
-                                val isZip = TelegramRepository.isZipArchiveFilename(msg.fileName)
-                                val formattedSize = formatFileSize(msg.fileSize)
-                                val url = if (isZip && msg.fileSize > 1_000_000) {
-                                    TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
-                                } else {
-                                    TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
-                                }
-                                telegramStreamCache[key] = Pair(url, msg.fileName.ifBlank { "Telegram Media" })
-                                val isAudio = msg.mimeType.startsWith("audio/")
-                                val badge = when {
-                                    isZip -> "🗄️ ZIP Stream"
-                                    isAudio -> "🎵 Audio"
-                                    else -> "🎬 Video"
-                                }
-                                val thumbUrl = if (msg.thumbnailFileId != null || msg.chatId != 0L) {
-                                    TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId, msg.thumbnailFileId)
-                                } else ""
-                                mediaList.add(
-                                    MediaItem(
-                                        id = key,
-                                        title = if (isZip) "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
-                                        posterUrl = thumbUrl,
-                                        year = formattedSize,
-                                        rating = badge,
-                                        overview = msg.caption.ifBlank { "Telegram File: ${msg.fileName}\nSize: $formattedSize" },
-                                        type = "telegram_media",
-                                        streamUrl = url
-                                    )
-                                )
-                            }
-                        }
+                    populateMediaListFromDisplayItems(groupedItems)
+                }
+            }
+        }
+    }
+
+    private fun loadTelegramTopicMedia(topicKey: String, topicTitle: String) {
+        val parts = topicKey.split("_")
+        val topicId = parts.getOrNull(2)?.toIntOrNull() ?: 0
+        val channelUsername = parts.getOrNull(3) ?: currentOpenChannelId ?: ""
+
+        isInSearchMode = false
+        currentOpenTopicId = topicId
+        lastTelegramFromMessageId = 0L
+        hasMoreItems = true
+        isLoadingMore = true
+        if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
+        if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.VISIBLE
+        mediaList.clear()
+        mediaAdapter?.notifyDataSetChanged()
+        loadingText.visibility = android.view.View.VISIBLE
+        loadingText.text = "Loading media files from topic: $topicTitle..."
+        categoryLabel.text = "⬅ Back to Topics  •  Topic: $topicTitle"
+        categoryLabel.isClickable = true
+        categoryLabel.isFocusable = true
+        categoryLabel.setOnClickListener {
+            if (channelUsername.isNotBlank()) {
+                loadTelegramChannelMedia(channelUsername, channelUsername)
+            } else {
+                loadTelegramChannelsCatalog()
+            }
+        }
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val (mediaMessages, nextFromId) = try {
+                TelegramRepository.fetchChannelMedia(channelUsername, fromMessageId = 0L, topicId = topicId, limit = 100, includeAudio = true)
+            } catch (e: Exception) {
+                Pair(emptyList<TelegramVideoMessage>(), 0L)
+            }
+
+            if (nextFromId > 0L) {
+                lastTelegramFromMessageId = nextFromId
+            }
+
+            val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+
+            withContext(Dispatchers.Main) {
+                loadingText.visibility = android.view.View.GONE
+                mediaList.clear()
+                isLoadingMore = false
+                if (groupedItems.isEmpty()) {
+                    hasMoreItems = false
+                    loadingText.visibility = android.view.View.VISIBLE
+                    loadingText.text = "No video or audio files found in topic $topicTitle."
+                } else {
+                    hasMoreItems = (nextFromId > 0L)
+                    populateMediaListFromDisplayItems(groupedItems)
+                }
+            }
+        }
+    }
+
+    private fun populateMediaListFromDisplayItems(groupedItems: List<DisplayItem>) {
+        groupedItems.forEach { dItem ->
+            when (dItem) {
+                is DisplayItem.Group -> {
+                    val group = dItem.group
+                    val firstMsg = group.parts.first()
+                    val key = "group_${firstMsg.chatId}_${group.baseName}"
+                    val freshIds = group.parts.map { it.fileId }
+                    val partSizes = group.parts.map { it.fileSize }
+                    val groupChats = group.parts.map { it.chatId }
+                    val groupMsgs = group.parts.map { it.messageId }
+                    val formattedSize = formatFileSize(group.totalSize)
+                    val url = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes, groupChats, groupMsgs)
+                    telegramStreamCache[key] = Pair(url, group.baseName)
+                    telegramGroupCache[key] = Pair(group.parts.map { Pair(it.chatId, it.messageId) }, partSizes)
+                    telegramGroupPartsCache[key] = group.parts
+                    val thumbUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
+                        TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
+                    } else ""
+                    val isZipGroup = group.parts.any { TelegramRepository.isZipArchiveFilename(it.fileName) }
+                    mediaList.add(
+                        MediaItem(
+                            id = key,
+                            title = "📦 ${group.baseName}",
+                            posterUrl = thumbUrl,
+                            year = formattedSize,
+                            rating = "📦 Split Pack (${group.parts.size} parts)",
+                            overview = if (isZipGroup) "Split ZIP" else "Split Video",
+                            type = "telegram_media",
+                            streamUrl = url
+                        )
+                    )
+                }
+                is DisplayItem.Single -> {
+                    val msg = dItem.message
+                    val key = "${msg.chatId}_${msg.messageId}"
+                    val isZip = TelegramRepository.isZipArchiveFilename(msg.fileName)
+                    val formattedSize = formatFileSize(msg.fileSize)
+                    val url = if (isZip && msg.fileSize > 1_000_000) {
+                        TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
+                    } else {
+                        TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                     }
-                    mediaAdapter?.notifyDataSetChanged()
+                    telegramStreamCache[key] = Pair(url, msg.fileName.ifBlank { "Telegram Media" })
+                    val isAudio = msg.mimeType.startsWith("audio/")
+                    val badge = when {
+                        isZip -> "🗄️ ZIP Stream"
+                        isAudio -> "🎵 Audio"
+                        else -> "🎬 Video"
+                    }
+                    val thumbUrl = if (msg.thumbnailFileId != null || msg.chatId != 0L) {
+                        TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId, msg.thumbnailFileId)
+                    } else ""
+                    mediaList.add(
+                        MediaItem(
+                            id = key,
+                            title = if (isZip) "🗄️ ${msg.fileName}" else msg.fileName.ifBlank { "Unnamed Media" },
+                            posterUrl = thumbUrl,
+                            year = formattedSize,
+                            rating = badge,
+                            overview = msg.caption.ifBlank { "Telegram File: ${msg.fileName}\nSize: $formattedSize" },
+                            type = "telegram_media",
+                            streamUrl = url
+                        )
+                    )
+                }
+            }
+        }
+        mediaAdapter?.notifyDataSetChanged()
+    }
+
+    private fun showChannelOptionsMenu() {
+        val channelId = currentOpenChannelId ?: return
+        val currentBannerText = categoryLabel.text.toString()
+        val titleClean = if (currentBannerText.contains("Browsing: ")) {
+            currentBannerText.substringAfter("Browsing: ")
+        } else if (currentBannerText.contains("Topic: ")) {
+            currentBannerText.substringAfter("Topic: ")
+        } else {
+            channelId
+        }
+
+        val optionsView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = UITheme.createCardShape(this@MainActivity, UITheme.CARD, 18, UITheme.STROKE_COLOR, 1)
+            val pad = UITheme.dpToPx(this@MainActivity, 20)
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val title = TextView(this).apply {
+            text = "💬 Channel Options"
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.WHITE)
+        }
+        optionsView.addView(title)
+
+        val subTitle = TextView(this).apply {
+            text = "Channel: $titleClean"
+            UITheme.applyMetadataStyle(this)
+            setPadding(0, 2, 0, UITheme.dpToPx(this@MainActivity, 16))
+        }
+        optionsView.addView(subTitle)
+
+        var dialog: AlertDialog? = null
+
+        fun createOptionCard(iconTitle: String, description: String, onClick: () -> Unit): TextView {
+            return TextView(this).apply {
+                text = "$iconTitle\n$description"
+                UITheme.applyCardTitleStyle(this)
+                textSize = 14f
+                background = UITheme.createRippleCardShape(this@MainActivity, UITheme.SURFACE, 14, UITheme.STROKE_COLOR)
+                val pV = UITheme.dpToPx(this@MainActivity, 12)
+                val pH = UITheme.dpToPx(this@MainActivity, 16)
+                setPadding(pH, pV, pH, pV)
+                isClickable = true
+                isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 10)) }
+                setOnClickListener {
+                    dialog?.dismiss()
+                    onClick()
+                }
+            }
+        }
+
+        // Option 1: Go to beginning
+        val beginningCard = createOptionCard("📍 Go to the Beginning", "Jump to the oldest messages in this channel") {
+            loadChannelMediaFromBeginning(channelId, currentOpenTopicId, titleClean)
+        }
+        optionsView.addView(beginningCard)
+
+        // Option 2: Search this channel
+        val searchCard = createOptionCard("🔍 Search This Channel", "Search video & audio files in this channel") {
+            showChannelSearchDialog(channelId, currentOpenTopicId, titleClean)
+        }
+        optionsView.addView(searchCard)
+
+        // Option 3: Pinned Messages
+        val pinnedCard = createOptionCard("📌 Pinned Messages (Video / Audio)", "View pinned video & audio messages directly") {
+            loadPinnedChannelMedia(channelId, currentOpenTopicId, titleClean)
+        }
+        optionsView.addView(pinnedCard)
+
+        dialog = AlertDialog.Builder(this)
+            .setView(optionsView)
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.show()
+    }
+
+    private fun loadChannelMediaFromBeginning(channelUsername: String, topicId: Int, title: String) {
+        isInSearchMode = false
+        hasMoreItems = false
+        isLoadingMore = false
+        mediaList.clear()
+        mediaAdapter?.notifyDataSetChanged()
+        loadingText.visibility = android.view.View.VISIBLE
+        loadingText.text = "Loading media from beginning of $title..."
+        categoryLabel.text = "⬅ Back to Channels  •  Beginning of: $title"
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val (mediaMessages, _) = try {
+                TelegramRepository.fetchChannelMediaFromBeginning(channelUsername, topicId = topicId, limit = 100)
+            } catch (e: Exception) {
+                Pair(emptyList<TelegramVideoMessage>(), 0L)
+            }
+            val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+
+            withContext(Dispatchers.Main) {
+                loadingText.visibility = android.view.View.GONE
+                mediaList.clear()
+                if (groupedItems.isEmpty()) {
+                    loadingText.visibility = android.view.View.VISIBLE
+                    loadingText.text = "No media files found at the beginning of $title."
+                } else {
+                    populateMediaListFromDisplayItems(groupedItems)
+                }
+            }
+        }
+    }
+
+    private fun showChannelSearchDialog(channelUsername: String, topicId: Int, title: String) {
+        val searchView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = UITheme.createCardShape(this@MainActivity, UITheme.CARD, 18, UITheme.STROKE_COLOR, 1)
+            val pad = UITheme.dpToPx(this@MainActivity, 20)
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val dialogTitle = TextView(this).apply {
+            text = "🔍 Search in $title"
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.WHITE)
+        }
+        searchView.addView(dialogTitle)
+
+        val searchEdit = EditText(this).apply {
+            hint = "Enter keyword, movie name, episode..."
+            setHintTextColor(Color.parseColor(UITheme.TEXT_SECONDARY))
+            setTextColor(Color.WHITE)
+            background = UITheme.createInputBackground(this@MainActivity)
+            val pV = UITheme.dpToPx(this@MainActivity, 10)
+            val pH = UITheme.dpToPx(this@MainActivity, 12)
+            setPadding(pH, pV, pH, pV)
+            textSize = 14f
+            maxLines = 1
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, UITheme.dpToPx(this@MainActivity, 12), 0, UITheme.dpToPx(this@MainActivity, 16))
+            }
+        }
+        searchView.addView(searchEdit)
+
+        var dialog: AlertDialog? = null
+
+        val searchBtn = Button(this).apply {
+            text = "Search Channel"
+            background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.PRIMARY, 12)
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                val q = searchEdit.text.toString().trim()
+                if (q.isNotBlank()) {
+                    dialog?.dismiss()
+                    performChannelSearch(channelUsername, topicId, title, q)
+                }
+            }
+        }
+        searchView.addView(searchBtn)
+
+        dialog = AlertDialog.Builder(this)
+            .setView(searchView)
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.show()
+    }
+
+    private fun performChannelSearch(channelUsername: String, topicId: Int, title: String, query: String) {
+        isInSearchMode = true
+        hasMoreItems = false
+        isLoadingMore = false
+        mediaList.clear()
+        mediaAdapter?.notifyDataSetChanged()
+        loadingText.visibility = android.view.View.VISIBLE
+        loadingText.text = "Searching \"$query\" in $title..."
+        categoryLabel.text = "⬅ Back to Channels  •  Search: \"$query\" in $title"
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val mediaMessages = try {
+                TelegramRepository.searchChannelMedia(channelUsername, query, topicId = topicId, limit = 100)
+            } catch (e: Exception) {
+                emptyList<TelegramVideoMessage>()
+            }
+            val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+
+            withContext(Dispatchers.Main) {
+                loadingText.visibility = android.view.View.GONE
+                mediaList.clear()
+                if (groupedItems.isEmpty()) {
+                    loadingText.visibility = android.view.View.VISIBLE
+                    loadingText.text = "No results matching \"$query\" in $title."
+                } else {
+                    populateMediaListFromDisplayItems(groupedItems)
+                }
+            }
+        }
+    }
+
+    private fun loadPinnedChannelMedia(channelUsername: String, topicId: Int, title: String) {
+        isInSearchMode = false
+        hasMoreItems = false
+        isLoadingMore = false
+        mediaList.clear()
+        mediaAdapter?.notifyDataSetChanged()
+        loadingText.visibility = android.view.View.VISIBLE
+        loadingText.text = "Loading pinned video & audio messages from $title..."
+        categoryLabel.text = "⬅ Back to Channels  •  Pinned Media in: $title"
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val mediaMessages = try {
+                TelegramRepository.fetchPinnedMediaMessages(channelUsername, topicId = topicId)
+            } catch (e: Exception) {
+                emptyList<TelegramVideoMessage>()
+            }
+            val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+
+            withContext(Dispatchers.Main) {
+                loadingText.visibility = android.view.View.GONE
+                mediaList.clear()
+                if (groupedItems.isEmpty()) {
+                    loadingText.visibility = android.view.View.VISIBLE
+                    loadingText.text = "No pinned video or audio messages found in $title."
+                } else {
+                    populateMediaListFromDisplayItems(groupedItems)
                 }
             }
         }

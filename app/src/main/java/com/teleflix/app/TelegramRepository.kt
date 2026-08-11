@@ -1105,6 +1105,131 @@ object TelegramRepository {
         return@coroutineScope res
     }
 
+    suspend fun fetchChannelMediaFromBeginning(
+        channelUsernameOrId: String,
+        topicId: Int = 0,
+        limit: Int = 100
+    ): Pair<List<TelegramVideoMessage>, Long> = coroutineScope {
+        val results = java.util.Collections.synchronizedList(mutableListOf<TelegramVideoMessage>())
+        val seen = java.util.Collections.synchronizedSet(mutableSetOf<Pair<String, Long>>())
+        val chatId = getChatId(channelUsernameOrId) ?: return@coroutineScope Pair(emptyList(), 0L)
+        val topicFilter = if (topicId > 0) TdApi.MessageTopicForum(topicId) else null
+
+        val filters = listOf(
+            TdApi.SearchMessagesFilterDocument(),
+            TdApi.SearchMessagesFilterVideo(),
+            TdApi.SearchMessagesFilterAudio()
+        )
+
+        var maxNextMessageId = 0L
+
+        val tasks = filters.map { filter ->
+            async(Dispatchers.IO) {
+                try {
+                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.query = ""
+                        req.senderId = null
+                        req.fromMessageId = 1L
+                        req.offset = -limit
+                        req.limit = limit
+                        req.filter = filter
+                        req.topicId = topicFilter
+                    })
+                    val found = (historyResult as? TdApi.FoundChatMessages) ?: return@async 0L
+                    for (msg in found.messages) {
+                        extractMediaMessage(msg, seen, results)
+                    }
+                    found.messages.lastOrNull()?.id ?: 0L
+                } catch (e: Exception) {
+                    Log.e(TAG, "fetchChannelMediaFromBeginning error: ${e.message}")
+                    0L
+                }
+            }
+        }
+        val lastIds = tasks.awaitAll()
+        for (lastId in lastIds) {
+            if (lastId > maxNextMessageId) {
+                maxNextMessageId = lastId
+            }
+        }
+        val sorted = results.sortedBy { it.messageId }
+        Pair(sorted, maxNextMessageId)
+    }
+
+    suspend fun searchChannelMedia(
+        channelUsernameOrId: String,
+        query: String,
+        topicId: Int = 0,
+        limit: Int = 100
+    ): List<TelegramVideoMessage> = coroutineScope {
+        val results = java.util.Collections.synchronizedList(mutableListOf<TelegramVideoMessage>())
+        val seen = java.util.Collections.synchronizedSet(mutableSetOf<Pair<String, Long>>())
+        val chatId = getChatId(channelUsernameOrId) ?: return@coroutineScope emptyList()
+        val topicFilter = if (topicId > 0) TdApi.MessageTopicForum(topicId) else null
+
+        val filters = listOf(
+            TdApi.SearchMessagesFilterDocument(),
+            TdApi.SearchMessagesFilterVideo(),
+            TdApi.SearchMessagesFilterAudio()
+        )
+
+        val tasks = filters.map { filter ->
+            async(Dispatchers.IO) {
+                try {
+                    val searchResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.query = query
+                        req.senderId = null
+                        req.fromMessageId = 0
+                        req.offset = 0
+                        req.limit = limit
+                        req.filter = filter
+                        req.topicId = topicFilter
+                    })
+                    val found = (searchResult as? TdApi.FoundChatMessages) ?: return@async
+                    for (msg in found.messages) {
+                        extractMediaMessage(msg, seen, results)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "searchChannelMedia error for $channelUsernameOrId: ${e.message}")
+                }
+            }
+        }
+        tasks.awaitAll()
+        results.sortedByDescending { it.messageId }
+    }
+
+    suspend fun fetchPinnedMediaMessages(
+        channelUsernameOrId: String,
+        topicId: Int = 0
+    ): List<TelegramVideoMessage> = coroutineScope {
+        val results = java.util.Collections.synchronizedList(mutableListOf<TelegramVideoMessage>())
+        val seen = java.util.Collections.synchronizedSet(mutableSetOf<Pair<String, Long>>())
+        val chatId = getChatId(channelUsernameOrId) ?: return@coroutineScope emptyList()
+        val topicFilter = if (topicId > 0) TdApi.MessageTopicForum(topicId) else null
+
+        try {
+            val searchResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                req.chatId = chatId
+                req.query = ""
+                req.senderId = null
+                req.fromMessageId = 0
+                req.offset = 0
+                req.limit = 100
+                req.filter = TdApi.SearchMessagesFilterPinned()
+                req.topicId = topicFilter
+            })
+            val found = (searchResult as? TdApi.FoundChatMessages) ?: return@coroutineScope emptyList()
+            for (msg in found.messages) {
+                extractMediaMessage(msg, seen, results)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchPinnedMediaMessages error for $channelUsernameOrId: ${e.message}")
+        }
+        results.sortedByDescending { it.messageId }
+    }
+
     fun getStreamUrl(fileId: Int, fileName: String, expectedSize: Long = 0L, chatId: Long = 0L, messageId: Long = 0L): String =
         TelegramStreamingProxy.getUrl(fileId, fileName, expectedSize, chatId, messageId)
 
