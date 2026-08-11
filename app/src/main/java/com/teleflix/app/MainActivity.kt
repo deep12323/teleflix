@@ -165,19 +165,21 @@ class MainActivity : AppCompatActivity() {
         val rootView = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
-            val pad = UITheme.dpToPx(this@MainActivity, 16)
-            setPadding(pad, pad, pad, pad)
+            val padH = UITheme.dpToPx(this@MainActivity, 6)
+            val padV = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(padH, padV, padH, padV)
             fitsSystemWindows = true
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            val pad = UITheme.dpToPx(this@MainActivity, 16)
+            val padH = UITheme.dpToPx(this@MainActivity, 6)
+            val padV = UITheme.dpToPx(this@MainActivity, 16)
             view.setPadding(
-                pad + insets.left,
-                pad + insets.top,
-                pad + insets.right,
-                pad + insets.bottom
+                padH + insets.left,
+                padV + insets.top,
+                padH + insets.right,
+                padV + insets.bottom
             )
             WindowInsetsCompat.CONSUMED
         }
@@ -186,7 +188,9 @@ class MainActivity : AppCompatActivity() {
         val headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 14))
+            val pH = UITheme.dpToPx(this@MainActivity, 10)
+            val pB = UITheme.dpToPx(this@MainActivity, 14)
+            setPadding(pH, 0, pH, pB)
         }
 
         val titleView = TextView(this).apply {
@@ -260,7 +264,10 @@ class MainActivity : AppCompatActivity() {
         val categoryHeaderLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, UITheme.dpToPx(this@MainActivity, 4), 0, UITheme.dpToPx(this@MainActivity, 10))
+            val pH = UITheme.dpToPx(this@MainActivity, 10)
+            val pT = UITheme.dpToPx(this@MainActivity, 4)
+            val pB = UITheme.dpToPx(this@MainActivity, 10)
+            setPadding(pH, pT, pH, pB)
         }
 
         categoryLabel = TextView(this).apply {
