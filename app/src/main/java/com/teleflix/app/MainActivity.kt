@@ -1540,7 +1540,7 @@ class MainActivity : AppCompatActivity() {
 
         // Option 3: Pinned Messages
         val pinnedCard = createOptionCard("📌 Pinned Messages (Video / Audio)", "View pinned video & audio messages directly") {
-            loadPinnedChannelMedia(channelId, currentOpenTopicId, titleClean)
+            showPinnedMessagesDialog(channelId, currentOpenTopicId, titleClean)
         }
         optionsView.addView(pinnedCard)
 
@@ -1671,15 +1671,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadPinnedChannelMedia(channelUsername: String, topicId: Int, title: String) {
-        isInSearchMode = false
-        hasMoreItems = false
-        isLoadingMore = false
-        mediaList.clear()
-        mediaAdapter?.notifyDataSetChanged()
+    private data class PinnedDisplayInfo(
+        val title: String,
+        val sub: String,
+        val thumbUrl: String,
+        val key: String
+    )
+
+    private fun showPinnedMessagesDialog(channelUsername: String, topicId: Int, title: String) {
         loadingText.visibility = android.view.View.VISIBLE
-        loadingText.text = "Loading pinned video & audio messages from $title..."
-        categoryLabel.text = "⬅ Back to Channels  •  Pinned Media in: $title"
+        loadingText.text = "Fetching pinned messages in $title..."
 
         CoroutineScope(Dispatchers.IO).launch {
             val mediaMessages = try {
@@ -1691,12 +1692,199 @@ class MainActivity : AppCompatActivity() {
 
             withContext(Dispatchers.Main) {
                 loadingText.visibility = android.view.View.GONE
-                mediaList.clear()
+
                 if (groupedItems.isEmpty()) {
-                    loadingText.visibility = android.view.View.VISIBLE
-                    loadingText.text = "No pinned video or audio messages found in $title."
-                } else {
+                    Toast.makeText(this@MainActivity, "No pinned video or audio messages found in $title", Toast.LENGTH_SHORT).show()
+                    return@withContext
+                }
+
+                if (groupedItems.size == 1) {
+                    jumpToPinnedItemInList(groupedItems.first(), channelUsername, topicId, title)
+                    return@withContext
+                }
+
+                val pickerContainer = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = UITheme.createCardShape(this@MainActivity, UITheme.CARD, 18, UITheme.STROKE_COLOR, 1)
+                    val pad = UITheme.dpToPx(this@MainActivity, 20)
+                    setPadding(pad, pad, pad, pad)
+                }
+
+                val dialogTitle = TextView(this@MainActivity).apply {
+                    text = "📌 Pinned Messages in $title"
+                    UITheme.applySectionTitleStyle(this)
+                    setTextColor(Color.WHITE)
+                }
+                pickerContainer.addView(dialogTitle)
+
+                val subText = TextView(this@MainActivity).apply {
+                    text = "Tap a pinned item to jump directly to it in the channel list:"
+                    UITheme.applyMetadataStyle(this)
+                    setPadding(0, 4, 0, UITheme.dpToPx(this@MainActivity, 12))
+                }
+                pickerContainer.addView(subText)
+
+                val scrollView = ScrollView(this@MainActivity).apply {
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, UITheme.dpToPx(this@MainActivity, 320))
+                }
+                val listLayout = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                }
+
+                var pDialog: AlertDialog? = null
+
+                groupedItems.forEach { dItem ->
+                    val info = when (dItem) {
+                        is DisplayItem.Group -> {
+                            val group = dItem.group
+                            val firstMsg = group.parts.first()
+                            val k = "group_${firstMsg.chatId}_${group.baseName}"
+                            val sizeStr = formatFileSize(group.totalSize)
+                            val tUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
+                                TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
+                            } else ""
+                            PinnedDisplayInfo("📦 ${group.baseName}", "📦 Split Pack (${group.parts.size} parts) • $sizeStr", tUrl, k)
+                        }
+                        is DisplayItem.Single -> {
+                            val msg = dItem.message
+                            val k = "${msg.chatId}_${msg.messageId}"
+                            val sizeStr = formatFileSize(msg.fileSize)
+                            val isAudio = msg.mimeType.startsWith("audio/")
+                            val badge = if (isAudio) "🎵 Audio" else "🎬 Video"
+                            val tUrl = if (msg.thumbnailFileId != null || msg.chatId != 0L) {
+                                TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId, msg.thumbnailFileId)
+                            } else ""
+                            PinnedDisplayInfo(msg.fileName.ifBlank { "Unnamed Media" }, "$badge • $sizeStr", tUrl, k)
+                        }
+                    }
+
+                    val row = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        background = UITheme.createRippleCardShape(this@MainActivity, UITheme.SURFACE, 12, UITheme.STROKE_COLOR)
+                        val p = UITheme.dpToPx(this@MainActivity, 10)
+                        setPadding(p, p, p, p)
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
+                        }
+                        isClickable = true
+                        isFocusable = true
+                        setOnClickListener {
+                            pDialog?.dismiss()
+                            jumpToPinnedItemInList(dItem, channelUsername, topicId, title)
+                        }
+                    }
+
+                    val posterImg = ImageView(this@MainActivity).apply {
+                        val sz = UITheme.dpToPx(this@MainActivity, 44)
+                        layoutParams = LinearLayout.LayoutParams(sz, sz).apply {
+                            setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 12), 0)
+                        }
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                    }
+                    if (info.thumbUrl.isNotBlank()) {
+                        com.bumptech.glide.Glide.with(this@MainActivity)
+                            .load(info.thumbUrl)
+                            .placeholder(android.R.drawable.ic_menu_gallery)
+                            .error(android.R.drawable.ic_menu_gallery)
+                            .into(posterImg)
+                    } else {
+                        posterImg.setImageResource(android.R.drawable.ic_menu_gallery)
+                    }
+                    row.addView(posterImg)
+
+                    val textLayout = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    }
+
+                    val titleV = TextView(this@MainActivity).apply {
+                        text = info.title
+                        UITheme.applyCardTitleStyle(this)
+                        textSize = 14f
+                    }
+                    textLayout.addView(titleV)
+
+                    val subV = TextView(this@MainActivity).apply {
+                        text = info.sub
+                        UITheme.applyMetadataStyle(this)
+                        textSize = 11f
+                    }
+                    textLayout.addView(subV)
+
+                    row.addView(textLayout)
+                    listLayout.addView(row)
+                }
+
+                scrollView.addView(listLayout)
+                pickerContainer.addView(scrollView)
+
+                pDialog = AlertDialog.Builder(this@MainActivity)
+                    .setView(pickerContainer)
+                    .setNegativeButton("Close", null)
+                    .create()
+                pDialog.show()
+            }
+        }
+    }
+
+    private fun jumpToPinnedItemInList(dItem: DisplayItem, channelUsername: String, topicId: Int, title: String) {
+        val targetKey = when (dItem) {
+            is DisplayItem.Group -> "group_${dItem.group.parts.first().chatId}_${dItem.group.baseName}"
+            is DisplayItem.Single -> "${dItem.message.chatId}_${dItem.message.messageId}"
+        }
+
+        val existingIndex = mediaList.indexOfFirst { it.id == targetKey }
+        if (existingIndex >= 0) {
+            Toast.makeText(this, "Jumping to pinned message...", Toast.LENGTH_SHORT).show()
+            recyclerView.post {
+                val layoutManager = recyclerView.layoutManager as? GridLayoutManager
+                layoutManager?.scrollToPositionWithOffset(existingIndex, 0)
+            }
+            return
+        }
+
+        val targetMsgId = when (dItem) {
+            is DisplayItem.Group -> dItem.group.parts.first().messageId
+            is DisplayItem.Single -> dItem.message.messageId
+        }
+
+        loadingText.visibility = android.view.View.VISIBLE
+        loadingText.text = "Jumping to pinned message in list..."
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val (mediaMessages, nextFromId) = try {
+                TelegramRepository.fetchChannelMedia(
+                    channelUsername,
+                    fromMessageId = maxOf(0L, targetMsgId + 50L),
+                    topicId = topicId,
+                    limit = 100,
+                    includeAudio = true
+                )
+            } catch (e: Exception) {
+                Pair(emptyList<TelegramVideoMessage>(), 0L)
+            }
+
+            if (nextFromId > 0L) {
+                lastTelegramFromMessageId = nextFromId
+            }
+
+            val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+
+            withContext(Dispatchers.Main) {
+                loadingText.visibility = android.view.View.GONE
+                if (groupedItems.isNotEmpty()) {
+                    mediaList.clear()
                     populateMediaListFromDisplayItems(groupedItems)
+                    val newIndex = mediaList.indexOfFirst { it.id == targetKey }
+                    val targetPos = if (newIndex >= 0) newIndex else 0
+                    recyclerView.post {
+                        val layoutManager = recyclerView.layoutManager as? GridLayoutManager
+                        layoutManager?.scrollToPositionWithOffset(targetPos, 0)
+                    }
+                    Toast.makeText(this@MainActivity, "Jumped to pinned message", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@MainActivity, "Could not locate pinned message in list", Toast.LENGTH_SHORT).show()
                 }
             }
         }
