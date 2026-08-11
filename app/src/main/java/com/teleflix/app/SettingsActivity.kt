@@ -395,7 +395,7 @@ class SettingsActivity : AppCompatActivity() {
         downloadSettingsContainer.addView(downloadBox)
 
         // 3. Video Playback & Preferred Player Section (Collapsible)
-        val playbackSectionContainer = createCollapsibleSection("🎬 Video Playback & Internal Player")
+        val playbackSectionContainer = createCollapsibleSection("🎬 Video Playback & Startup")
 
         val playerBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -570,6 +570,53 @@ class SettingsActivity : AppCompatActivity() {
         }
         resumeRow.addView(resumeSwitch)
         playerBox.addView(resumeRow)
+
+        // Divider 2
+        val playerDiv2 = android.view.View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                setMargins(0, UITheme.dpToPx(this@SettingsActivity, 10), 0, UITheme.dpToPx(this@SettingsActivity, 10))
+            }
+            setBackgroundColor(Color.parseColor(UITheme.STROKE_COLOR))
+        }
+        playerBox.addView(playerDiv2)
+
+        // Default Opening Page Toggle Row
+        val defaultPageRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, UITheme.dpToPx(this@SettingsActivity, 4), 0, UITheme.dpToPx(this@SettingsActivity, 4))
+        }
+
+        val defaultPageInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val defaultPageTitle = TextView(this).apply {
+            text = "Monitored Channels as Default Page"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 15f
+        }
+        defaultPageInfo.addView(defaultPageTitle)
+
+        val defaultPageSub = TextView(this).apply {
+            text = "Open Monitored Telegram Channels on app launch"
+            UITheme.applyMetadataStyle(this)
+        }
+        defaultPageInfo.addView(defaultPageSub)
+        defaultPageRow.addView(defaultPageInfo)
+
+        val defaultPageSwitch = Switch(this).apply {
+            isChecked = prefs.getBoolean("default_opening_monitored", false)
+            setOnCheckedChangeListener { _, isChecked ->
+                prefs.edit().putBoolean("default_opening_monitored", isChecked).apply()
+                val msg = if (isChecked) "Monitored Channels set as default opening page" else "Cinemeta set as default opening page"
+                Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_SHORT).show()
+            }
+        }
+        defaultPageRow.addView(defaultPageSwitch)
+        playerBox.addView(defaultPageRow)
+
         playbackSectionContainer.addView(playerBox)
 
         // 4. Background Service Section (Collapsible)

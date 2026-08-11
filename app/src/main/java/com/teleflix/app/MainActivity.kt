@@ -683,7 +683,21 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(mainContainer)
 
-        loadInitialCinemeta("movie/top", "Top Movies")
+        val prefs = getSharedPreferences("teleflix_preferences", android.content.Context.MODE_PRIVATE)
+        val defaultMonitored = prefs.getBoolean("default_opening_monitored", false)
+        if (defaultMonitored) {
+            isTelegramCatalogMode = true
+            tabScroll.visibility = android.view.View.GONE
+            modeToggleButton.text = "💬 Telegram Channels"
+            modeToggleButton.setTextColor(Color.parseColor(UITheme.SUCCESS))
+            modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.SUCCESS, 1)
+            categoryLabel.text = "Monitored Telegram Channels"
+            categoryLabel.isClickable = false
+            searchInput.hint = "Default Telegram search (all chats & channels)..."
+            loadTelegramChannelsCatalog()
+        } else {
+            loadInitialCinemeta("movie/top", "Top Movies")
+        }
     }
 
     override fun onResume() {
