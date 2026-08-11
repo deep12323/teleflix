@@ -1233,6 +1233,7 @@ object TelegramRepository {
         val chatId = getChatId(channelUsernameOrId) ?: return@coroutineScope emptyList()
         val topicFilter = if (topicId > 0) TdApi.MessageTopicForum(topicId) else null
 
+        // 1. Search all pinned messages in chat
         try {
             val searchResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
                 req.chatId = chatId
@@ -1244,13 +1245,27 @@ object TelegramRepository {
                 req.filter = TdApi.SearchMessagesFilterPinned()
                 req.topicId = topicFilter
             })
-            val found = (searchResult as? TdApi.FoundChatMessages) ?: return@coroutineScope emptyList()
-            for (msg in found.messages) {
+            val found = (searchResult as? TdApi.FoundChatMessages)
+            if (found != null) {
+                for (msg in found.messages) {
+                    extractMediaMessage(msg, seen, results)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "SearchChatMessages filter pinned error: ${e.message}")
+        }
+
+        // 2. Fetch main pinned message directly as fallback
+        try {
+            val pinnedMsg = TelegramClient.sendRequest(TdApi.GetChatPinnedMessage(chatId))
+            val msg = (pinnedMsg as? TdApi.Message)
+            if (msg != null) {
                 extractMediaMessage(msg, seen, results)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "fetchPinnedMediaMessages error for $channelUsernameOrId: ${e.message}")
+            Log.e(TAG, "GetChatPinnedMessage error: ${e.message}")
         }
+
         results.sortedByDescending { it.messageId }
     }
 
