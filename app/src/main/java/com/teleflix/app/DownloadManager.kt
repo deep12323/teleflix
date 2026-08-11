@@ -533,26 +533,12 @@ object DownloadManager {
                         } catch (e: Exception) {
                             TeleflixLogger.log(TAG, "Failed stall recovery download request for $currentFileId: ${e.message}", isError = true)
                         }
-                    } else if (stallDuration > 10000L && !fileObj.local.isDownloadingActive) {
-                        val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
-                        if (now - lastRetry > 5000L) {
-                            lastDownloadRetryTimeMap[currentFileId] = now
-                            try {
-                                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                    req.fileId = currentFileId
-                                    req.priority = 32
-                                    req.offset = 0
-                                    req.limit = 0
-                                    req.synchronous = false
-                                })
-                            } catch (_: Exception) {}
-                        }
                     }
                 }
 
                 val lastPing = lastDownloadRetryTimeMap[currentFileId] ?: 0L
                 if (!fileObj.local.isDownloadingCompleted && !fileObj.local.isDownloadingActive) {
-                    if (now - lastPing > 5000L) {
+                    if (now - lastPing > 1000L) {
                         lastDownloadRetryTimeMap[currentFileId] = now
                         try {
                             TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(currentFileId, false))
@@ -570,25 +556,6 @@ object DownloadManager {
                             TeleflixLogger.log(TAG, "Re-triggered active download for fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
                         } catch (e: Exception) {
                             TeleflixLogger.log(TAG, "Failed download re-trigger request for $currentFileId: ${e.message}", isError = true)
-                        }
-                    }
-                }
-
-                if (!fileObj.local.canBeDownloaded && !fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
-                    val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
-                    if (now - lastRetry > 5000L) {
-                        lastDownloadRetryTimeMap[currentFileId] = now
-                        try {
-                            val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = currentFileId
-                                req.priority = 32
-                                req.offset = fileObj.local.downloadedSize
-                                req.limit = 32 * 1024 * 1024
-                                req.synchronous = false
-                            })
-                            TeleflixLogger.log(TAG, "Re-issued DownloadFile for unqueued fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
-                        } catch (e: Exception) {
-                            TeleflixLogger.log(TAG, "Failed DownloadFile request for $currentFileId: ${e.message}", isError = true)
                         }
                     }
                 }
@@ -757,64 +724,32 @@ object DownloadManager {
                             } catch (e: Exception) {
                                 TeleflixLogger.log(TAG, "Failed stall recovery download request for partFileId=$partFileId: ${e.message}", isError = true)
                             }
-                        } else if (stallDuration > 10000L && !fileObj.local.isDownloadingActive) {
-                            val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
-                            if (now - lastRetry > 5000L) {
-                                lastDownloadRetryTimeMap[partFileId] = now
-                                try {
-                                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                        req.fileId = partFileId
-                                        req.priority = 32
-                                        req.offset = 0
-                                        req.limit = 0
-                                        req.synchronous = false
-                                    })
-                                } catch (_: Exception) {}
-                            }
-                        }
                     }
+                }
 
-                    val lastPing = lastDownloadRetryTimeMap[partFileId] ?: 0L
-                    if (!fileObj.local.isDownloadingCompleted && !fileObj.local.isDownloadingActive) {
-                        if (now - lastPing > 5000L) {
-                            lastDownloadRetryTimeMap[partFileId] = now
-                            try {
-                                TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(partFileId, false))
-                                val res = if (chatId != 0L && messageId != 0L) {
-                                    TelegramClient.sendRequest(TdApi.AddFileToDownloads(partFileId, chatId, messageId, 32))
-                                } else {
-                                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                        req.fileId = partFileId
-                                        req.priority = 32
-                                        req.offset = 0
-                                        req.limit = 0
-                                        req.synchronous = false
-                                    })
-                                }
-                                TeleflixLogger.log(TAG, "Re-triggered multipart active download for partFileId=$partFileId: res=${res?.javaClass?.simpleName}")
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
-                            }
-                        }
-                    }
-
-                    if (!fileObj.local.canBeDownloaded && !fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
-                        val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
-                        if (now - lastRetry > 5000L) {
-                            lastDownloadRetryTimeMap[partFileId] = now
-                            try {
+                val lastPing = lastDownloadRetryTimeMap[partFileId] ?: 0L
+                if (!fileObj.local.isDownloadingCompleted && !fileObj.local.isDownloadingActive) {
+                    if (now - lastPing > 1000L) {
+                        lastDownloadRetryTimeMap[partFileId] = now
+                        try {
+                            TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(partFileId, false))
+                            val res = if (chatId != 0L && messageId != 0L) {
+                                TelegramClient.sendRequest(TdApi.AddFileToDownloads(partFileId, chatId, messageId, 32))
+                            } else {
                                 TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                                     req.fileId = partFileId
                                     req.priority = 32
-                                    req.offset = fileObj.local.downloadedSize
-                                    req.limit = 32 * 1024 * 1024
+                                    req.offset = 0
+                                    req.limit = 0
                                     req.synchronous = false
                                 })
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
                             }
+                            TeleflixLogger.log(TAG, "Re-triggered multipart active download for partFileId=$partFileId: res=${res?.javaClass?.simpleName}")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
                         }
                     }
+                }
                 }
                 updateFlow()
             } else {
