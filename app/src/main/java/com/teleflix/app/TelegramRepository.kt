@@ -1131,7 +1131,7 @@ object TelegramRepository {
                         req.query = ""
                         req.senderId = null
                         req.fromMessageId = 1L
-                        req.offset = -limit
+                        req.offset = -99
                         req.limit = limit
                         req.filter = filter
                         req.topicId = topicFilter
@@ -1142,11 +1142,35 @@ object TelegramRepository {
                     }
                     found.messages.lastOrNull()?.id ?: 0L
                 } catch (e: Exception) {
-                    Log.e(TAG, "fetchChannelMediaFromBeginning error: ${e.message}")
+                    Log.e(TAG, "fetchChannelMediaFromBeginning search error: ${e.message}")
                     0L
                 }
             }
-        }
+        }.toMutableList()
+
+        // Also query GetChatHistory starting from message 1 for complete coverage of beginning messages
+        tasks.add(
+            async(Dispatchers.IO) {
+                try {
+                    val historyResult = TelegramClient.sendRequest(TdApi.GetChatHistory().also { req ->
+                        req.chatId = chatId
+                        req.fromMessageId = 1L
+                        req.offset = -99
+                        req.limit = limit
+                        req.onlyLocal = false
+                    })
+                    val msgs = (historyResult as? TdApi.Messages) ?: return@async 0L
+                    for (msg in msgs.messages) {
+                        extractMediaMessage(msg, seen, results)
+                    }
+                    msgs.messages.lastOrNull()?.id ?: 0L
+                } catch (e: Exception) {
+                    Log.e(TAG, "fetchChannelMediaFromBeginning GetChatHistory error: ${e.message}")
+                    0L
+                }
+            }
+        )
+
         val lastIds = tasks.awaitAll()
         for (lastId in lastIds) {
             if (lastId > maxNextMessageId) {

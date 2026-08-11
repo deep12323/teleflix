@@ -1577,6 +1577,9 @@ class MainActivity : AppCompatActivity() {
                     loadingText.text = "No media files found at the beginning of $title."
                 } else {
                     populateMediaListFromDisplayItems(groupedItems)
+                    recyclerView.post {
+                        try { recyclerView.scrollToPosition(0) } catch (_: Exception) {}
+                    }
                 }
             }
         }
