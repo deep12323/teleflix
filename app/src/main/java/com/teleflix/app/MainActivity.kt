@@ -1563,7 +1563,7 @@ class MainActivity : AppCompatActivity() {
             titleText: String,
             subText: String,
             onClick: () -> Unit
-        ): View {
+        ): android.view.View {
             val container = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
