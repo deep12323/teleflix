@@ -1105,6 +1105,82 @@ object TelegramRepository {
         return@coroutineScope res
     }
 
+    suspend fun fetchChannelMediaAroundMessage(
+        channelUsernameOrId: String,
+        targetMsgId: Long,
+        topicId: Int = 0,
+        limit: Int = 100,
+        includeAudio: Boolean = true
+    ): Pair<List<TelegramVideoMessage>, Long> = coroutineScope {
+        val results = java.util.Collections.synchronizedList(mutableListOf<TelegramVideoMessage>())
+        val seen = java.util.Collections.synchronizedSet(mutableSetOf<Pair<String, Long>>())
+        val chatId = getChatId(channelUsernameOrId) ?: return@coroutineScope Pair(emptyList(), 0L)
+        val topicFilter = if (topicId > 0) TdApi.MessageTopicForum(topicId) else null
+
+        val filters = mutableListOf<TdApi.SearchMessagesFilter>(
+            TdApi.SearchMessagesFilterDocument(),
+            TdApi.SearchMessagesFilterVideo()
+        )
+        if (includeAudio) {
+            filters.add(TdApi.SearchMessagesFilterAudio())
+        }
+
+        var minNextMessageId = 0L
+
+        val tasks = filters.map { filter ->
+            async(Dispatchers.IO) {
+                try {
+                    val historyResult = TelegramClient.sendRequest(TdApi.SearchChatMessages().also { req ->
+                        req.chatId = chatId
+                        req.query = ""
+                        req.senderId = null
+                        req.fromMessageId = targetMsgId
+                        req.offset = -30
+                        req.limit = limit
+                        req.filter = filter
+                        req.topicId = topicFilter
+                    })
+                    val found = (historyResult as? TdApi.FoundChatMessages) ?: return@async 0L
+
+                    for (msg in found.messages) {
+                        extractMediaMessage(msg, seen, results)
+                    }
+                    found.messages.lastOrNull()?.id ?: 0L
+                } catch (e: Exception) {
+                    Log.e(TAG, "fetchChannelMediaAroundMessage search error for $channelUsernameOrId: ${e.message}")
+                    0L
+                }
+            }
+        }
+
+        val lastIds = tasks.awaitAll()
+        for (lastId in lastIds) {
+            if (lastId > 0L && (minNextMessageId == 0L || lastId < minNextMessageId)) {
+                minNextMessageId = lastId
+            }
+        }
+
+        // GetChatHistory fallback around targetMsgId
+        try {
+            val chatHistoryRes = TelegramClient.sendRequest(TdApi.GetChatHistory().also { req ->
+                req.chatId = chatId
+                req.fromMessageId = targetMsgId
+                req.offset = -20
+                req.limit = 50
+                req.onlyLocal = false
+            })
+            val hist = chatHistoryRes as? TdApi.Messages
+            hist?.messages?.forEach { msg ->
+                extractMediaMessage(msg, seen, results)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "GetChatHistory fallback error around $targetMsgId: ${e.message}")
+        }
+
+        val sorted = results.sortedByDescending { it.messageId }
+        return@coroutineScope Pair(sorted, minNextMessageId)
+    }
+
     suspend fun fetchChannelMediaFromBeginning(
         channelUsernameOrId: String,
         topicId: Int = 0,

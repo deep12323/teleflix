@@ -2144,29 +2144,19 @@ class MainActivity : AppCompatActivity() {
             is DisplayItem.Single -> "${dItem.message.chatId}_${dItem.message.messageId}"
         }
 
-        val existingIndex = mediaList.indexOfFirst { it.id == targetKey }
-        if (existingIndex >= 0) {
-            Toast.makeText(this, "Jumping to pinned message...", Toast.LENGTH_SHORT).show()
-            recyclerView.post {
-                val layoutManager = recyclerView.layoutManager as? GridLayoutManager
-                layoutManager?.scrollToPositionWithOffset(existingIndex, 0)
-            }
-            return
-        }
-
         val targetMsgId = when (dItem) {
             is DisplayItem.Group -> dItem.group.parts.first().messageId
             is DisplayItem.Single -> dItem.message.messageId
         }
 
         loadingText.visibility = android.view.View.VISIBLE
-        loadingText.text = "Jumping to pinned message in list..."
+        loadingText.text = "Jumping to pinned message in $title..."
 
         CoroutineScope(Dispatchers.IO).launch {
             val (mediaMessages, nextFromId) = try {
-                TelegramRepository.fetchChannelMedia(
+                TelegramRepository.fetchChannelMediaAroundMessage(
                     channelUsername,
-                    fromMessageId = maxOf(0L, targetMsgId + 50L),
+                    targetMsgId = targetMsgId,
                     topicId = topicId,
                     limit = 100,
                     includeAudio = true
@@ -2184,15 +2174,20 @@ class MainActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 loadingText.visibility = android.view.View.GONE
                 if (groupedItems.isNotEmpty()) {
+                    isInSearchMode = false
+                    hasMoreItems = true
+                    isLoadingMore = false
                     mediaList.clear()
                     populateMediaListFromDisplayItems(groupedItems)
+
                     val newIndex = mediaList.indexOfFirst { it.id == targetKey }
                     val targetPos = if (newIndex >= 0) newIndex else 0
+
                     recyclerView.post {
                         val layoutManager = recyclerView.layoutManager as? GridLayoutManager
                         layoutManager?.scrollToPositionWithOffset(targetPos, 0)
                     }
-                    Toast.makeText(this@MainActivity, "Jumped to pinned message", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Jumped to pinned message 📌", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this@MainActivity, "Could not locate pinned message in list", Toast.LENGTH_SHORT).show()
                 }
