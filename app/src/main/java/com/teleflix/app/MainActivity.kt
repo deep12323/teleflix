@@ -3006,7 +3006,6 @@ class MainActivity : AppCompatActivity() {
                     isClickable = true
                     setOnClickListener { streamDialog.dismiss() }
                 }
-
                 footerRow.addView(footerInfoCol)
                 footerRow.addView(footerCloseBtn)
                 container.addView(footerRow)
@@ -3026,10 +3025,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveLinkToWatchHistory(streamUrl: String, title: String, posterUrl: String, mediaId: String, originalFileName: String = "") {
+    private fun saveLinkToWatchHistory(streamUrl: String, title: String, posterUrl: String = "", mediaId: String = "", originalFileName: String = "") {
         if (streamUrl.isBlank() && mediaId.isBlank()) return
         val effectiveId = if (mediaId.isNotBlank()) mediaId else "link_" + streamUrl.hashCode()
-        var effectivePoster = posterUrl
+        var effectivePoster = ""
+
+        // Prioritize original video poster thumbnail from Telegram
+        if (mediaId.contains("_")) {
+            val cleanId = mediaId.removePrefix("group_")
+            val parts = cleanId.split("_")
+            if (parts.size >= 2) {
+                val cId = parts[0].toLongOrNull()
+                val mId = parts[1].toLongOrNull()
+                if (cId != null && mId != null && cId != 0L) {
+                    val tgThumbUrl = TelegramRepository.getThumbnailUrl(cId, mId)
+                    if (tgThumbUrl.isNotBlank()) {
+                        effectivePoster = tgThumbUrl
+                    }
+                }
+            }
+        }
+
+        // Fallback to passed Cinemeta posterUrl if Telegram thumbnail is not available
+        if (effectivePoster.isBlank()) {
+            effectivePoster = posterUrl
+        }
+
         if (effectivePoster.isBlank()) {
             val matchingMedia = mediaList.firstOrNull { it.id == mediaId || it.title.equals(title, ignoreCase = true) }
             if (matchingMedia != null && matchingMedia.posterUrl.isNotBlank()) {
@@ -3375,11 +3396,30 @@ class MainActivity : AppCompatActivity() {
                 if (itemType == "channel") continue
                 val sUrl = TelegramStreamingProxy.refreshUrl(obj.optString("streamUrl", ""))
                 val parsedSize = obj.optLong("fileSize", 0L).let { if (it > 0) it else extractSizeFromUrl(sUrl) }
+                val itemId = obj.optString("id", "")
+                var pUrl = TelegramStreamingProxy.refreshUrl(obj.optString("posterUrl", ""))
+
+                // Check for original Telegram video thumbnail if available
+                if (itemId.contains("_")) {
+                    val cleanId = itemId.removePrefix("group_")
+                    val parts = cleanId.split("_")
+                    if (parts.size >= 2) {
+                        val cId = parts[0].toLongOrNull()
+                        val mId = parts[1].toLongOrNull()
+                        if (cId != null && mId != null && cId != 0L) {
+                            val tgThumbUrl = TelegramRepository.getThumbnailUrl(cId, mId)
+                            if (tgThumbUrl.isNotBlank()) {
+                                pUrl = tgThumbUrl
+                            }
+                        }
+                    }
+                }
+
                 list.add(
                     MediaItem(
-                        id = obj.optString("id", ""),
+                        id = itemId,
                         title = obj.optString("title", "Unknown"),
-                        posterUrl = TelegramStreamingProxy.refreshUrl(obj.optString("posterUrl", "")),
+                        posterUrl = pUrl,
                         year = obj.optString("year", ""),
                         rating = obj.optString("rating", ""),
                         overview = obj.optString("overview", ""),
