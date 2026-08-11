@@ -124,10 +124,19 @@ class MediaAdapter(
                     }
                 }
 
-                val posterFrame = FrameLayout(context).apply {
+                val posterFrame = object : FrameLayout(context) {
+                    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                        val width = MeasureSpec.getSize(widthMeasureSpec)
+                        val height = (width * 9) / 16
+                        super.onMeasure(
+                            widthMeasureSpec,
+                            MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY)
+                        )
+                    }
+                }.apply {
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(145)
+                        LinearLayout.LayoutParams.WRAP_CONTENT
                     )
                 }
 
