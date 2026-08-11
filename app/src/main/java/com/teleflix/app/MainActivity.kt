@@ -1847,11 +1847,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private data class PinnedDisplayInfo(
+    private data class PinnedMessageItemInfo(
         val title: String,
         val sub: String,
         val thumbUrl: String,
-        val key: String
+        val isAudio: Boolean,
+        val accentHex: String
     )
 
     private fun showPinnedMessagesDialog(channelUsername: String, topicId: Int, title: String) {
@@ -1879,69 +1880,131 @@ class MainActivity : AppCompatActivity() {
                     return@withContext
                 }
 
+                var pDialog: AlertDialog? = null
+
                 val pickerContainer = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL
-                    background = UITheme.createCardShape(this@MainActivity, UITheme.CARD, 18, UITheme.STROKE_COLOR, 1)
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(Color.parseColor("#151821"))
+                        cornerRadius = UITheme.dpToPx(this@MainActivity, 22).toFloat()
+                        setStroke(UITheme.dpToPx(this@MainActivity, 1), Color.parseColor("#262C3D"))
+                    }
                     val pad = UITheme.dpToPx(this@MainActivity, 20)
                     setPadding(pad, pad, pad, pad)
                 }
 
-                val dialogTitle = TextView(this@MainActivity).apply {
-                    text = "📌 Pinned Messages in $title"
-                    UITheme.applySectionTitleStyle(this)
-                    setTextColor(Color.WHITE)
+                // 1. Top Pill Handle Bar
+                val handlePill = android.view.View(this@MainActivity).apply {
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(Color.parseColor("#3A3F4D"))
+                        cornerRadius = UITheme.dpToPx(this@MainActivity, 2).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        UITheme.dpToPx(this@MainActivity, 36),
+                        UITheme.dpToPx(this@MainActivity, 4)
+                    ).apply {
+                        gravity = android.view.Gravity.CENTER_HORIZONTAL
+                        setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 14))
+                    }
                 }
-                pickerContainer.addView(dialogTitle)
+                pickerContainer.addView(handlePill)
+
+                // 2. Header Row (Pin Icon + Title + Subtitle)
+                val headerRow = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 16))
+                }
+
+                val headerIconBox = TextView(this@MainActivity).apply {
+                    text = "📌"
+                    textSize = 18f
+                    gravity = android.view.Gravity.CENTER
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(Color.parseColor("#2E1E26"))
+                        cornerRadius = UITheme.dpToPx(this@MainActivity, 12).toFloat()
+                    }
+                    val sz = UITheme.dpToPx(this@MainActivity, 44)
+                    layoutParams = LinearLayout.LayoutParams(sz, sz).apply {
+                        setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 12), 0)
+                    }
+                }
+                headerRow.addView(headerIconBox)
+
+                val headerTextCol = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+
+                val dialogTitle = TextView(this@MainActivity).apply {
+                    text = "Pinned Messages in $title"
+                    setTextColor(Color.WHITE)
+                    textSize = 17f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                }
+                headerTextCol.addView(dialogTitle)
 
                 val subText = TextView(this@MainActivity).apply {
-                    text = "Tap a pinned item to jump directly to it in the channel list:"
-                    UITheme.applyMetadataStyle(this)
-                    setPadding(0, 4, 0, UITheme.dpToPx(this@MainActivity, 12))
+                    text = "Tap a pinned item to jump directly to it in the channel list"
+                    setTextColor(Color.parseColor("#8E8E93"))
+                    textSize = 12f
+                    setPadding(0, UITheme.dpToPx(this@MainActivity, 2), 0, 0)
                 }
-                pickerContainer.addView(subText)
+                headerTextCol.addView(subText)
+
+                headerRow.addView(headerTextCol)
+                pickerContainer.addView(headerRow)
 
                 val scrollView = ScrollView(this@MainActivity).apply {
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, UITheme.dpToPx(this@MainActivity, 320))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        UITheme.dpToPx(this@MainActivity, 340)
+                    )
                 }
                 val listLayout = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL
                 }
-
-                var pDialog: AlertDialog? = null
 
                 groupedItems.forEach { dItem ->
                     val info = when (dItem) {
                         is DisplayItem.Group -> {
                             val group = dItem.group
                             val firstMsg = group.parts.first()
-                            val k = "group_${firstMsg.chatId}_${group.baseName}"
                             val sizeStr = formatFileSize(group.totalSize)
                             val tUrl = if (firstMsg.thumbnailFileId != null || firstMsg.chatId != 0L) {
                                 TelegramRepository.getThumbnailUrl(firstMsg.chatId, firstMsg.messageId, firstMsg.thumbnailFileId)
                             } else ""
-                            PinnedDisplayInfo("📦 ${group.baseName}", "📦 Split Pack (${group.parts.size} parts) • $sizeStr", tUrl, k)
+                            PinnedMessageItemInfo("📦 ${group.baseName}", "📦 Split Pack (${group.parts.size} parts) • $sizeStr", tUrl, false, "#FF3B30")
                         }
                         is DisplayItem.Single -> {
                             val msg = dItem.message
-                            val k = "${msg.chatId}_${msg.messageId}"
                             val sizeStr = formatFileSize(msg.fileSize)
-                            val isAudio = msg.mimeType.startsWith("audio/")
-                            val badge = if (isAudio) "🎵 Audio" else "🎬 Video"
+                            val audio = msg.mimeType.startsWith("audio/")
+                            val badge = if (audio) "🎵 Audio" else "🎬 Video"
                             val tUrl = if (msg.thumbnailFileId != null || msg.chatId != 0L) {
                                 TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId, msg.thumbnailFileId)
                             } else ""
-                            PinnedDisplayInfo(msg.fileName.ifBlank { "Unnamed Media" }, "$badge • $sizeStr", tUrl, k)
+                            val acc = if (audio) "#AF52DE" else "#007AFF"
+                            PinnedMessageItemInfo(msg.fileName.ifBlank { "Unnamed Media" }, "$badge  •  $sizeStr", tUrl, audio, acc)
                         }
                     }
 
                     val row = LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = android.view.Gravity.CENTER_VERTICAL
-                        background = UITheme.createRippleCardShape(this@MainActivity, UITheme.SURFACE, 12, UITheme.STROKE_COLOR)
-                        val p = UITheme.dpToPx(this@MainActivity, 10)
-                        setPadding(p, p, p, p)
-                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
+                        background = android.graphics.drawable.GradientDrawable().apply {
+                            setColor(Color.parseColor("#1C212E"))
+                            cornerRadius = UITheme.dpToPx(this@MainActivity, 14).toFloat()
+                            setStroke(UITheme.dpToPx(this@MainActivity, 1), Color.parseColor("#293042"))
+                        }
+                        val pV = UITheme.dpToPx(this@MainActivity, 12)
+                        val pH = UITheme.dpToPx(this@MainActivity, 12)
+                        setPadding(pH, pV, pH, pV)
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 10))
                         }
                         isClickable = true
                         isFocusable = true
@@ -1951,12 +2014,33 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
+                    // Left Accent Stroke
+                    val accentLine = android.view.View(this@MainActivity).apply {
+                        background = android.graphics.drawable.GradientDrawable().apply {
+                            setColor(Color.parseColor(info.accentHex))
+                            cornerRadius = UITheme.dpToPx(this@MainActivity, 2).toFloat()
+                        }
+                        layoutParams = LinearLayout.LayoutParams(
+                            UITheme.dpToPx(this@MainActivity, 4),
+                            UITheme.dpToPx(this@MainActivity, 38)
+                        ).apply {
+                            setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 10), 0)
+                        }
+                    }
+                    row.addView(accentLine)
+
+                    // Poster / Thumbnail Box
                     val posterImg = ImageView(this@MainActivity).apply {
-                        val sz = UITheme.dpToPx(this@MainActivity, 44)
+                        val sz = UITheme.dpToPx(this@MainActivity, 48)
                         layoutParams = LinearLayout.LayoutParams(sz, sz).apply {
                             setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 12), 0)
                         }
                         scaleType = ImageView.ScaleType.CENTER_CROP
+                        background = android.graphics.drawable.GradientDrawable().apply {
+                            setColor(Color.parseColor("#252A38"))
+                            cornerRadius = UITheme.dpToPx(this@MainActivity, 10).toFloat()
+                        }
+                        clipToOutline = true
                     }
                     if (info.thumbUrl.isNotBlank()) {
                         com.bumptech.glide.Glide.with(this@MainActivity)
@@ -1969,6 +2053,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     row.addView(posterImg)
 
+                    // Text Column
                     val textLayout = LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL
                         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -1976,30 +2061,72 @@ class MainActivity : AppCompatActivity() {
 
                     val titleV = TextView(this@MainActivity).apply {
                         text = info.title
-                        UITheme.applyCardTitleStyle(this)
+                        setTextColor(Color.WHITE)
                         textSize = 14f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        maxLines = 2
+                        ellipsize = android.text.TextUtils.TruncateAt.END
                     }
                     textLayout.addView(titleV)
 
                     val subV = TextView(this@MainActivity).apply {
                         text = info.sub
-                        UITheme.applyMetadataStyle(this)
-                        textSize = 11f
+                        setTextColor(Color.parseColor("#8E8E93"))
+                        textSize = 12f
+                        setPadding(0, UITheme.dpToPx(this@MainActivity, 2), 0, 0)
                     }
                     textLayout.addView(subV)
 
                     row.addView(textLayout)
+
+                    // Right Arrow Chevron
+                    val arrowTv = TextView(this@MainActivity).apply {
+                        text = "›"
+                        setTextColor(Color.parseColor("#8E8E93"))
+                        textSize = 20f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setPadding(UITheme.dpToPx(this@MainActivity, 8), 0, 0, 0)
+                    }
+                    row.addView(arrowTv)
+
                     listLayout.addView(row)
                 }
 
                 scrollView.addView(listLayout)
                 pickerContainer.addView(scrollView)
 
+                // Close Button
+                val closeBtn = TextView(this@MainActivity).apply {
+                    text = "✖  Close"
+                    setTextColor(Color.parseColor("#FF3B30"))
+                    textSize = 15f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    gravity = android.view.Gravity.CENTER
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(Color.parseColor("#1C212E"))
+                        cornerRadius = UITheme.dpToPx(this@MainActivity, 14).toFloat()
+                        setStroke(UITheme.dpToPx(this@MainActivity, 1), Color.parseColor("#293042"))
+                    }
+                    val pV = UITheme.dpToPx(this@MainActivity, 14)
+                    setPadding(0, pV, 0, pV)
+                    isClickable = true
+                    isFocusable = true
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(0, UITheme.dpToPx(this@MainActivity, 10), 0, 0)
+                    }
+                    setOnClickListener { pDialog?.dismiss() }
+                }
+                pickerContainer.addView(closeBtn)
+
                 pDialog = AlertDialog.Builder(this@MainActivity)
                     .setView(pickerContainer)
-                    .setNegativeButton("Close", null)
                     .create()
-                pDialog.show()
+
+                pDialog?.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+                pDialog?.show()
             }
         }
     }
