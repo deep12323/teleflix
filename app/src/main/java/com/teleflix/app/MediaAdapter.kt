@@ -120,14 +120,14 @@ class MediaAdapter(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply {
-                        setMargins(dp(5), dp(5), dp(5), dp(12))
+                        setMargins(dp(6), dp(6), dp(6), dp(14))
                     }
                 }
 
                 val posterFrame = FrameLayout(context).apply {
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(110)
+                        dp(145)
                     )
                 }
 
