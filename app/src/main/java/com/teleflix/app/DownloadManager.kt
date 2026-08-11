@@ -551,112 +551,27 @@ object DownloadManager {
                 }
 
                 val lastPing = lastDownloadRetryTimeMap[currentFileId] ?: 0L
-                if (now - lastPing > 1500L && !fileObj.local.isDownloadingCompleted) {
-                    lastDownloadRetryTimeMap[currentFileId] = now
-                    val currentPos = fileObj.local.downloadedSize
-                    val chunkSize = 20L * 1024L * 1024L
-                    try {
-                        if (!fileObj.local.isDownloadingActive) {
-                            TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(currentFileId, false))
-                        }
-                        // Worker 1: Active offset (+0MB)
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = currentFileId
-                            req.priority = 32
-                            req.offset = currentPos
-                            req.limit = chunkSize
-                            req.synchronous = false
-                        })
-                        // Worker 2: Pre-fetch +20MB
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = currentFileId
-                            req.priority = 30
-                            req.offset = currentPos + chunkSize
-                            req.limit = chunkSize
-                            req.synchronous = false
-                        })
-                        // Worker 3: Pre-fetch +40MB
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = currentFileId
-                            req.priority = 28
-                            req.offset = currentPos + (chunkSize * 2)
-                            req.limit = chunkSize
-                            req.synchronous = false
-                        })
-                        // Worker 4: Pre-fetch +60MB
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = currentFileId
-                            req.priority = 26
-                            req.offset = currentPos + (chunkSize * 3)
-                            req.limit = chunkSize
-                            req.synchronous = false
-                        })
-                        // Worker 5: Pre-fetch +80MB
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = currentFileId
-                            req.priority = 24
-                            req.offset = currentPos + (chunkSize * 4)
-                            req.limit = chunkSize
-                            req.synchronous = false
-                        })
-                        // Worker 6: Pre-fetch +100MB
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = currentFileId
-                            req.priority = 22
-                            req.offset = currentPos + (chunkSize * 5)
-                            req.limit = chunkSize
-                            req.synchronous = false
-                        })
-                        // Worker 7: Pre-fetch +120MB
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = currentFileId
-                            req.priority = 20
-                            req.offset = currentPos + (chunkSize * 6)
-                            req.limit = chunkSize
-                            req.synchronous = false
-                        })
-                        // Worker 8: Pre-fetch +140MB
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = currentFileId
-                            req.priority = 18
-                            req.offset = currentPos + (chunkSize * 7)
-                            req.limit = chunkSize
-                            req.synchronous = false
-                        })
-                        // Worker 9: Pre-fetch +160MB
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = currentFileId
-                            req.priority = 16
-                            req.offset = currentPos + (chunkSize * 8)
-                            req.limit = chunkSize
-                            req.synchronous = false
-                        })
-                        // Worker 10: Pre-fetch +180MB
-                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                            req.fileId = currentFileId
-                            req.priority = 14
-                            req.offset = currentPos + (chunkSize * 9)
-                            req.limit = chunkSize
-                            req.synchronous = false
-                        })
-                    } catch (_: Exception) {}
-                }
-
-                if (!fileObj.local.canBeDownloaded && !fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
-                    val lastRetry = lastDownloadRetryTimeMap[currentFileId] ?: 0L
-                    if (now - lastRetry > 5000L) {
-                        lastDownloadRetryTimeMap[currentFileId] = now
-                        try {
-                            val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = currentFileId
-                                req.priority = 32
-                                req.offset = fileObj.local.downloadedSize
-                                req.limit = 32 * 1024 * 1024
-                                req.synchronous = false
-                            })
-                            TeleflixLogger.log(TAG, "Re-issued DownloadFile for unqueued fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
-                        } catch (e: Exception) {
-                            TeleflixLogger.log(TAG, "Failed DownloadFile request for $currentFileId: ${e.message}", isError = true)
+                if (!fileObj.local.isDownloadingCompleted) {
+                    if (!fileObj.local.isDownloadingActive) {
+                        if (now - lastPing > 5000L) {
+                            lastDownloadRetryTimeMap[currentFileId] = now
+                            try {
+                                TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(currentFileId, false))
+                                val res = if (item.chatId != 0L && item.messageId != 0L) {
+                                    TelegramClient.sendRequest(TdApi.AddFileToDownloads(currentFileId, item.chatId, item.messageId, 32))
+                                } else {
+                                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                        req.fileId = currentFileId
+                                        req.priority = 32
+                                        req.offset = 0
+                                        req.limit = 0
+                                        req.synchronous = false
+                                    })
+                                }
+                                TeleflixLogger.log(TAG, "Re-triggered active download for fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
+                            } catch (e: Exception) {
+                                TeleflixLogger.log(TAG, "Failed download re-trigger request for $currentFileId: ${e.message}", isError = true)
+                            }
                         }
                     }
                 }
@@ -835,122 +750,25 @@ object DownloadManager {
                                         req.priority = 32
                                         req.offset = 0
                                         req.limit = 0
-                                        req.synchronous = false
-                                    })
-                                } catch (_: Exception) {}
+                                    TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(partFileId, false))
+                                    val res = if (chatId != 0L && messageId != 0L) {
+                                        TelegramClient.sendRequest(TdApi.AddFileToDownloads(partFileId, chatId, messageId, 32))
+                                    } else {
+                                        TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                            req.fileId = partFileId
+                                            req.priority = 32
+                                            req.offset = 0
+                                            req.limit = 0
+                                            req.synchronous = false
+                                        })
+                                    }
+                                    TeleflixLogger.log(TAG, "Re-triggered multipart active download for partFileId=$partFileId: res=${res?.javaClass?.simpleName}")
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
+                                }
                             }
                         }
-                    }
-
-                    val lastPing = lastDownloadRetryTimeMap[partFileId] ?: 0L
-                    if (now - lastPing > 1500L && !fileObj.local.isDownloadingCompleted) {
-                        lastDownloadRetryTimeMap[partFileId] = now
-                        val currentPos = fileObj.local.downloadedSize
-                        val chunkSize = 20L * 1024L * 1024L
-                        try {
-                            if (!fileObj.local.isDownloadingActive) {
-                                TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(partFileId, false))
-                            }
-                            // Worker 1: Active offset (+0MB)
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = partFileId
-                                req.priority = 32
-                                req.offset = currentPos
-                                req.limit = chunkSize
-                                req.synchronous = false
-                            })
-                            // Worker 2: Pre-fetch +20MB
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = partFileId
-                                req.priority = 30
-                                req.offset = currentPos + chunkSize
-                                req.limit = chunkSize
-                                req.synchronous = false
-                            })
-                            // Worker 3: Pre-fetch +40MB
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = partFileId
-                                req.priority = 28
-                                req.offset = currentPos + (chunkSize * 2)
-                                req.limit = chunkSize
-                                req.synchronous = false
-                            })
-                            // Worker 4: Pre-fetch +60MB
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = partFileId
-                                req.priority = 26
-                                req.offset = currentPos + (chunkSize * 3)
-                                req.limit = chunkSize
-                                req.synchronous = false
-                            })
-                            // Worker 5: Pre-fetch +80MB
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = partFileId
-                                req.priority = 24
-                                req.offset = currentPos + (chunkSize * 4)
-                                req.limit = chunkSize
-                                req.synchronous = false
-                            })
-                            // Worker 6: Pre-fetch +100MB
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = partFileId
-                                req.priority = 22
-                                req.offset = currentPos + (chunkSize * 5)
-                                req.limit = chunkSize
-                                req.synchronous = false
-                            })
-                            // Worker 7: Pre-fetch +120MB
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = partFileId
-                                req.priority = 20
-                                req.offset = currentPos + (chunkSize * 6)
-                                req.limit = chunkSize
-                                req.synchronous = false
-                            })
-                            // Worker 8: Pre-fetch +140MB
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = partFileId
-                                req.priority = 18
-                                req.offset = currentPos + (chunkSize * 7)
-                                req.limit = chunkSize
-                                req.synchronous = false
-                            })
-                            // Worker 9: Pre-fetch +160MB
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = partFileId
-                                req.priority = 16
-                                req.offset = currentPos + (chunkSize * 8)
-                                req.limit = chunkSize
-                                req.synchronous = false
-                            })
-                            // Worker 10: Pre-fetch +180MB
-                            TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                req.fileId = partFileId
-                                req.priority = 14
-                                req.offset = currentPos + (chunkSize * 9)
-                                req.limit = chunkSize
-                                req.synchronous = false
-                            })
-                        } catch (_: Exception) {}
-                    }
-
-                    if (!fileObj.local.canBeDownloaded && !fileObj.local.isDownloadingActive && !fileObj.local.isDownloadingCompleted) {
-                        val lastRetry = lastDownloadRetryTimeMap[partFileId] ?: 0L
-                        if (now - lastRetry > 5000L) {
-                            lastDownloadRetryTimeMap[partFileId] = now
-                            try {
-                                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                    req.fileId = partFileId
-                                    req.priority = 32
-                                    req.offset = fileObj.local.downloadedSize
-                                    req.limit = 32 * 1024 * 1024
-                                    req.synchronous = false
-                                })
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
-                            }
-                        }
-                    }
+                    }               
                 }
                 updateFlow()
             } else {

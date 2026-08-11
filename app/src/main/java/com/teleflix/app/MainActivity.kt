@@ -128,18 +128,6 @@ class MainActivity : AppCompatActivity() {
                 TeleflixLogger.log("MainActivity", "Saved resume position $posLong ms for $activeTitleForResume")
             }
         }
-
-        val urlToClean = activeStreamUrlForResume
-        if (urlToClean.isNotBlank()) {
-            val fileIds = extractFileIdsFromUrl(urlToClean)
-            for (fileId in fileIds) {
-                if (fileId != 0 && !DownloadManager.isFileIdActive(fileId)) {
-                    TelegramStreamingProxy.clearStreamCache(fileId)
-                    TelegramClient.deleteFile(fileId)
-                    TeleflixLogger.log("MainActivity", "Cleaned stream cache for fileId=$fileId on player exit")
-                }
-            }
-        }
     }
 
     private val mediaList = mutableListOf<MediaItem>()
@@ -2502,6 +2490,7 @@ class MainActivity : AppCompatActivity() {
             setDataAndType(Uri.parse(streamUrl), mimeType)
             putExtra("title", title)
             putExtra("filename", title)
+            putExtra("return_result", true)
             if (resumeMs > 0) {
                 putExtra("position", resumeMs.toInt())
                 putExtra("extra_position", resumeMs)
