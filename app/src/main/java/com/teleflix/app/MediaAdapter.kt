@@ -54,95 +54,81 @@ class MediaAdapter(
 
         when (viewType) {
             VIEW_TYPE_CHANNEL -> {
-                // Landscape Artwork Poster (16:9 Aspect Ratio) - Borderless 16dp rounded artwork
-                val rootFrame = FrameLayout(context).apply {
+                // Premium List Card for Telegram Monitored Channels (Full-width horizontal row as before)
+                val row = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = UITheme.createRippleCardShape(context, UITheme.CARD, 16, UITheme.STROKE_COLOR)
+                    setPadding(dp(16), dp(16), dp(16), dp(16))
                     layoutParams = ViewGroup.MarginLayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(110)
+                        ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply {
-                        setMargins(dp(4), dp(4), dp(4), dp(8))
+                        setMargins(dp(6), dp(6), dp(6), dp(8))
                     }
-                    isClickable = true
-                    isFocusable = true
                 }
 
                 val posterView = ImageView(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply {
+                        setMargins(0, 0, dp(14), 0)
+                    }
                     scaleType = ImageView.ScaleType.CENTER_CROP
-                    layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT
-                    )
-                    background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(Color.parseColor("#171B26"))
-                        cornerRadius = dp(16).toFloat()
-                    }
-                    clipToOutline = true
-                }
-
-                // Dark Bottom Gradient Overlay for legible title text
-                val gradientOverlay = View(context).apply {
-                    background = android.graphics.drawable.GradientDrawable(
-                        android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                        intArrayOf(Color.TRANSPARENT, Color.parseColor("#EE0B0E14"))
-                    ).apply {
-                        cornerRadius = dp(16).toFloat()
-                    }
-                    layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        dp(58)
-                    ).apply {
-                        gravity = Gravity.BOTTOM
-                    }
                 }
 
                 val textContainer = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.BOTTOM
-                    setPadding(dp(10), 0, dp(10), dp(8))
-                    layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        gravity = Gravity.BOTTOM
-                    }
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
 
                 val titleView = TextView(context).apply {
-                    setTextColor(Color.WHITE)
-                    textSize = 13f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    UITheme.applyCardTitleStyle(this)
+                    textSize = 15f
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
                 }
 
                 val descView = TextView(context).apply {
-                    setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
-                    textSize = 11f
+                    UITheme.applyMetadataStyle(this)
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
+                }
+
+                val arrowView = TextView(context).apply {
+                    text = "➔"
+                    textSize = 14f
+                    gravity = Gravity.CENTER
+                    setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
+                    background = UITheme.createCardShape(context, UITheme.SURFACE, 10, UITheme.STROKE_COLOR, 1)
+                    setPadding(dp(10), dp(8), dp(10), dp(8))
                 }
 
                 textContainer.addView(titleView)
                 textContainer.addView(descView)
 
-                rootFrame.addView(posterView)
-                rootFrame.addView(gradientOverlay)
-                rootFrame.addView(textContainer)
+                row.addView(posterView)
+                row.addView(textContainer)
+                row.addView(arrowView)
 
-                return ViewHolder(layout = rootFrame, posterView = posterView, titleText = titleView, overviewText = descView)
+                return ViewHolder(layout = row, posterView = posterView, titleText = titleView, overviewText = descView)
             }
 
             VIEW_TYPE_TELEGRAM_MEDIA -> {
-                // Landscape Artwork Poster (16:9 Aspect Ratio) - Borderless 16dp rounded artwork
-                val rootFrame = FrameLayout(context).apply {
+                // 16:9 Landscape Poster Card (2 Columns) with title & details BELOW the poster
+                val card = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
                     layoutParams = ViewGroup.MarginLayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(110)
+                        ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply {
-                        setMargins(dp(4), dp(4), dp(4), dp(8))
+                        setMargins(dp(5), dp(5), dp(5), dp(12))
                     }
-                    isClickable = true
-                    isFocusable = true
+                }
+
+                val posterFrame = FrameLayout(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        dp(110)
+                    )
                 }
 
                 val posterView = ImageView(context).apply {
@@ -156,22 +142,6 @@ class MediaAdapter(
                         cornerRadius = dp(16).toFloat()
                     }
                     clipToOutline = true
-                }
-
-                // Dark Bottom Gradient Overlay for legible title text
-                val gradientOverlay = View(context).apply {
-                    background = android.graphics.drawable.GradientDrawable(
-                        android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                        intArrayOf(Color.TRANSPARENT, Color.parseColor("#F20B0E14"))
-                    ).apply {
-                        cornerRadius = dp(16).toFloat()
-                    }
-                    layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        dp(60)
-                    ).apply {
-                        gravity = Gravity.BOTTOM
-                    }
                 }
 
                 val bookmarkButton = ImageView(context).apply {
@@ -200,34 +170,32 @@ class MediaAdapter(
                     isFocusable = true
                 }
 
+                posterFrame.addView(posterView)
+                posterFrame.addView(bookmarkButton)
+                posterFrame.addView(downloadButton)
+
                 val textContainer = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.BOTTOM
-                    setPadding(dp(10), 0, dp(10), dp(8))
-                    layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        gravity = Gravity.BOTTOM
-                    }
+                    setPadding(dp(4), dp(8), dp(4), 0)
                 }
 
                 val titleView = TextView(context).apply {
                     setTextColor(Color.WHITE)
-                    textSize = 12.5f
+                    textSize = 13f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    maxLines = 1
+                    maxLines = 2
                     ellipsize = android.text.TextUtils.TruncateAt.END
                 }
 
                 val yearView = TextView(context).apply {
                     setTextColor(Color.parseColor(UITheme.SUCCESS))
-                    textSize = 10.5f
+                    textSize = 11f
+                    setPadding(0, dp(2), 0, dp(2))
                 }
 
                 val overviewView = TextView(context).apply {
                     setTextColor(Color.parseColor("#8E8E93"))
-                    textSize = 10f
+                    textSize = 11f
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
                 }
@@ -236,13 +204,10 @@ class MediaAdapter(
                 textContainer.addView(yearView)
                 textContainer.addView(overviewView)
 
-                rootFrame.addView(posterView)
-                rootFrame.addView(gradientOverlay)
-                rootFrame.addView(bookmarkButton)
-                rootFrame.addView(downloadButton)
-                rootFrame.addView(textContainer)
+                card.addView(posterFrame)
+                card.addView(textContainer)
 
-                return ViewHolder(rootFrame, posterView, titleView, yearView, overviewView, bookmarkButton = bookmarkButton, downloadButton = downloadButton)
+                return ViewHolder(card, posterView, titleView, yearView, overviewView, bookmarkButton = bookmarkButton, downloadButton = downloadButton)
             }
 
             else -> {

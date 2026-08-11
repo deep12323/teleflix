@@ -637,7 +637,14 @@ class MainActivity : AppCompatActivity() {
         val initialSpan = if (isLandscape) 4 else 2
         val gridLayoutManager = GridLayoutManager(this, initialSpan).apply {
             spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-                override fun getSpanSize(position: Int): Int = 1
+                override fun getSpanSize(position: Int): Int {
+                    val item = mediaList.getOrNull(position)
+                    val currentSpan = spanCount
+                    return when (item?.type) {
+                        "channel" -> currentSpan
+                        else -> 1
+                    }
+                }
             }
         }
         recyclerView = RecyclerView(this).apply {
