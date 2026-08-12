@@ -361,16 +361,24 @@ object TelegramRepository {
 
         val resultList = list.toList()
         if (resultList.isNotEmpty()) {
-            cachedJoinedChats = resultList
+                    cachedJoinedChats = resultList
         }
         return@coroutineScope resultList
     }
 
+    private const val TITLE_CACHE_PREFS = "teleflix_channel_titles"
+    private const val PHOTO_CACHE_PREFS = "teleflix_channel_photos"
+
     suspend fun getChatPhotoFileId(chatId: Long): Int? {
+        val context = getContext()
+        val prefs = context.getSharedPreferences(PHOTO_CACHE_PREFS, Context.MODE_PRIVATE)
+        val cachedPhotoId = prefs.getInt(chatId.toString(), -1)
+
         return try {
             val chat = TelegramClient.sendRequest(TdApi.GetChat(chatId)) as? TdApi.Chat
             val photoFileId = chat?.photo?.small?.id
             if (photoFileId != null && photoFileId > 0) {
+                prefs.edit().putInt(chatId.toString(), photoFileId).apply()
                 runCatching {
                     TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                         req.fileId = photoFileId
@@ -380,24 +388,45 @@ object TelegramRepository {
                         req.synchronous = false
                     })
                 }
-            }
-            photoFileId
-        } catch (_: Exception) { null }
+                photoFileId
+            } else if (cachedPhotoId > 0) {
+                cachedPhotoId
+            } else null
+        } catch (_: Exception) {
+            if (cachedPhotoId > 0) cachedPhotoId else null
+        }
     }
 
     suspend fun getChannelTitle(identifier: String): String {
-        val isNumeric = identifier.startsWith("-") || identifier.toLongOrNull() != null
-        val fallback = if (isNumeric) "Telegram Channel" else identifier
-        val chatId = getChatId(identifier) ?: return fallback
+        val clean = identifier.trim()
+        if (clean.isEmpty()) return "Telegram Channel"
+        val isNumeric = clean.startsWith("-") || clean.toLongOrNull() != null
+        val context = getContext()
+        val prefs = context.getSharedPreferences(TITLE_CACHE_PREFS, Context.MODE_PRIVATE)
+        val cachedTitle = prefs.getString(clean, null)
+
+        val fallback = if (cachedTitle != null && cachedTitle.isNotBlank() && cachedTitle != "Telegram Channel" && cachedTitle.toLongOrNull() == null) {
+            cachedTitle
+        } else if (isNumeric) {
+            "Telegram Channel"
+        } else {
+            clean
+        }
+
+        val chatId = getChatId(clean) ?: return fallback
+        val cachedByChatId = prefs.getString(chatId.toString(), null)
+        val bestFallback = if (fallback != "Telegram Channel") fallback else (cachedByChatId ?: fallback)
+
         return try {
             val chat = TelegramClient.sendRequest(TdApi.GetChat(chatId)) as? TdApi.Chat
             if (chat != null && chat.title.isNotBlank() && chat.title.toLongOrNull() == null && !chat.title.startsWith("-")) {
+                prefs.edit().putString(clean, chat.title).putString(chatId.toString(), chat.title).apply()
                 chat.title
             } else {
-                fallback
+                bestFallback
             }
         } catch (_: Exception) {
-            fallback
+            bestFallback
         }
     }
 

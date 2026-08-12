@@ -32,6 +32,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import org.drinkless.tdlib.TdApi
 import org.json.JSONArray
@@ -1224,6 +1226,15 @@ class MainActivity : AppCompatActivity() {
         categoryLabel.text = "Monitored Telegram Channels"
         categoryLabel.isClickable = false
         CoroutineScope(Dispatchers.IO).launch {
+            if (TelegramClient.authState.value !is TelegramAuthState.Ready) {
+                withTimeoutOrNull(4000L) {
+                    TelegramClient.authState.first { it is TelegramAuthState.Ready }
+                }
+            }
+            runCatching {
+                TelegramClient.sendRequest(TdApi.LoadChats(TdApi.ChatListMain(), 100))
+            }
+
             val channels = try {
                 TelegramRepository.getCustomChannels(this@MainActivity)
             } catch (e: Exception) {
@@ -1257,6 +1268,22 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     mediaList.addAll(channelItems)
                     mediaAdapter?.notifyDataSetChanged()
+                }
+
+                if (channelItems.any { it.title == "Telegram Channel" }) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        if (TelegramClient.authState.value !is TelegramAuthState.Ready) {
+                            withTimeoutOrNull(10000L) {
+                                TelegramClient.authState.first { it is TelegramAuthState.Ready }
+                            }
+                        }
+                        kotlinx.coroutines.delay(1000L)
+                        if (isTelegramCatalogMode && currentOpenChannelId == null) {
+                            withContext(Dispatchers.Main) {
+                                loadTelegramChannelsCatalog()
+                            }
+                        }
+                    }
                 }
             }
         }
