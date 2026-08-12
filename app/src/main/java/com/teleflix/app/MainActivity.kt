@@ -1255,7 +1255,7 @@ class MainActivity : AppCompatActivity() {
                     posterUrl = poster,
                     year = "Channel",
                     rating = "💬 Telegram",
-                    overview = "Tap to view video and audio content in $realTitle.",
+                    overview = "",
                     type = "channel"
                 )
             }
