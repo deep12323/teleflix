@@ -64,11 +64,19 @@ object TelegramStreamingProxy {
         return curr
     }
 
-    suspend fun refreshFileId(fileId: Int): Int? {
+    private val lastRefreshTimeMap = java.util.concurrent.ConcurrentHashMap<Int, Long>()
+
+    suspend fun refreshFileId(fileId: Int, force: Boolean = false): Int? {
         val target = resolveFileId(fileId)
         val pair = fileToMessageMap[target] ?: fileToMessageMap[fileId] ?: return null
         val (chatId, messageId) = pair
         if (chatId == 0L || messageId == 0L) return null
+        val now = System.currentTimeMillis()
+        val lastTime = lastRefreshTimeMap[target] ?: 0L
+        if (!force && (now - lastTime) < 2000L) {
+            return target
+        }
+        lastRefreshTimeMap[target] = now
         return try {
             val msg = TelegramClient.sendRequest(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message ?: return null
             val freshId = when (val content = msg.content) {
@@ -81,9 +89,11 @@ object TelegramStreamingProxy {
                 fileIdTranslationMap[fileId] = freshId
                 fileIdTranslationMap[target] = freshId
                 fileToMessageMap[freshId] = pair
+                fileToMessageMap[fileId] = pair
+                fileToMessageMap[target] = pair
                 TeleflixLogger.log(TAG, "Refreshed fileId from TDLib message lookup: original=$fileId -> fresh=$freshId")
                 freshId
-            } else null
+            } else target
         } catch (e: Exception) {
             TeleflixLogger.log(TAG, "Failed refreshFileId for fileId $fileId (chatId=$chatId, msgId=$messageId): ${e.message}")
             null
@@ -509,6 +519,12 @@ object TelegramStreamingProxy {
                 }
             }
             lastStreamedFileId = fileId
+
+            // Ensure TDLib message/file reference is pre-warmed if message mapping exists
+            val targetFileId = resolveFileId(fileId)
+            if (fileToMessageMap.containsKey(targetFileId) || fileToMessageMap.containsKey(fileId)) {
+                refreshFileId(targetFileId)
+            }
 
             // Get file info
             val fileInfo = getFileInfo(fileId)
@@ -1545,6 +1561,14 @@ object TelegramStreamingProxy {
                 // Check if download is active
                 val isDownloading = file?.local?.isDownloadingActive == true
 
+                // Pre-warm / refresh message if TDLib is not actively downloading
+                if ((attempts == 0 || !isDownloading) && fileMsgRef != null) {
+                    val refreshed = refreshFileId(activeFileId)
+                    if (refreshed != null && refreshed != 0) {
+                        activeFileId = refreshed
+                    }
+                }
+
                 // Re-trigger DownloadFile on attempt 0, when not actively downloading, or on periodic check
                 if (attempts == 0 || !isDownloading || attempts % 40 == 0) {
                     metrics?.chunksRetried = (metrics?.chunksRetried ?: 0) + 1
@@ -1553,14 +1577,24 @@ object TelegramStreamingProxy {
                     val alignedOffset = offset - (offset % (1024 * 1024))
                     val safeLimit = calculateSafeTdlibLimit(alignedOffset, totalSize, prefetchSizeMb, limit)
 
-                    // A real stall is when ReadFilePart gets no data for >10 seconds (attempts >= 200 with 50ms polling = ~10s)
-                    val isStalled = attempts >= 200 && attempts % 200 == 0
+                    // A real stall is when ReadFilePart gets no data for >5 seconds (attempts >= 100 with 50ms polling = ~5s)
+                    val isStalled = attempts >= 100 && attempts % 100 == 0
                     if (isStalled) {
-                        TeleflixLogger.log(TAG, "downloadChunk stall check for fileId=$activeFileId offset=$offset at attempt $attempts. Resetting TDLib TCP stream...")
+                        TeleflixLogger.log(TAG, "downloadChunk stall check for fileId=$activeFileId offset=$offset at attempt $attempts. Resetting TDLib stream & refreshing message location...")
+                        val refreshed = refreshFileId(activeFileId, force = true)
+                        if (refreshed != null && refreshed != 0) {
+                            activeFileId = refreshed
+                        }
                         if (!DownloadManager.isFileIdActive(activeFileId)) {
                             runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(activeFileId, false)) }
+                            if (activeFileId != fileId) {
+                                runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
+                            }
                         }
                         lastDownloadRequestOffset.remove(activeFileId)
+                        lastDownloadRequestTime.remove(activeFileId)
+                        lastDownloadRequestOffset.remove(fileId)
+                        lastDownloadRequestTime.remove(fileId)
                     }
 
                     val forceRequest = (attempts == 0 || isStalled || !isDownloading)
