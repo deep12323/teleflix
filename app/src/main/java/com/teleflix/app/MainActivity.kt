@@ -3724,7 +3724,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleItemLongPress(item: MediaItem): Boolean {
-        if (item.type == "channel" || item.id == "watch_history" || item.id == "settings") return false
+        if (item.id == "watch_history" || item.id == "settings") return false
+
+        if (item.type == "channel") {
+            AlertDialog.Builder(this)
+                .setTitle("Remove Monitored Channel")
+                .setMessage("Remove '${item.title}' from your monitored channels list?")
+                .setPositiveButton("Remove") { dialog, _ ->
+                    val currentChannels = TelegramRepository.getCustomChannels(this)
+                    val updatedChannels = currentChannels.filterNot { ch ->
+                        ch.equals(item.id, ignoreCase = true) ||
+                        ch.equals(item.title, ignoreCase = true) ||
+                        (ch.toLongOrNull() != null && ch.toLongOrNull() == item.id.toLongOrNull())
+                    }
+                    TelegramRepository.saveCustomChannels(this, updatedChannels)
+                    Toast.makeText(this, "Removed '${item.title}' from monitored channels", Toast.LENGTH_SHORT).show()
+                    loadTelegramChannelsCatalog()
+                    dialog.dismiss()
+                }
+                .setNegativeButton("Cancel") { dialog, _ ->
+                    dialog.dismiss()
+                }
+                .show()
+            return true
+        }
         
         val isLibraryTab = selectedCategory == "library/list"
         val isHistoryTab = selectedCategory == "history/list"
