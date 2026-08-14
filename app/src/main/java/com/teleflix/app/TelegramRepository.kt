@@ -95,11 +95,11 @@ object TelegramRepository {
         TelegramClient.initialize(context)
     }
 
-    fun getContext(context: Context? = null): Context? {
+    fun getContext(context: Context? = null): Context {
         if (appContext == null && context != null) {
             appContext = context.applicationContext
         }
-        return appContext
+        return appContext ?: throw IllegalStateException("TelegramRepository is not initialized with context")
     }
 
     fun isAuthenticated(): Boolean {
@@ -320,7 +320,7 @@ object TelegramRepository {
         if (!cachedJoinedChats.isNullOrEmpty()) {
             return cachedJoinedChats!!
         }
-        val ctx = getContext(context) ?: return emptyList()
+        val ctx = try { getContext(context) } catch (_: Exception) { null } ?: return emptyList()
         val prefs = ctx.getSharedPreferences(CHATS_CACHE_PREFS, Context.MODE_PRIVATE)
         val jsonStr = prefs.getString(KEY_CHATS_JSON, null) ?: return emptyList()
         return try {
@@ -351,7 +351,7 @@ object TelegramRepository {
     }
 
     private fun saveJoinedChatsCache(list: List<TelegramChatInfo>, context: Context? = null) {
-        val ctx = getContext(context) ?: return
+        val ctx = try { getContext(context) } catch (_: Exception) { null } ?: return
         val prefs = ctx.getSharedPreferences(CHATS_CACHE_PREFS, Context.MODE_PRIVATE)
         try {
             val array = JSONArray()
@@ -438,14 +438,14 @@ object TelegramRepository {
     private const val PHOTO_CACHE_PREFS = "teleflix_channel_photos"
 
     fun getCachedChatPhotoFileId(chatId: Long, context: Context? = null): Int? {
-        val ctx = getContext(context) ?: return null
+        val ctx = try { getContext(context) } catch (_: Exception) { null } ?: return null
         val prefs = ctx.getSharedPreferences(PHOTO_CACHE_PREFS, Context.MODE_PRIVATE)
         val cached = prefs.getInt(chatId.toString(), -1)
         return if (cached > 0) cached else null
     }
 
     suspend fun getChatPhotoFileId(chatId: Long): Int? {
-        val ctx = getContext() ?: return null
+        val ctx = try { getContext() } catch (_: Exception) { null } ?: return null
         val prefs = ctx.getSharedPreferences(PHOTO_CACHE_PREFS, Context.MODE_PRIVATE)
         val cachedPhotoId = prefs.getInt(chatId.toString(), -1)
 
@@ -476,7 +476,7 @@ object TelegramRepository {
         val clean = identifier.trim()
         if (clean.isEmpty()) return "Telegram Channel"
         val isNumeric = clean.startsWith("-") || clean.toLongOrNull() != null
-        val ctx = getContext(context) ?: return if (isNumeric) "Telegram Channel" else clean
+        val ctx = try { getContext(context) } catch (_: Exception) { null } ?: return if (isNumeric) "Telegram Channel" else clean
         val prefs = ctx.getSharedPreferences(TITLE_CACHE_PREFS, Context.MODE_PRIVATE)
         val cachedTitle = prefs.getString(clean, null)
         if (cachedTitle != null && cachedTitle.isNotBlank() && cachedTitle != "Telegram Channel" && cachedTitle.toLongOrNull() == null) {
