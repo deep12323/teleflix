@@ -120,6 +120,11 @@ class MainActivity : AppCompatActivity() {
             val parsed = idStr.toIntOrNull()
             if (parsed != null && parsed != 0) return listOf(parsed)
         }
+        if (url.contains("ids=")) {
+            val idsStr = url.substringAfter("ids=").substringBefore("&")
+            val ids = idsStr.split(",").mapNotNull { it.toIntOrNull() }.filter { it != 0 }
+            if (ids.isNotEmpty()) return ids
+        }
         return emptyList()
     }
 
@@ -4479,28 +4484,7 @@ class MainActivity : AppCompatActivity() {
         return extractFileIdsFromUrl(url).firstOrNull()
     }
 
-    private fun extractFileIdsFromUrl(url: String): List<Int> {
-        if (url.isBlank()) return emptyList()
-        val patterns = listOf("/file/", "/stream/", "/zip/", "/thumbnail/", "/merged/", "/playlist/")
-        for (pattern in patterns) {
-            if (url.contains(pattern)) {
-                val segment = url.substringAfter(pattern).substringBefore("/").substringBefore("?")
-                val ids = segment.split(",").mapNotNull { it.toIntOrNull() }.filter { it != 0 }
-                if (ids.isNotEmpty()) return ids
-            }
-        }
-        if (url.contains("fileId=")) {
-            val idStr = url.substringAfter("fileId=").substringBefore("&")
-            val parsed = idStr.toIntOrNull()
-            if (parsed != null && parsed != 0) return listOf(parsed)
-        }
-        if (url.contains("ids=")) {
-            val idsStr = url.substringAfter("ids=").substringBefore("&")
-            val ids = idsStr.split(",").mapNotNull { it.toIntOrNull() }.filter { it != 0 }
-            if (ids.isNotEmpty()) return ids
-        }
-        return emptyList()
-    }
+
 
     private fun downloadStreamSource(stream: StreamSource, displayTitle: String, posterUrl: String) {
         val cleanFileName = stream.fileName.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
