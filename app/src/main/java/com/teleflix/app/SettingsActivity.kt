@@ -1302,7 +1302,7 @@ class SettingsActivity : AppCompatActivity() {
 
         alertDialog.show()
 
-        var activeChatsList: List<TelegramChatInfo> = TelegramRepository.getCachedJoinedChatsInfo()
+        var activeChatsList: List<TelegramChatInfo> = TelegramRepository.getCachedJoinedChatsInfo(this@SettingsActivity)
 
         fun renderList(filterQuery: String = "") {
             chatListContainer.removeAllViews()

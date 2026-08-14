@@ -160,6 +160,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        TelegramRepository.initialize(this)
         if (savedInstanceState == null) {
             TeleflixLogger.clearLogsOnExit()
         }
@@ -1238,9 +1239,9 @@ class MainActivity : AppCompatActivity() {
 
         // 1. INSTANT FIRST PAINT FROM CACHE (<10ms)
         val cachedItems = channels.map { ch ->
-            val cachedTitle = TelegramRepository.getCachedChannelTitle(ch)
+            val cachedTitle = TelegramRepository.getCachedChannelTitle(ch, this@MainActivity)
             val numericId = ch.toLongOrNull()
-            val cachedPhotoId = if (numericId != null) TelegramRepository.getCachedChatPhotoFileId(numericId) else null
+            val cachedPhotoId = if (numericId != null) TelegramRepository.getCachedChatPhotoFileId(numericId, this@MainActivity) else null
             val poster = if (cachedPhotoId != null && cachedPhotoId > 0) {
                 TelegramStreamingProxy.getThumbnailUrl(cachedPhotoId)
             } else {
@@ -4193,7 +4194,7 @@ class MainActivity : AppCompatActivity() {
         alertDialog.window?.setLayout(dialogW, dialogH)
         alertDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.parseColor(UITheme.BACKGROUND)))
 
-        var activeChatsList: List<TelegramChatInfo> = TelegramRepository.getCachedJoinedChatsInfo()
+        var activeChatsList: List<TelegramChatInfo> = TelegramRepository.getCachedJoinedChatsInfo(this@MainActivity)
 
         fun renderList(filterQuery: String = "") {
             chatListContainer.removeAllViews()
