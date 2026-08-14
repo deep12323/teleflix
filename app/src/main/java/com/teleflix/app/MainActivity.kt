@@ -428,7 +428,14 @@ class MainActivity : AppCompatActivity() {
         // Media Grid
         mediaAdapter = MediaAdapter(mediaList, { item ->
             when (item.type) {
-                "channel" -> loadTelegramChannelMedia(item.id, item.title)
+                "channel" -> {
+                    val gridManager = recyclerView.layoutManager as? GridLayoutManager
+                    val pos = gridManager?.findFirstVisibleItemPosition() ?: 0
+                    val topOffset = gridManager?.findViewByPosition(pos)?.top ?: 0
+                    savedChannelsCatalogPos = pos
+                    savedChannelsCatalogOffset = topOffset
+                    loadTelegramChannelMedia(item.id, item.title)
+                }
                 "topic" -> loadTelegramTopicMedia(item.id, item.title)
                 "history_group" -> showHistoryGroupFilesPicker(item)
                 "telegram_media" -> {
@@ -1315,21 +1322,31 @@ class MainActivity : AppCompatActivity() {
 
             withContext(Dispatchers.Main) {
                 if (isTelegramCatalogMode && currentOpenChannelId == null) {
-                    val gridManager = recyclerView.layoutManager as? GridLayoutManager
-                    val currentScrollState = gridManager?.onSaveInstanceState()
-                    val firstPos = gridManager?.findFirstVisibleItemPosition() ?: -1
-                    val firstView = gridManager?.findViewByPosition(firstPos)
-                    val offset = firstView?.top ?: 0
+                    var changed = mediaList.size != freshChannelItems.size
+                    if (!changed) {
+                        for (i in freshChannelItems.indices) {
+                            if (mediaList[i].id != freshChannelItems[i].id ||
+                                mediaList[i].title != freshChannelItems[i].title ||
+                                mediaList[i].posterUrl != freshChannelItems[i].posterUrl) {
+                                changed = true
+                                break
+                            }
+                        }
+                    }
 
-                    loadingText.visibility = android.view.View.GONE
-                    mediaList.clear()
-                    mediaList.addAll(freshChannelItems)
-                    mediaAdapter?.notifyDataSetChanged()
+                    if (changed) {
+                        val gridManager = recyclerView.layoutManager as? GridLayoutManager
+                        val firstPos = savedChannelsCatalogPos.takeIf { it >= 0 } ?: (gridManager?.findFirstVisibleItemPosition() ?: -1)
+                        val offset = if (savedChannelsCatalogPos >= 0) savedChannelsCatalogOffset else (gridManager?.findViewByPosition(firstPos)?.top ?: 0)
 
-                    if (currentScrollState != null) {
-                        gridManager?.onRestoreInstanceState(currentScrollState)
-                    } else if (firstPos >= 0) {
-                        gridManager?.scrollToPositionWithOffset(firstPos, offset)
+                        loadingText.visibility = android.view.View.GONE
+                        mediaList.clear()
+                        mediaList.addAll(freshChannelItems)
+                        mediaAdapter?.notifyDataSetChanged()
+
+                        if (firstPos >= 0) {
+                            gridManager?.scrollToPositionWithOffset(firstPos, offset)
+                        }
                     }
                 }
             }
