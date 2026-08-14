@@ -388,29 +388,32 @@ object TelegramRepository {
             Pair(TdApi.ChatListMain(), false)
         )
 
-        for (listPair in chatLists) {
-            val chatList = listPair.first
-            val isArchived = listPair.second
+        val listTasks = chatLists.map { listPair ->
+            async(Dispatchers.IO) {
+                val chatList = listPair.first
+                val isArchived = listPair.second
 
-            try {
-                TelegramClient.sendRequest(TdApi.LoadChats(chatList, 100))
-            } catch (_: Exception) {}
+                try {
+                    TelegramClient.sendRequest(TdApi.LoadChats(chatList, 100))
+                } catch (_: Exception) {}
 
-            val chatsObj = (try {
-                TelegramClient.sendRequest(TdApi.GetChats(chatList, 500))
-            } catch (_: Exception) { null }) as? TdApi.Chats
+                val chatsObj = (try {
+                    TelegramClient.sendRequest(TdApi.GetChats(chatList, 500))
+                } catch (_: Exception) { null }) as? TdApi.Chats
 
-            if (chatsObj != null) {
-                val unvisitedIds = chatsObj.chatIds.filter { seen.add(it) }
-                val tasks = unvisitedIds.map { id ->
-                    async(Dispatchers.IO) {
-                        fetchChatDetails(id, isArchived)
+                if (chatsObj != null) {
+                    val unvisitedIds = chatsObj.chatIds.filter { seen.add(it) }
+                    val tasks = unvisitedIds.map { id ->
+                        async(Dispatchers.IO) {
+                            fetchChatDetails(id, isArchived)
+                        }
                     }
-                }
-                val results = tasks.awaitAll().filterNotNull()
-                list.addAll(results)
+                    tasks.awaitAll().filterNotNull()
+                } else emptyList()
             }
         }
+        val subLists = listTasks.awaitAll()
+        subLists.forEach { list.addAll(it) }
 
         try {
             val serverChats = TelegramClient.sendRequest(TdApi.SearchChatsOnServer("", 100)) as? TdApi.Chats
