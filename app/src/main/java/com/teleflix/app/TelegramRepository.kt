@@ -288,12 +288,13 @@ object TelegramRepository {
 
         val photoFileId = chat.photo?.small?.id
         if (photoFileId != null && photoFileId > 0) {
+            val photoSize = chat.photo?.small?.expectedSize?.toLong() ?: (100 * 1024L)
             runCatching {
                 TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                     req.fileId = photoFileId
                     req.priority = 1
                     req.offset = 0
-                    req.limit = 0
+                    req.limit = if (photoSize in 1..2_097_152L) photoSize else 100 * 1024L
                     req.synchronous = false
                 })
             }
