@@ -4486,11 +4486,7 @@ class MainActivity : AppCompatActivity() {
 
         val fileId = extractFileIdFromUrl(stream.url)
         if (fileId != null && fileId != 0) {
-            val fileName = when {
-                cleanFileName.isNotBlank() && cleanFileName.contains(".") -> cleanFileName
-                cleanDisplayTitle.contains(".") -> cleanDisplayTitle
-                else -> "$cleanDisplayTitle.mp4"
-            }
+            val fileName = DownloadManager.sanitizeFileName(cleanFileName.ifBlank { cleanDisplayTitle })
             val messageId = stream.id.split("_").getOrNull(1)?.toLongOrNull() ?: 0L
             val chatId = if (stream.chatId != 0L) stream.chatId else stream.id.split("_").getOrNull(0)?.toLongOrNull() ?: 0L
             DownloadManager.startDownload(
@@ -4590,7 +4586,7 @@ class MainActivity : AppCompatActivity() {
                 dialog?.dismiss()
                 finalParts.forEachIndexed { idx, part ->
                     val partTitle = "${cleanTitle} (Part ${idx + 1})"
-                    val fileName = part.fileName.ifBlank { "${cleanTitle}_part${idx + 1}.mp4" }
+                    val fileName = DownloadManager.sanitizeFileName(part.fileName.ifBlank { "${cleanTitle}_part${idx + 1}" })
                     DownloadManager.startDownload(this@MainActivity, partTitle, fileName, part.fileId, part.chatId, part.messageId, item.posterUrl, part.fileSize)
                 }
                 Toast.makeText(this@MainActivity, "Started downloading ${finalParts.size} separate parts 📥", Toast.LENGTH_SHORT).show()
@@ -4635,7 +4631,8 @@ class MainActivity : AppCompatActivity() {
                 isClickable = true
                 setOnClickListener {
                     dialog?.dismiss()
-                    DownloadManager.startDownload(this@MainActivity, "${cleanTitle} - ${partTitle}", partTitle, part.fileId, part.chatId, part.messageId, item.posterUrl, part.fileSize)
+                    val fileName = DownloadManager.sanitizeFileName(partTitle)
+                    DownloadManager.startDownload(this@MainActivity, "${cleanTitle} - ${partTitle}", fileName, part.fileId, part.chatId, part.messageId, item.posterUrl, part.fileSize)
                     Toast.makeText(this@MainActivity, "Started downloading ${partTitle} 📥", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -4729,7 +4726,7 @@ class MainActivity : AppCompatActivity() {
         val fileId = extractFileIdFromUrl(rawUrl)
 
         if (fileId != null && fileId != 0) {
-            val fileName = item.originalFileName.ifBlank { "$cleanTitle.mp4" }
+            val fileName = DownloadManager.sanitizeFileName(item.originalFileName.ifBlank { cleanTitle })
             val rest = item.id.removePrefix("single_").removePrefix("stream_")
             val parts = rest.split("_")
             val chatId = parts.getOrNull(0)?.toLongOrNull() ?: 0L
@@ -4749,7 +4746,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (item.type == "telegram_media" || item.streamUrl.contains("/stream") || item.streamUrl.contains("http") || item.id.contains("_")) {
-            val fileName = item.originalFileName.ifBlank { "$cleanTitle.mp4" }
+            val fileName = DownloadManager.sanitizeFileName(item.originalFileName.ifBlank { cleanTitle })
             val rest = item.id.removePrefix("single_").removePrefix("stream_")
             val parts = rest.split("_")
             val chatId = parts.getOrNull(0)?.toLongOrNull() ?: 0L

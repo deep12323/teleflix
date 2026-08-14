@@ -90,15 +90,20 @@ object DownloadManager {
                             for (j in 0 until fnArr.length()) partFileNames.add(fnArr.getString(j))
                         }
 
+                        val rawLocalPath = obj.optString("localPath", "")
+                        val rawFileName = obj.optString("fileName", "")
+                        val cleanLocal = cleanFilePath(rawLocalPath)
+                        val cleanName = sanitizeFileName(if (rawFileName.isNotBlank()) rawFileName else cleanLocal)
+
                         val item = DownloadItem(
                             id = obj.getString("id"),
                             title = obj.getString("title"),
-                            fileName = obj.getString("fileName"),
+                            fileName = cleanName,
                             fileId = obj.getInt("fileId"),
                             chatId = obj.optLong("chatId", 0L),
                             messageId = obj.optLong("messageId", 0L),
                             posterUrl = obj.optString("posterUrl", ""),
-                            localPath = obj.optString("localPath", ""),
+                            localPath = cleanLocal,
                             totalBytes = obj.optLong("totalBytes", 0L),
                             downloadedBytes = obj.optLong("downloadedBytes", 0L),
                             status = if (status == DownloadStatus.DOWNLOADING) DownloadStatus.PAUSED else status,
@@ -204,6 +209,38 @@ object DownloadManager {
         return getActiveDownloadsDir(context).absolutePath
     }
 
+    fun sanitizeFileName(rawName: String, defaultExt: String = "mp4"): String {
+        if (rawName.isBlank()) return "download.$defaultExt"
+        var clean = rawName
+            .removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ")
+            .removePrefix("Select:").removePrefix("Select").trim()
+        if (clean.isBlank()) return "download.$defaultExt"
+
+        // Fix double extensions like .mp3.mp4, .mkv.mp4, .mp4.mp4, .avi.mp4, .zip.mp4, etc.
+        val doubleExtRegex = Regex("""(?i)\.(mp3|mp4|mkv|avi|mov|wmv|flv|webm|m4a|aac|flac|ogg|wav|m3u8|ts|zip|rar|7z|apk|pdf|srt|vtt|ass)\.(mp4|mkv|avi)$""")
+        while (doubleExtRegex.containsMatchIn(clean)) {
+            clean = clean.replace(doubleExtRegex) { matchResult ->
+                "." + matchResult.groupValues[1]
+            }
+        }
+
+        // Check if filename already has a valid file extension (e.g. .mp3, .mp4, .mkv, .avi, etc.)
+        val hasExtRegex = Regex("""\.[a-zA-Z0-9]{2,5}$""", RegexOption.IGNORE_CASE)
+        if (hasExtRegex.containsMatchIn(clean)) {
+            return clean
+        }
+
+        return "$clean.$defaultExt"
+    }
+
+    fun cleanFilePath(path: String): String {
+        if (path.isBlank()) return path
+        val file = File(path)
+        val parent = file.parentFile
+        val cleanName = sanitizeFileName(file.name)
+        return if (parent != null) File(parent, cleanName).absolutePath else cleanName
+    }
+
     fun startDownload(
         context: Context,
         title: String,
@@ -215,15 +252,16 @@ object DownloadManager {
         totalBytes: Long = 0L
     ): DownloadItem {
         val downloadId = if (chatId != 0L && messageId != 0L) "${chatId}_${messageId}" else fileId.toString()
-        
+        val cleanName = sanitizeFileName(if (fileName.isNotBlank()) fileName else title, defaultExt = "mp4")
+
         synchronized(downloadsMap) {
             val existing = downloadsMap[downloadId]
-            if (existing != null && existing.status == DownloadStatus.COMPLETED && File(existing.localPath).exists()) {
+            if (existing != null && existing.status == DownloadStatus.COMPLETED && File(cleanFilePath(existing.localPath)).exists()) {
                 return existing
             }
 
             val downloadsDir = getActiveDownloadsDir(context)
-            val destFile = File(downloadsDir, fileName.ifBlank { "video_$fileId.mp4" })
+            val destFile = File(downloadsDir, cleanName)
 
             val isAnotherActive = downloadsMap.values.any { it.status == DownloadStatus.DOWNLOADING }
             val initialStatus = if (isAnotherActive) DownloadStatus.QUEUED else DownloadStatus.DOWNLOADING
@@ -231,7 +269,7 @@ object DownloadManager {
             val item = DownloadItem(
                 id = downloadId,
                 title = title,
-                fileName = fileName,
+                fileName = cleanName,
                 fileId = fileId,
                 chatId = chatId,
                 messageId = messageId,
@@ -321,9 +359,7 @@ object DownloadManager {
             val cleanTitle = title.removePrefix("📦 ").removePrefix("🗄️ ").trim()
             val cleanBaseName = baseName.removePrefix("📦 ").removePrefix("🗄️ ").trim()
 
-            val ext = if (cleanBaseName.contains(".")) cleanBaseName.substringAfterLast('.') else "mkv"
-            val rawName = if (cleanBaseName.contains(".")) cleanBaseName.substringBeforeLast('.') else cleanBaseName
-            val destFileName = "$rawName.$ext"
+            val destFileName = sanitizeFileName(cleanBaseName, defaultExt = "mkv")
 
             val downloadsDir = getActiveDownloadsDir(context)
             val destFile = File(downloadsDir, destFileName)
@@ -1078,11 +1114,8 @@ object DownloadManager {
                             if (tdlibPath.isNotBlank()) {
                                 try {
                                     val source = File(tdlibPath)
-                                    val cleanPath = if (item.localPath.endsWith(".mp4.mp4", ignoreCase = true)) {
-                                        item.localPath.substring(0, item.localPath.length - 4)
-                                    } else {
-                                        item.localPath
-                                    }
+                                    val cleanPath = cleanFilePath(item.localPath)
+                                    item.localPath = cleanPath
                                     val target = File(cleanPath)
                                     if (target.parentFile?.exists() == false) {
                                         target.parentFile?.mkdirs()
