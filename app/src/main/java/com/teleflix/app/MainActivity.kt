@@ -4398,7 +4398,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-    }
 
     override fun onBackPressed() {
         if (currentOpenChannelId != null) {
