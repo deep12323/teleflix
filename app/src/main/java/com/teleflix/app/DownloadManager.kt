@@ -552,23 +552,22 @@ object DownloadManager {
                 } else if (fileObj.local.downloadedSize > 0 && !fileObj.local.isDownloadingCompleted) {
                     val lastIncrease = lastBytesIncreaseTimeMap[item.id] ?: now
                     val stallDuration = now - lastIncrease
-                    if (stallDuration > 25000L) {
+                    val isNearComp = (item.totalBytes > 0 && fileObj.local.downloadedSize >= (item.totalBytes - 25 * 1024 * 1024)) ||
+                                     (fileObj.expectedSize > 0 && fileObj.local.downloadedSize >= (fileObj.expectedSize - 25 * 1024 * 1024))
+                    if (stallDuration > 25000L && !isNearComp) {
                         lastBytesIncreaseTimeMap[item.id] = now
-                        TeleflixLogger.log(TAG, "[DownloadManager] Frozen socket detected for '${item.title}' at ${fileObj.local.downloadedSize} bytes (stalled >25s). Resetting TDLib connection for fileId=$currentFileId...")
+                        TeleflixLogger.log(TAG, "[DownloadManager] Frozen socket detected for '${item.title}' at ${fileObj.local.downloadedSize} bytes (stalled >25s). Resetting socket connection for fileId=$currentFileId...")
                         try {
-                            TelegramClient.sendRequest(TdApi.CancelDownloadFile(currentFileId, false))
-                            val res = if (item.chatId != 0L && item.messageId != 0L) {
-                                TelegramClient.sendRequest(TdApi.AddFileToDownloads(currentFileId, item.chatId, item.messageId, 32))
-                            } else {
-                                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                    req.fileId = currentFileId
-                                    req.priority = 32
-                                    req.offset = 0
-                                    req.limit = 0
-                                    req.synchronous = false
-                                })
-                            }
-                            TeleflixLogger.log(TAG, "[DownloadManager] Re-issued AddFileToDownloads after hard stall recovery for fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
+                            TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(currentFileId, true))
+                            TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(currentFileId, false))
+                            val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                req.fileId = currentFileId
+                                req.priority = 32
+                                req.offset = fileObj.local.downloadedSize.toInt().coerceAtLeast(0)
+                                req.limit = 0
+                                req.synchronous = false
+                            })
+                            TeleflixLogger.log(TAG, "[DownloadManager] Soft-reset socket connection after stall for fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
                         } catch (e: Exception) {
                             TeleflixLogger.log(TAG, "Failed stall recovery download request for $currentFileId: ${e.message}", isError = true)
                         }
@@ -576,23 +575,26 @@ object DownloadManager {
                 }
 
                 val lastPing = lastDownloadRetryTimeMap[currentFileId] ?: 0L
-                if (!fileObj.local.isDownloadingCompleted && !fileObj.local.isDownloadingActive) {
-                    if (now - lastPing > 1000L) {
+                val isNearCompletion = (item.totalBytes > 0 && fileObj.local.downloadedSize >= (item.totalBytes - 25 * 1024 * 1024)) ||
+                                       (fileObj.expectedSize > 0 && fileObj.local.downloadedSize >= (fileObj.expectedSize - 25 * 1024 * 1024))
+
+                if (!fileObj.local.isDownloadingCompleted && !fileObj.local.isDownloadingActive && !isNearCompletion) {
+                    if (now - lastPing > 15000L) {
                         lastDownloadRetryTimeMap[currentFileId] = now
                         try {
                             TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(currentFileId, false))
-                            val res = if (item.chatId != 0L && item.messageId != 0L) {
+                            val res = if (fileObj.local.downloadedSize == 0L && item.chatId != 0L && item.messageId != 0L) {
                                 TelegramClient.sendRequest(TdApi.AddFileToDownloads(currentFileId, item.chatId, item.messageId, 32))
                             } else {
                                 TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                                     req.fileId = currentFileId
                                     req.priority = 32
-                                    req.offset = 0
+                                    req.offset = fileObj.local.downloadedSize.toInt().coerceAtLeast(0)
                                     req.limit = 0
                                     req.synchronous = false
                                 })
                             }
-                            TeleflixLogger.log(TAG, "Re-triggered active download for fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
+                            TeleflixLogger.log(TAG, "Re-triggered active download for fileId=$currentFileId at ${fileObj.local.downloadedSize} bytes: res=${res?.javaClass?.simpleName}")
                         } catch (e: Exception) {
                             TeleflixLogger.log(TAG, "Failed download re-trigger request for $currentFileId: ${e.message}", isError = true)
                             if (item.chatId != 0L && item.messageId != 0L) {
@@ -746,47 +748,48 @@ object DownloadManager {
                     } else if (fileObj.local.downloadedSize > 0 && !fileObj.local.isDownloadingCompleted) {
                         val lastIncrease = lastBytesIncreaseTimeMap[partKey] ?: now
                         val stallDuration = now - lastIncrease
-                        if (stallDuration > 25000L) {
+                        val isNearComp = (expectedPartSize > 0 && fileObj.local.downloadedSize >= (expectedPartSize - 20 * 1024 * 1024))
+                        if (stallDuration > 25000L && !isNearComp) {
                             lastBytesIncreaseTimeMap[partKey] = now
-                            TeleflixLogger.log(TAG, "[DownloadManager] Multipart frozen socket detected for '${item.title}' (Part ${idx + 1}/${item.partFileIds.size}) at ${fileObj.local.downloadedSize} bytes (stalled >25s). Resetting TDLib connection for partFileId=$partFileId...")
+                            TeleflixLogger.log(TAG, "[DownloadManager] Multipart frozen socket detected for '${item.title}' (Part ${idx + 1}/${item.partFileIds.size}) at ${fileObj.local.downloadedSize} bytes (stalled >25s). Soft-resetting connection for partFileId=$partFileId...")
                             try {
-                                TelegramClient.sendRequest(TdApi.CancelDownloadFile(partFileId, false))
-                                val res = if (chatId != 0L && messageId != 0L) {
-                                    TelegramClient.sendRequest(TdApi.AddFileToDownloads(partFileId, chatId, messageId, 32))
-                                } else {
-                                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                        req.fileId = partFileId
-                                        req.priority = 32
-                                        req.offset = 0
-                                        req.limit = 0
-                                        req.synchronous = false
-                                    })
-                                }
-                                TeleflixLogger.log(TAG, "[DownloadManager] Re-issued AddFileToDownloads after hard stall recovery for partFileId=$partFileId: res=${res?.javaClass?.simpleName}")
+                                TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(partFileId, true))
+                                TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(partFileId, false))
+                                val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                    req.fileId = partFileId
+                                    req.priority = 32
+                                    req.offset = fileObj.local.downloadedSize.toInt().coerceAtLeast(0)
+                                    req.limit = 0
+                                    req.synchronous = false
+                                })
+                                TeleflixLogger.log(TAG, "[DownloadManager] Soft-reset connection for partFileId=$partFileId: res=${res?.javaClass?.simpleName}")
                             } catch (e: Exception) {
                                 TeleflixLogger.log(TAG, "Failed stall recovery download request for partFileId=$partFileId: ${e.message}", isError = true)
                             }
+                        }
                     }
                 }
 
                 val lastPing = lastDownloadRetryTimeMap[partFileId] ?: 0L
-                if (!fileObj.local.isDownloadingCompleted && !fileObj.local.isDownloadingActive) {
-                    if (now - lastPing > 1000L) {
+                val isNearCompletion = (expectedPartSize > 0 && fileObj.local.downloadedSize >= (expectedPartSize - 20 * 1024 * 1024))
+
+                if (!fileObj.local.isDownloadingCompleted && !fileObj.local.isDownloadingActive && !isNearCompletion) {
+                    if (now - lastPing > 15000L) {
                         lastDownloadRetryTimeMap[partFileId] = now
                         try {
                             TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(partFileId, false))
-                            val res = if (chatId != 0L && messageId != 0L) {
+                            val res = if (fileObj.local.downloadedSize == 0L && chatId != 0L && messageId != 0L) {
                                 TelegramClient.sendRequest(TdApi.AddFileToDownloads(partFileId, chatId, messageId, 32))
                             } else {
                                 TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                                     req.fileId = partFileId
                                     req.priority = 32
-                                    req.offset = 0
+                                    req.offset = fileObj.local.downloadedSize.toInt().coerceAtLeast(0)
                                     req.limit = 0
                                     req.synchronous = false
                                 })
                             }
-                            TeleflixLogger.log(TAG, "Re-triggered multipart active download for partFileId=$partFileId: res=${res?.javaClass?.simpleName}")
+                            TeleflixLogger.log(TAG, "Re-triggered multipart active download for partFileId=$partFileId at ${fileObj.local.downloadedSize} bytes: res=${res?.javaClass?.simpleName}")
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
                             if (chatId != 0L && messageId != 0L) {
@@ -862,9 +865,14 @@ object DownloadManager {
                 item.downloadedBytes = item.totalBytes
                 item.speedBytesPerSec = 0L
                 resetSpeedTracking(item.id)
+                item.partFileIds.forEach { partId ->
+                    if (partId != 0) {
+                        runCatching { TelegramClient.deleteFile(partId) }
+                    }
+                }
                 saveToPrefs(context)
                 updateFlow()
-                Log.d(TAG, "Successfully merged all ${item.partFileIds.size} parts for ${item.title} into ${item.localPath}")
+                TeleflixLogger.log(TAG, "Successfully merged all ${item.partFileIds.size} parts and purged TDLib part caches for '${item.title}'")
                 processNextQueuedItem(context)
             } catch (e: Exception) {
                 Log.e(TAG, "Error merging multipart download: ${e.message}", e)
@@ -1123,6 +1131,13 @@ object DownloadManager {
                                     if (source.exists() && source.absolutePath != target.absolutePath) {
                                         fastCopyFile(source, target)
                                         TeleflixLogger.log(TAG, "Copied completed download to ${target.absolutePath}")
+                                        if (target.exists() && target.length() > 0) {
+                                            runCatching { TelegramClient.deleteFile(item.fileId) }
+                                            if (source.exists()) {
+                                                runCatching { source.delete() }
+                                            }
+                                            TeleflixLogger.log(TAG, "Purged internal TDLib download cache for completed fileId=${item.fileId}")
+                                        }
                                     }
                                 } catch (e: Exception) {
                                     TeleflixLogger.log(TAG, "Failed copying completed download: ${e.message}", isError = true)
