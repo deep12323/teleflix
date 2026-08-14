@@ -11,12 +11,12 @@ enum class DownloadStatus {
 data class DownloadItem(
     val id: String,                  // Unique ID (e.g. fileId or chatId_messageId)
     val title: String,               // Movie / Episode title
-    val fileName: String,            // Destination file name
+    var fileName: String,            // Destination file name
     var fileId: Int,                 // TDLib File ID
     val chatId: Long = 0L,           // Telegram Chat ID
     val messageId: Long = 0L,        // Telegram Message ID
     val posterUrl: String = "",      // Poster image URL or empty
-    val localPath: String = "",      // Local file path on disk
+    var localPath: String = "",      // Local file path on disk
     var totalBytes: Long = 0L,       // Total size in bytes
     var downloadedBytes: Long = 0L,  // Downloaded bytes so far
     var speedBytesPerSec: Long = 0L, // Current download speed
