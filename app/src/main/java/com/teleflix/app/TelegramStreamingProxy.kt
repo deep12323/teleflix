@@ -1376,6 +1376,12 @@ object TelegramStreamingProxy {
     }
 
     private suspend fun serveThumbnail(fileId: Int, output: java.io.OutputStream, isHead: Boolean = false) {
+        if (fileId <= 0) {
+            output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
+            output.flush()
+            return
+        }
+
         // 1. Check RAM LRU Cache (Instant 0.1ms response)
         val cachedBytes = thumbnailMemoryCache.get(fileId)
         if (cachedBytes != null) {
@@ -1392,6 +1398,14 @@ object TelegramStreamingProxy {
         // 2. Check local disk path from TDLib (Instant 1ms response)
         val fileInfo = getFileInfo(fileId)
         val localPath = fileInfo?.first
+        val expectedSize = fileInfo?.second ?: 0L
+
+        // Safety check: Thumbnail files should never be > 5 MB (videos/documents are large files)
+        if (expectedSize > 5 * 1024 * 1024L) {
+            output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
+            output.flush()
+            return
+        }
 
         if (localPath != null && localPath.isNotBlank()) {
             val file = java.io.File(localPath)
@@ -1411,20 +1425,21 @@ object TelegramStreamingProxy {
             }
         }
 
-        // 3. Trigger top-priority download and poll file completion directly
+        // 3. Trigger capped-limit thumbnail download (512 KB max) instead of 0 (unlimited EOF)
+        val thumbLimit = if (expectedSize in 1..5_242_880L) expectedSize else 512 * 1024L
         runCatching {
             TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                 req.fileId = fileId
-                req.priority = 32
+                req.priority = 8
                 req.offset = 0
-                req.limit = 0
+                req.limit = thumbLimit
                 req.synchronous = false
             })
         }
 
         var downloadedFile: java.io.File? = null
         var attempts = 0
-        while (attempts < 60 && running) {
+        while (attempts < 40 && running) {
             val f = try { TelegramClient.sendRequest(TdApi.GetFile(fileId)) as? TdApi.File } catch (_: Exception) { null }
             if (f?.local?.isDownloadingCompleted == true && !f.local.path.isNullOrBlank()) {
                 val diskFile = java.io.File(f.local.path)
@@ -1437,21 +1452,27 @@ object TelegramStreamingProxy {
             attempts++
         }
 
-        if (downloadedFile != null) {
-            val length = downloadedFile.length()
-            if (length <= 2 * 1024 * 1024L) {
-                runCatching { thumbnailMemoryCache.put(fileId, downloadedFile.readBytes()) }
-            }
-            val headers = "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: $length\r\nConnection: keep-alive\r\n\r\n"
-            output.write(headers.toByteArray())
-            output.flush()
-            if (!isHead) {
-                downloadedFile.inputStream().use { input -> input.copyTo(output, bufferSize = 64 * 1024) }
+        try {
+            if (downloadedFile != null) {
+                val length = downloadedFile.length()
+                if (length <= 2 * 1024 * 1024L) {
+                    runCatching { thumbnailMemoryCache.put(fileId, downloadedFile.readBytes()) }
+                }
+                val headers = "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: $length\r\nConnection: keep-alive\r\n\r\n"
+                output.write(headers.toByteArray())
+                output.flush()
+                if (!isHead) {
+                    downloadedFile.inputStream().use { input -> input.copyTo(output, bufferSize = 64 * 1024) }
+                    output.flush()
+                }
+            } else {
+                output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
                 output.flush()
             }
-        } else {
-            output.write("HTTP/1.1 404 Not Found\r\n\r\n".toByteArray())
-            output.flush()
+        } finally {
+            if (!DownloadManager.isFileIdActive(fileId)) {
+                runCatching { TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false)) }
+            }
         }
     }
 
