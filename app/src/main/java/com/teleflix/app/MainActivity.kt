@@ -4890,25 +4890,24 @@ class MainActivity : AppCompatActivity() {
         downloadsObserveJob?.cancel()
         downloadsObserveJob = CoroutineScope(Dispatchers.Main).launch {
             DownloadManager.downloadsFlow.collect { downloads ->
+                val activeDownloads = downloads.filter { it.status != DownloadStatus.COMPLETED }
                 itemsListLayout.removeAllViews()
-                if (downloads.isEmpty()) {
-                    summaryText.text = "📥 0 Downloads • 0 B Available Offline"
+                if (activeDownloads.isEmpty()) {
+                    summaryText.text = "📥 0 Active Downloads"
                     clearAllBtn.visibility = android.view.View.GONE
                     val emptyView = TextView(context).apply {
-                        text = "No active or saved downloads.\nTap 📥 on any movie card to start downloading!"
+                        text = "No active or paused downloads.\nTap 📥 on any movie card to start downloading!"
                         UITheme.applyMetadataStyle(this)
                         gravity = android.view.Gravity.CENTER
                         setPadding(0, dp(50), 0, dp(50))
                     }
                     itemsListLayout.addView(emptyView)
                 } else {
-                    val completedCount = downloads.count { it.status == DownloadStatus.COMPLETED }
-                    val totalBytes = downloads.sumOf { if (it.status == DownloadStatus.COMPLETED) it.downloadedBytes else 0L }
-                    val totalSizeStr = formatFileSize(totalBytes)
-                    summaryText.text = "📥 $completedCount/${downloads.size} Downloads • $totalSizeStr Available Offline"
+                    val activeCount = activeDownloads.count { it.status == DownloadStatus.DOWNLOADING }
+                    summaryText.text = "📥 $activeCount/${activeDownloads.size} Active/Paused Downloads"
                     clearAllBtn.visibility = android.view.View.VISIBLE
 
-                    for (item in downloads) {
+                    for (item in activeDownloads) {
                         val card = createDownloadItemCard(context, item, dialog)
                         itemsListLayout.addView(card)
                     }
