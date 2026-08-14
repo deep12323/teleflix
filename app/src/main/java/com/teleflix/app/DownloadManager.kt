@@ -563,7 +563,7 @@ object DownloadManager {
                             val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                                 req.fileId = currentFileId
                                 req.priority = 32
-                                req.offset = fileObj.local.downloadedSize.toInt().coerceAtLeast(0)
+                                req.offset = fileObj.local.downloadedSize.coerceAtLeast(0L)
                                 req.limit = 0
                                 req.synchronous = false
                             })
@@ -589,7 +589,7 @@ object DownloadManager {
                                 TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                                     req.fileId = currentFileId
                                     req.priority = 32
-                                    req.offset = fileObj.local.downloadedSize.toInt().coerceAtLeast(0)
+                                    req.offset = fileObj.local.downloadedSize.coerceAtLeast(0L)
                                     req.limit = 0
                                     req.synchronous = false
                                 })
@@ -758,7 +758,7 @@ object DownloadManager {
                                 val res = TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                                     req.fileId = partFileId
                                     req.priority = 32
-                                    req.offset = fileObj.local.downloadedSize.toInt().coerceAtLeast(0)
+                                    req.offset = fileObj.local.downloadedSize.coerceAtLeast(0L)
                                     req.limit = 0
                                     req.synchronous = false
                                 })
@@ -784,7 +784,7 @@ object DownloadManager {
                                 TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
                                     req.fileId = partFileId
                                     req.priority = 32
-                                    req.offset = fileObj.local.downloadedSize.toInt().coerceAtLeast(0)
+                                    req.offset = fileObj.local.downloadedSize.coerceAtLeast(0L)
                                     req.limit = 0
                                     req.synchronous = false
                                 })
@@ -806,7 +806,6 @@ object DownloadManager {
                             }
                         }
                     }
-                }
                 }
                 updateFlow()
             } else {
