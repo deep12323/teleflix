@@ -1270,16 +1270,19 @@ class SettingsActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, UITheme.dpToPx(this@SettingsActivity, 350))
         }
 
+        var activeChatsList: List<TelegramChatInfo> = TelegramRepository.getCachedJoinedChatsInfo(this@SettingsActivity)
+        val hasCachedChats = activeChatsList.isNotEmpty()
+
         val loadingIndicator = ProgressBar(this).apply {
             isIndeterminate = true
-            visibility = android.view.View.VISIBLE
+            visibility = if (hasCachedChats) android.view.View.GONE else android.view.View.VISIBLE
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER)
         }
         contentContainer.addView(loadingIndicator)
 
         val scrollView = ScrollView(this).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            visibility = android.view.View.GONE
+            visibility = if (hasCachedChats) android.view.View.VISIBLE else android.view.View.GONE
         }
         val chatListContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1299,10 +1302,6 @@ class SettingsActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .create()
-
-        alertDialog.show()
-
-        var activeChatsList: List<TelegramChatInfo> = TelegramRepository.getCachedJoinedChatsInfo(this@SettingsActivity)
 
         fun renderList(filterQuery: String = "") {
             chatListContainer.removeAllViews()
@@ -1406,11 +1405,12 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
 
-        if (activeChatsList.isNotEmpty()) {
-            loadingIndicator.visibility = android.view.View.GONE
-            scrollView.visibility = android.view.View.VISIBLE
+        // Render cached items instantly before showing dialog (0ms delay)
+        if (hasCachedChats) {
             renderList()
         }
+
+        alertDialog.show()
 
         searchInput.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -1420,13 +1420,18 @@ class SettingsActivity : AppCompatActivity() {
             override fun afterTextChanged(s: android.text.Editable?) {}
         })
 
+        // Background update for fresh chats without resetting scroll position
         CoroutineScope(Dispatchers.IO).launch {
             val chats = TelegramRepository.getJoinedChatsInfo(forceRefresh = true)
             withContext(Dispatchers.Main) {
-                activeChatsList = chats
-                loadingIndicator.visibility = android.view.View.GONE
-                scrollView.visibility = android.view.View.VISIBLE
-                renderList(searchInput.text?.toString() ?: "")
+                if (alertDialog.isShowing) {
+                    val currentScrollY = scrollView.scrollY
+                    activeChatsList = chats
+                    loadingIndicator.visibility = android.view.View.GONE
+                    scrollView.visibility = android.view.View.VISIBLE
+                    renderList(searchInput.text?.toString() ?: "")
+                    scrollView.post { scrollView.scrollTo(0, currentScrollY) }
+                }
             }
         }
     }
