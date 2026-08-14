@@ -80,6 +80,9 @@ class MainActivity : AppCompatActivity() {
     private var isTelegramCatalogMode = false
     private var currentOpenChannelId: String? = null
     private var currentOpenTopicId: Int = 0
+    private var savedChannelsCatalogScrollState: android.os.Parcelable? = null
+    private var savedChannelsCatalogPos: Int = -1
+    private var savedChannelsCatalogOffset: Int = 0
 
     private fun formatFileSize(bytes: Long): String {
         if (bytes <= 0) return "0 MB"
@@ -1263,6 +1266,18 @@ class MainActivity : AppCompatActivity() {
         mediaAdapter?.notifyDataSetChanged()
         loadingText.visibility = android.view.View.GONE
 
+        // Restore exact scroll position if returning from inside a channel
+        if (savedChannelsCatalogScrollState != null || savedChannelsCatalogPos >= 0) {
+            recyclerView.post {
+                val gridManager = recyclerView.layoutManager as? GridLayoutManager
+                if (savedChannelsCatalogScrollState != null) {
+                    gridManager?.onRestoreInstanceState(savedChannelsCatalogScrollState)
+                } else if (savedChannelsCatalogPos >= 0) {
+                    gridManager?.scrollToPositionWithOffset(savedChannelsCatalogPos, savedChannelsCatalogOffset)
+                }
+            }
+        }
+
         // 2. PARALLEL BACKGROUND REFRESH FOR FRESH TITLES & PHOTOS
         CoroutineScope(Dispatchers.IO).launch {
             if (TelegramClient.authState.value !is TelegramAuthState.Ready) {
@@ -1300,16 +1315,36 @@ class MainActivity : AppCompatActivity() {
 
             withContext(Dispatchers.Main) {
                 if (isTelegramCatalogMode && currentOpenChannelId == null) {
+                    val gridManager = recyclerView.layoutManager as? GridLayoutManager
+                    val currentScrollState = gridManager?.onSaveInstanceState()
+                    val firstPos = gridManager?.findFirstVisibleItemPosition() ?: -1
+                    val firstView = gridManager?.findViewByPosition(firstPos)
+                    val offset = firstView?.top ?: 0
+
                     loadingText.visibility = android.view.View.GONE
                     mediaList.clear()
                     mediaList.addAll(freshChannelItems)
                     mediaAdapter?.notifyDataSetChanged()
+
+                    if (currentScrollState != null) {
+                        gridManager?.onRestoreInstanceState(currentScrollState)
+                    } else if (firstPos >= 0) {
+                        gridManager?.scrollToPositionWithOffset(firstPos, offset)
+                    }
                 }
             }
         }
     }
 
     private fun loadTelegramChannelMedia(channelUsername: String, title: String) {
+        if (currentOpenChannelId == null && isTelegramCatalogMode) {
+            val gridManager = recyclerView.layoutManager as? GridLayoutManager
+            savedChannelsCatalogScrollState = gridManager?.onSaveInstanceState()
+            savedChannelsCatalogPos = gridManager?.findFirstVisibleItemPosition() ?: -1
+            val v = gridManager?.findViewByPosition(savedChannelsCatalogPos)
+            savedChannelsCatalogOffset = v?.top ?: 0
+        }
+
         isInSearchMode = false
         currentOpenChannelId = channelUsername
         currentOpenTopicId = 0
