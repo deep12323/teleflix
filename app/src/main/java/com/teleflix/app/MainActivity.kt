@@ -4205,6 +4205,10 @@ class MainActivity : AppCompatActivity() {
         var activeChatsList: List<TelegramChatInfo> = TelegramRepository.getCachedJoinedChatsInfo(this@MainActivity)
         val hasCachedChats = activeChatsList.isNotEmpty()
 
+        val contentContainer = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+        }
+
         val loadingIndicator = ProgressBar(this).apply {
             isIndeterminate = true
             visibility = if (hasCachedChats) android.view.View.GONE else android.view.View.VISIBLE
