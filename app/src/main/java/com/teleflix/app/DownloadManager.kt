@@ -163,7 +163,7 @@ object DownloadManager {
     }
 
     fun getStorageMode(context: Context): String {
-        return getPrefs(context).getString("storage_mode", "app_storage") ?: "app_storage"
+        return getPrefs(context).getString("storage_mode", "public_downloads") ?: "public_downloads"
     }
 
     fun setStorageMode(context: Context, mode: String) {
@@ -181,11 +181,6 @@ object DownloadManager {
     fun getActiveDownloadsDir(context: Context): File {
         val mode = getStorageMode(context)
         val dir = when (mode) {
-            "public_downloads" -> {
-                val pubDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Teleflix")
-                if (!pubDir.exists()) pubDir.mkdirs()
-                if (pubDir.exists()) pubDir else null
-            }
             "custom" -> {
                 val pathStr = getCustomPath(context)
                 if (pathStr.isNotBlank()) {
@@ -196,7 +191,13 @@ object DownloadManager {
             }
             else -> null
         }
-        return dir ?: (context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir)
+        if (dir != null) return dir
+
+        val pubDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Teleflix")
+        if (!pubDir.exists()) pubDir.mkdirs()
+        if (pubDir.exists()) return pubDir
+
+        return context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
     }
 
     fun getFormattedActivePath(context: Context): String {

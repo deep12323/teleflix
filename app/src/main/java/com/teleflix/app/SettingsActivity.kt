@@ -275,28 +275,11 @@ class SettingsActivity : AppCompatActivity() {
 
         val curMode = DownloadManager.getStorageMode(this)
 
-        val optAppStorage = TextView(this).apply {
-            text = "📁 App Private Storage (Default)\n/Android/data/com.teleflix.app/files/Download"
-            UITheme.applyCardTitleStyle(this)
-            textSize = 13f
-            val isCur = curMode == "app_storage"
-            background = UITheme.createRippleCardShape(this@SettingsActivity, if (isCur) UITheme.SURFACE else UITheme.CARD, 14, if (isCur) UITheme.PRIMARY else UITheme.STROKE_COLOR)
-            setTextColor(if (isCur) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
-            val pV = UITheme.dpToPx(this@SettingsActivity, 12)
-            val pH = UITheme.dpToPx(this@SettingsActivity, 14)
-            setPadding(pH, pV, pH, pV)
-            isClickable = true
-            isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 8))
-            }
-        }
-
         val optPublicStorage = TextView(this).apply {
-            text = "📂 Public Downloads Directory\n/sdcard/Download/Teleflix"
+            text = "📂 Public Downloads Directory (Default)\n/sdcard/Download/Teleflix"
             UITheme.applyCardTitleStyle(this)
             textSize = 13f
-            val isCur = curMode == "public_downloads"
+            val isCur = curMode != "custom"
             background = UITheme.createRippleCardShape(this@SettingsActivity, if (isCur) UITheme.SURFACE else UITheme.CARD, 14, if (isCur) UITheme.PRIMARY else UITheme.STROKE_COLOR)
             setTextColor(if (isCur) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
             val pV = UITheme.dpToPx(this@SettingsActivity, 12)
@@ -367,12 +350,8 @@ class SettingsActivity : AppCompatActivity() {
             DownloadManager.setStorageMode(this@SettingsActivity, newMode)
             updateActivePathText()
 
-            val isApp = newMode == "app_storage"
-            val isPub = newMode == "public_downloads"
+            val isPub = newMode != "custom"
             val isCust = newMode == "custom"
-
-            optAppStorage.background = UITheme.createRippleCardShape(this@SettingsActivity, if (isApp) UITheme.SURFACE else UITheme.CARD, 14, if (isApp) UITheme.PRIMARY else UITheme.STROKE_COLOR)
-            optAppStorage.setTextColor(if (isApp) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
 
             optPublicStorage.background = UITheme.createRippleCardShape(this@SettingsActivity, if (isPub) UITheme.SURFACE else UITheme.CARD, 14, if (isPub) UITheme.PRIMARY else UITheme.STROKE_COLOR)
             optPublicStorage.setTextColor(if (isPub) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
@@ -383,11 +362,9 @@ class SettingsActivity : AppCompatActivity() {
             customPathInputLayout.visibility = if (isCust) android.view.View.VISIBLE else android.view.View.GONE
         }
 
-        optAppStorage.setOnClickListener { updateModeSelection("app_storage") }
         optPublicStorage.setOnClickListener { updateModeSelection("public_downloads") }
         optCustomStorage.setOnClickListener { updateModeSelection("custom") }
 
-        downloadBox.addView(optAppStorage)
         downloadBox.addView(optPublicStorage)
         downloadBox.addView(optCustomStorage)
         downloadBox.addView(customPathInputLayout)
