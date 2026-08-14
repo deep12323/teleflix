@@ -5,6 +5,8 @@ import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.StateFlow
 import org.drinkless.tdlib.TdApi
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
 data class TelegramVideoMessage(
