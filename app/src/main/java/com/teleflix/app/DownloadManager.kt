@@ -456,7 +456,13 @@ object DownloadManager {
             }
             FileInputStream(source).channel.use { inChannel ->
                 FileOutputStream(dest).channel.use { outChannel ->
-                    inChannel.transferTo(0, inChannel.size(), outChannel)
+                    val size = inChannel.size()
+                    var transferred = 0L
+                    while (transferred < size) {
+                        val bytes = inChannel.transferTo(transferred, size - transferred, outChannel)
+                        if (bytes <= 0L) break
+                        transferred += bytes
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -1129,13 +1135,17 @@ object DownloadManager {
                                     }
                                     if (source.exists() && source.absolutePath != target.absolutePath) {
                                         fastCopyFile(source, target)
-                                        TeleflixLogger.log(TAG, "Copied completed download to ${target.absolutePath}")
-                                        if (target.exists() && target.length() > 0) {
+                                        if (source.exists() && target.length() < source.length()) {
+                                            TeleflixLogger.log(TAG, "fastCopyFile incomplete (${target.length()}/${source.length()} bytes). Falling back to InputStream copy...")
+                                            source.copyTo(target, overwrite = true)
+                                        }
+                                        TeleflixLogger.log(TAG, "Copied completed download to ${target.absolutePath} (${target.length()} bytes)")
+                                        if (target.exists() && source.exists() && target.length() >= source.length()) {
                                             runCatching { TelegramClient.deleteFile(item.fileId) }
-                                            if (source.exists()) {
-                                                runCatching { source.delete() }
-                                            }
+                                            runCatching { source.delete() }
                                             TeleflixLogger.log(TAG, "Purged internal TDLib download cache for completed fileId=${item.fileId}")
+                                        } else {
+                                            TeleflixLogger.log(TAG, "Preserving source TDLib cache: target file size mismatch (${target.length()} vs ${source.length()} bytes)", isError = true)
                                         }
                                     }
                                 } catch (e: Exception) {
