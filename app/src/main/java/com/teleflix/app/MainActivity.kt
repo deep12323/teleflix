@@ -105,6 +105,24 @@ class MainActivity : AppCompatActivity() {
     private var activeStreamUrlForResume: String = ""
     private var activeTitleForResume: String = ""
 
+    private fun extractFileIdsFromUrl(url: String): List<Int> {
+        if (url.isBlank()) return emptyList()
+        val patterns = listOf("/file/", "/stream/", "/zip/", "/thumbnail/", "/merged/", "/playlist/")
+        for (pattern in patterns) {
+            if (url.contains(pattern)) {
+                val segment = url.substringAfter(pattern).substringBefore("/").substringBefore("?")
+                val ids = segment.split(",").mapNotNull { it.toIntOrNull() }.filter { it != 0 }
+                if (ids.isNotEmpty()) return ids
+            }
+        }
+        if (url.contains("fileId=")) {
+            val idStr = url.substringAfter("fileId=").substringBefore("&")
+            val parsed = idStr.toIntOrNull()
+            if (parsed != null && parsed != 0) return listOf(parsed)
+        }
+        return emptyList()
+    }
+
     private val playerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val intent = result.data
         if (intent != null) {
@@ -135,6 +153,9 @@ class MainActivity : AppCompatActivity() {
                 editTitle.apply()
 
                 TeleflixLogger.log("MainActivity", "Saved resume position $posLong ms for $activeTitleForResume")
+            }
+        }
+
         // Auto-remove video/audio stream cache on player exit (unless saved for offline download)
         if (activeStreamUrlForResume.isNotBlank()) {
             val fileIds = extractFileIdsFromUrl(activeStreamUrlForResume)
