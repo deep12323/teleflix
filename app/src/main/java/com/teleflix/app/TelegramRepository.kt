@@ -308,9 +308,71 @@ object TelegramRepository {
         )
     }
 
+    private const val CHATS_CACHE_PREFS = "teleflix_joined_chats_cache"
+    private const val KEY_CHATS_JSON = "cached_chats_json"
+
+    fun getCachedJoinedChatsInfo(): List<TelegramChatInfo> {
+        if (!cachedJoinedChats.isNullOrEmpty()) {
+            return cachedJoinedChats!!
+        }
+        val context = getContext()
+        val prefs = context.getSharedPreferences(CHATS_CACHE_PREFS, Context.MODE_PRIVATE)
+        val jsonStr = prefs.getString(KEY_CHATS_JSON, null) ?: return emptyList()
+        return try {
+            val array = JSONArray(jsonStr)
+            val list = mutableListOf<TelegramChatInfo>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(
+                    TelegramChatInfo(
+                        chatId = obj.getLong("chatId"),
+                        title = obj.getString("title"),
+                        username = if (obj.has("username") && !obj.isNull("username")) obj.getString("username") else null,
+                        photoFileId = if (obj.has("photoFileId") && !obj.isNull("photoFileId")) obj.getInt("photoFileId") else null,
+                        isChannel = obj.optBoolean("isChannel", false),
+                        isGroup = obj.optBoolean("isGroup", false),
+                        isPrivate = obj.optBoolean("isPrivate", false),
+                        isBot = obj.optBoolean("isBot", false),
+                        isArchived = obj.optBoolean("isArchived", false),
+                        unreadCount = obj.optInt("unreadCount", 0)
+                    )
+                )
+            }
+            cachedJoinedChats = list
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveJoinedChatsCache(list: List<TelegramChatInfo>) {
+        val context = getContext()
+        val prefs = context.getSharedPreferences(CHATS_CACHE_PREFS, Context.MODE_PRIVATE)
+        try {
+            val array = JSONArray()
+            for (chat in list) {
+                val obj = JSONObject().apply {
+                    put("chatId", chat.chatId)
+                    put("title", chat.title)
+                    put("username", chat.username)
+                    put("photoFileId", chat.photoFileId)
+                    put("isChannel", chat.isChannel)
+                    put("isGroup", chat.isGroup)
+                    put("isPrivate", chat.isPrivate)
+                    put("isBot", chat.isBot)
+                    put("isArchived", chat.isArchived)
+                    put("unreadCount", chat.unreadCount)
+                }
+                array.put(obj)
+            }
+            prefs.edit().putString(KEY_CHATS_JSON, array.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
     suspend fun getJoinedChatsInfo(forceRefresh: Boolean = false): List<TelegramChatInfo> = coroutineScope {
-        if (!forceRefresh && !cachedJoinedChats.isNullOrEmpty()) {
-            return@coroutineScope cachedJoinedChats!!
+        if (!forceRefresh) {
+            val cached = getCachedJoinedChatsInfo()
+            if (cached.isNotEmpty()) return@coroutineScope cached
         }
 
         val list = java.util.Collections.synchronizedList(mutableListOf<TelegramChatInfo>())
@@ -361,7 +423,8 @@ object TelegramRepository {
 
         val resultList = list.toList()
         if (resultList.isNotEmpty()) {
-                    cachedJoinedChats = resultList
+            cachedJoinedChats = resultList
+            saveJoinedChatsCache(resultList)
         }
         return@coroutineScope resultList
     }
