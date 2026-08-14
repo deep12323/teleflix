@@ -1219,15 +1219,53 @@ class MainActivity : AppCompatActivity() {
         isLoadingMore = false
         if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
         if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
-        mediaList.clear()
-        mediaAdapter?.notifyDataSetChanged()
-        loadingText.visibility = android.view.View.VISIBLE
-        loadingText.text = "Loading monitored Telegram channels & names..."
         categoryLabel.text = "Monitored Telegram Channels"
         categoryLabel.isClickable = false
+
+        val channels = try {
+            TelegramRepository.getCustomChannels(this@MainActivity)
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        if (channels.isEmpty()) {
+            mediaList.clear()
+            mediaAdapter?.notifyDataSetChanged()
+            loadingText.visibility = android.view.View.VISIBLE
+            loadingText.text = "No Monitored Channels set! Add channels in ⚙️ Settings."
+            return
+        }
+
+        // 1. INSTANT FIRST PAINT FROM CACHE (<10ms)
+        val cachedItems = channels.map { ch ->
+            val cachedTitle = TelegramRepository.getCachedChannelTitle(ch)
+            val numericId = ch.toLongOrNull()
+            val cachedPhotoId = if (numericId != null) TelegramRepository.getCachedChatPhotoFileId(numericId) else null
+            val poster = if (cachedPhotoId != null && cachedPhotoId > 0) {
+                TelegramStreamingProxy.getThumbnailUrl(cachedPhotoId)
+            } else {
+                "https://cdn-icons-png.flaticon.com/512/2111/2111646.png"
+            }
+            MediaItem(
+                id = ch,
+                title = cachedTitle,
+                posterUrl = poster,
+                year = "Channel",
+                rating = "💬 Telegram",
+                overview = "",
+                type = "channel"
+            )
+        }
+
+        mediaList.clear()
+        mediaList.addAll(cachedItems)
+        mediaAdapter?.notifyDataSetChanged()
+        loadingText.visibility = android.view.View.GONE
+
+        // 2. PARALLEL BACKGROUND REFRESH FOR FRESH TITLES & PHOTOS
         CoroutineScope(Dispatchers.IO).launch {
             if (TelegramClient.authState.value !is TelegramAuthState.Ready) {
-                withTimeoutOrNull(4000L) {
+                withTimeoutOrNull(2000L) {
                     TelegramClient.authState.first { it is TelegramAuthState.Ready }
                 }
             }
@@ -1235,55 +1273,36 @@ class MainActivity : AppCompatActivity() {
                 TelegramClient.sendRequest(TdApi.LoadChats(TdApi.ChatListMain(), 100))
             }
 
-            val channels = try {
-                TelegramRepository.getCustomChannels(this@MainActivity)
-            } catch (e: Exception) {
-                emptyList()
-            }
-            val channelItems = channels.map { ch ->
-                val realTitle = TelegramRepository.getChannelTitle(ch)
-                val numericId = ch.toLongOrNull() ?: TelegramRepository.getChatId(ch)
-                val photoFileId = if (numericId != null) TelegramRepository.getChatPhotoFileId(numericId) else null
-                val poster = if (photoFileId != null && photoFileId > 0) {
-                    TelegramStreamingProxy.getThumbnailUrl(photoFileId)
-                } else {
-                    "https://cdn-icons-png.flaticon.com/512/2111/2111646.png"
-                }
-                MediaItem(
-                    id = ch,
-                    title = realTitle,
-                    posterUrl = poster,
-                    year = "Channel",
-                    rating = "💬 Telegram",
-                    overview = "",
-                    type = "channel"
-                )
-            }
-            withContext(Dispatchers.Main) {
-                loadingText.visibility = android.view.View.GONE
-                mediaList.clear()
-                if (channelItems.isEmpty()) {
-                    loadingText.visibility = android.view.View.VISIBLE
-                    loadingText.text = "No Monitored Channels set! Add channels in ⚙️ Settings."
-                } else {
-                    mediaList.addAll(channelItems)
-                    mediaAdapter?.notifyDataSetChanged()
-                }
-
-                if (channelItems.any { it.title == "Telegram Channel" }) {
-                    lifecycleScope.launch(Dispatchers.IO) {
-                        if (TelegramClient.authState.value !is TelegramAuthState.Ready) {
-                            withTimeoutOrNull(10000L) {
-                                TelegramClient.authState.first { it is TelegramAuthState.Ready }
-                            }
+            val freshChannelItems = coroutineScope {
+                channels.map { ch ->
+                    async(Dispatchers.IO) {
+                        val realTitle = TelegramRepository.getChannelTitle(ch)
+                        val numericId = ch.toLongOrNull() ?: TelegramRepository.getChatId(ch)
+                        val photoFileId = if (numericId != null) TelegramRepository.getChatPhotoFileId(numericId) else null
+                        val poster = if (photoFileId != null && photoFileId > 0) {
+                            TelegramStreamingProxy.getThumbnailUrl(photoFileId)
+                        } else {
+                            "https://cdn-icons-png.flaticon.com/512/2111/2111646.png"
                         }
-                        kotlinx.coroutines.delay(1000L)
-                        if (isTelegramCatalogMode && currentOpenChannelId == null) {
-                            withContext(Dispatchers.Main) {
-                                loadTelegramChannelsCatalog()
-                            }
-                        }
+                        MediaItem(
+                            id = ch,
+                            title = realTitle,
+                            posterUrl = poster,
+                            year = "Channel",
+                            rating = "💬 Telegram",
+                            overview = "",
+                            type = "channel"
+                        )
                     }
+                }.awaitAll()
+            }
+
+            withContext(Dispatchers.Main) {
+                if (isTelegramCatalogMode && currentOpenChannelId == null) {
+                    loadingText.visibility = android.view.View.GONE
+                    mediaList.clear()
+                    mediaList.addAll(freshChannelItems)
+                    mediaAdapter?.notifyDataSetChanged()
                 }
             }
         }

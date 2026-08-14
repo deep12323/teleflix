@@ -369,6 +369,13 @@ object TelegramRepository {
     private const val TITLE_CACHE_PREFS = "teleflix_channel_titles"
     private const val PHOTO_CACHE_PREFS = "teleflix_channel_photos"
 
+    fun getCachedChatPhotoFileId(chatId: Long): Int? {
+        val context = getContext()
+        val prefs = context.getSharedPreferences(PHOTO_CACHE_PREFS, Context.MODE_PRIVATE)
+        val cached = prefs.getInt(chatId.toString(), -1)
+        return if (cached > 0) cached else null
+    }
+
     suspend fun getChatPhotoFileId(chatId: Long): Int? {
         val context = getContext()
         val prefs = context.getSharedPreferences(PHOTO_CACHE_PREFS, Context.MODE_PRIVATE)
@@ -395,6 +402,26 @@ object TelegramRepository {
         } catch (_: Exception) {
             if (cachedPhotoId > 0) cachedPhotoId else null
         }
+    }
+
+    fun getCachedChannelTitle(identifier: String): String {
+        val clean = identifier.trim()
+        if (clean.isEmpty()) return "Telegram Channel"
+        val isNumeric = clean.startsWith("-") || clean.toLongOrNull() != null
+        val context = getContext()
+        val prefs = context.getSharedPreferences(TITLE_CACHE_PREFS, Context.MODE_PRIVATE)
+        val cachedTitle = prefs.getString(clean, null)
+        if (cachedTitle != null && cachedTitle.isNotBlank() && cachedTitle != "Telegram Channel" && cachedTitle.toLongOrNull() == null) {
+            return cachedTitle
+        }
+        val numericId = clean.toLongOrNull()
+        if (numericId != null) {
+            val cachedByChatId = prefs.getString(numericId.toString(), null)
+            if (cachedByChatId != null && cachedByChatId.isNotBlank() && cachedByChatId != "Telegram Channel") {
+                return cachedByChatId
+            }
+        }
+        return if (isNumeric) "Telegram Channel" else clean
     }
 
     suspend fun getChannelTitle(identifier: String): String {
