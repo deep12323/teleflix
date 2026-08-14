@@ -558,6 +558,17 @@ object DownloadManager {
                             TeleflixLogger.log(TAG, "Re-triggered active download for fileId=$currentFileId: res=${res?.javaClass?.simpleName}")
                         } catch (e: Exception) {
                             TeleflixLogger.log(TAG, "Failed download re-trigger request for $currentFileId: ${e.message}", isError = true)
+                            if (item.chatId != 0L && item.messageId != 0L) {
+                                try {
+                                    val msg = TelegramClient.sendRequest(TdApi.GetMessage(item.chatId, item.messageId)) as? TdApi.Message
+                                    val freshId = extractFileIdFromMessage(msg)
+                                    if (freshId != null && freshId != 0 && freshId != currentFileId) {
+                                        item.fileId = freshId
+                                        TelegramClient.sendRequest(TdApi.AddFileToDownloads(freshId, item.chatId, item.messageId, 32))
+                                        TeleflixLogger.log(TAG, "Auto-refreshed stale fileId=$currentFileId to fresh fileId=$freshId for '${item.title}'")
+                                    }
+                                } catch (_: Exception) {}
+                            }
                         }
                     }
                 }
@@ -741,6 +752,18 @@ object DownloadManager {
                             TeleflixLogger.log(TAG, "Re-triggered multipart active download for partFileId=$partFileId: res=${res?.javaClass?.simpleName}")
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed DownloadFile retry for part $partFileId", e)
+                            if (chatId != 0L && messageId != 0L) {
+                                try {
+                                    val msg = TelegramClient.sendRequest(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message
+                                    val freshId = extractFileIdFromMessage(msg)
+                                    if (freshId != null && freshId != 0 && freshId != partFileId) {
+                                        item.partFileIds[idx] = freshId
+                                        item.fileId = freshId
+                                        TelegramClient.sendRequest(TdApi.AddFileToDownloads(freshId, chatId, messageId, 32))
+                                        TeleflixLogger.log(TAG, "Auto-refreshed stale multipart partFileId=$partFileId to fresh fileId=$freshId for '${item.title}'")
+                                    }
+                                } catch (_: Exception) {}
+                            }
                         }
                     }
                 }
@@ -884,7 +907,23 @@ object DownloadManager {
                                     req.synchronous = false
                                 })
                             }
-                        } catch (_: Exception) {}
+                        } catch (e: Exception) {
+                            TeleflixLogger.log(TAG, "Failed resume download request for activeId=$activeId: ${e.message}", isError = true)
+                            if (chatId != 0L && messageId != 0L) {
+                                try {
+                                    val msg = TelegramClient.sendRequest(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message
+                                    val freshId = extractFileIdFromMessage(msg)
+                                    if (freshId != null && freshId != 0 && freshId != activeId) {
+                                        if (item.isMultiPart && item.partFileIds.size > item.currentPartIndex) {
+                                            item.partFileIds[item.currentPartIndex] = freshId
+                                        }
+                                        item.fileId = freshId
+                                        TelegramClient.sendRequest(TdApi.AddFileToDownloads(freshId, chatId, messageId, 32))
+                                        TeleflixLogger.log(TAG, "Refreshed stale fileId=$activeId to fresh fileId=$freshId on resume for '${item.title}'")
+                                    }
+                                } catch (_: Exception) {}
+                            }
+                        }
                         TeleflixLogger.log(TAG, "Download RESUMED for '${item.title}'")
                     }
                 }
