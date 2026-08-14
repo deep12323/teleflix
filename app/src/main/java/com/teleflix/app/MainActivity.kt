@@ -135,6 +135,13 @@ class MainActivity : AppCompatActivity() {
                 editTitle.apply()
 
                 TeleflixLogger.log("MainActivity", "Saved resume position $posLong ms for $activeTitleForResume")
+        // Auto-remove video/audio stream cache on player exit (unless saved for offline download)
+        if (activeStreamUrlForResume.isNotBlank()) {
+            val fileIds = extractFileIdsFromUrl(activeStreamUrlForResume)
+            fileIds.forEach { fId ->
+                if (!DownloadManager.isFileIdActive(fId)) {
+                    TelegramStreamingProxy.clearStreamCache(fId)
+                }
             }
         }
     }
@@ -4433,9 +4440,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         if (isFinishing) {
             TeleflixLogger.clearLogsOnExit()
-            if (!DownloadManager.hasActiveDownloads()) {
-                try { TelegramClient.clearMediaCacheSync(this) } catch (_: Exception) {}
-            }
+            try { TelegramClient.clearMediaCacheSync(this) } catch (_: Exception) {}
         }
         super.onDestroy()
     }

@@ -1240,11 +1240,15 @@ object TelegramStreamingProxy {
     }
 
     private suspend fun deleteFile(fileId: Int) {
+        if (fileId <= 0 || DownloadManager.isFileIdActive(fileId)) return
         runCatching {
             TelegramClient.sendRequest(TdApi.CancelDownloadFile().also { req ->
                 req.fileId = fileId
                 req.onlyIfPending = false
             })
+        }
+        runCatching {
+            TelegramClient.sendRequest(TdApi.DeleteFile(fileId))
         }
     }
 

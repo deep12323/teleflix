@@ -148,8 +148,9 @@ object TelegramClient {
     }
 
     fun deleteFile(fileId: Int) {
-        if (fileId <= 0) return
+        if (fileId <= 0 || DownloadManager.isFileIdActive(fileId)) return
         client?.send(TdApi.CancelDownloadFile(fileId, false), null)
+        client?.send(TdApi.DeleteFile(fileId), null)
     }
 
     fun optimizeStorage() {
@@ -175,22 +176,26 @@ object TelegramClient {
     }
 
     fun clearMediaCacheSync(context: Context) {
-        if (DownloadManager.hasActiveDownloads()) return
         runCatching { optimizeStorage() }
         runCatching {
-            val tdlibDbDir = File(context.filesDir, "tdlib")
-            if (tdlibDbDir.exists()) {
-                tdlibDbDir.listFiles()?.forEach { sub ->
-                    val subName = sub.name.lowercase()
-                    if (sub.isDirectory && subName != "database" && !subName.contains("db")) {
-                        sub.deleteRecursively()
+            val cacheTdlib = File(context.cacheDir, "tdlib_files")
+            if (cacheTdlib.exists()) {
+                cacheTdlib.listFiles()?.forEach { file ->
+                    val fileIdStr = file.name.substringBefore("_").toIntOrNull()
+                    if (fileIdStr == null || !DownloadManager.isFileIdActive(fileIdStr)) {
+                        file.deleteRecursively()
                     }
                 }
             }
             val filesTdlib = File(context.filesDir, "tdlib_files")
-            if (filesTdlib.exists()) filesTdlib.deleteRecursively()
-            val cacheTdlib = File(context.cacheDir, "tdlib_files")
-            if (cacheTdlib.exists()) cacheTdlib.deleteRecursively()
+            if (filesTdlib.exists()) {
+                filesTdlib.listFiles()?.forEach { file ->
+                    val fileIdStr = file.name.substringBefore("_").toIntOrNull()
+                    if (fileIdStr == null || !DownloadManager.isFileIdActive(fileIdStr)) {
+                        file.deleteRecursively()
+                    }
+                }
+            }
         }
     }
 
