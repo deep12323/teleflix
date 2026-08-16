@@ -142,7 +142,7 @@ object TelegramStreamingProxy {
         val lastOffset = lastDownloadRequestOffset[fileId]
         val lastTime = lastDownloadRequestTime[fileId] ?: 0L
 
-        val isOffsetJump = lastOffset != null && Math.abs(offset - lastOffset) > 1_000_000L
+        val isOffsetJump = lastOffset != null && (offset < lastOffset || (offset - lastOffset) > maxOf(1_000_000L, limit))
 
         // Strict rate limit: never issue DownloadFile for the exact same offset more than once per 2,000ms unless forced
         if (!force && !isOffsetJump && lastOffset == offset && (now - lastTime) < 2000L) {
@@ -871,22 +871,6 @@ object TelegramStreamingProxy {
             }
             m.logStart()
 
-            val prefetchBytes = when {
-                prefetchSizeMb == -1L -> 0L
-                prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
-                else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
-            }
-            for (fId in fileIds) {
-                runCatching {
-                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                        req.fileId = fId
-                        req.priority = DOWNLOAD_PRIORITY
-                        req.offset = 0
-                        req.limit = prefetchBytes
-                        req.synchronous = false
-                    })
-                }
-            }
 
             val cleanName = fileName?.removeSuffix(".zip") ?: "video.mkv"
             val ext = cleanName.substringAfterLast('.', "mkv").lowercase()
@@ -995,23 +979,6 @@ object TelegramStreamingProxy {
             }
             m.logStart()
 
-            val zipPrefetch = when {
-                prefetchSizeMb >= 102400L || prefetchSizeMb == -1L -> 0L
-                prefetchSizeMb <= 0L -> CHUNK_SIZE.toLong()
-                else -> maxOf(CHUNK_SIZE.toLong(), prefetchSizeMb * 1024L * 1024L)
-            }
-
-            for (fId in fileIds) {
-                runCatching {
-                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                        req.fileId = fId
-                        req.priority = DOWNLOAD_PRIORITY
-                        req.offset = 0
-                        req.limit = zipPrefetch
-                        req.synchronous = false
-                    })
-                }
-            }
 
             val eocdSearchSize = minOf(65557L, totalZipSize).toInt()
             val eocdOffset = totalZipSize - eocdSearchSize
