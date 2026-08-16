@@ -34,7 +34,10 @@
 
         <package android:name="id.nzxm.mpvex" />
         <package android:name="id.nzxm.mpvex.debug" />
+        <package android:name="id.nzxm.mpv" />
         <package android:name="is.xyz.mpv" />
+        <package android:name="is.xyz.mpv.debug" />
+        <package android:name="com.mpvex.app" />
         <package android:name="org.videolan.vlc" />
         <package android:name="com.mxtech.videoplayer.ad" />
         <package android:name="com.mxtech.videoplayer.pro" />
@@ -49,20 +52,17 @@
     <uses-permission android:name="com.teleflix.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
 
     <application
-        package="is.xyz.mpv"
         android:allowBackup="false"
         android:appComponentFactory="androidx.core.app.CoreComponentFactory"
         android:debuggable="true"
         android:extractNativeLibs="true"
         android:fullBackupContent="false"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
         android:label="Teleflix"
-        android:roundIcon="@drawable/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Teleflix"
-        android:usesCleartextTraffic="true"
-        android:versionCode="1"
-        android:versionName="1.0" >
+        android:usesCleartextTraffic="true" >
         <activity
             android:name="com.teleflix.app.MainActivity"
             android:exported="true"
@@ -78,15 +78,14 @@
             android:name="com.teleflix.app.SettingsActivity"
             android:exported="false"
             android:theme="@style/Theme.Teleflix" />
-        <activity
-            android:name="com.teleflix.app.PlayerActivity"
-            android:configChanges="orientation|screenSize|layoutDirection|keyboardHidden"
-            android:exported="false"
-            android:screenOrientation="sensorLandscape"
-            android:theme="@style/Theme.Teleflix" />
 
         <service
             android:name="com.teleflix.app.TelegramService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+        <service
+            android:name="com.teleflix.app.TeleflixDownloadService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />

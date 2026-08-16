@@ -1,10 +1,9 @@
 -- Merging decision tree log ---
 manifest
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:2:1-70:12
-INJECTED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:2:1-70:12
-INJECTED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:2:1-70:12
-INJECTED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:2:1-70:12
-MERGED from [io.github.abdallahmehiz:mpv-android-lib:0.1.12] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/bc703ccbab3b1c770f7bff99d5de4589/transformed/jetified-mpv-android-lib-0.1.12/AndroidManifest.xml:2:1-13:12
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:2:1-72:12
+INJECTED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:2:1-72:12
+INJECTED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:2:1-72:12
+INJECTED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:2:1-72:12
 MERGED from [com.google.android.material:material:1.12.0] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/81a8eab4483279b99e3edc7f658a68df/transformed/material-1.12.0/AndroidManifest.xml:17:1-24:12
 MERGED from [androidx.constraintlayout:constraintlayout:2.2.0] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/867763ac535cebe4dffa83fbc5b7648e/transformed/constraintlayout-2.2.0/AndroidManifest.xml:2:1-9:12
 MERGED from [androidx.appcompat:appcompat-resources:1.7.0] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/951676c5dbf98157b17cfa9cf5e23f24/transformed/jetified-appcompat-resources-1.7.0/AndroidManifest.xml:2:1-7:12
@@ -101,7 +100,7 @@ ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:12:5-111
 	android:name
 		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:12:22-79
 queries
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:14:5-27:15
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:14:5-30:15
 intent#action:name:android.intent.action.VIEW+data:mimeType:video/*
 ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:15:9-18:18
 action#android.intent.action.VIEW
@@ -120,35 +119,45 @@ package#id.nzxm.mpvex.debug
 ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:20:9-55
 	android:name
 		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:20:18-52
+package#id.nzxm.mpv
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:21:9-47
+	android:name
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:21:18-44
 package#is.xyz.mpv
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:21:9-46
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:22:9-46
 	android:name
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:21:18-43
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:22:18-43
+package#is.xyz.mpv.debug
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:23:9-52
+	android:name
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:23:18-49
+package#com.mpvex.app
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:24:9-49
+	android:name
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:24:18-46
 package#org.videolan.vlc
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:22:9-52
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:25:9-52
 	android:name
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:22:18-49
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:25:18-49
 package#com.mxtech.videoplayer.ad
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:23:9-61
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:26:9-61
 	android:name
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:23:18-58
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:26:18-58
 package#com.mxtech.videoplayer.pro
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:24:9-62
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:27:9-62
 	android:name
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:24:18-59
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:27:18-59
 package#dev.anilbeesetti.nextplayer
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:25:9-63
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:28:9-63
 	android:name
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:25:18-60
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:28:18-60
 package#com.brianvalente.videoplayer
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:26:9-64
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:29:9-64
 	android:name
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:26:18-61
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:29:18-61
 application
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:29:5-68:19
-INJECTED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:29:5-68:19
-MERGED from [io.github.abdallahmehiz:mpv-android-lib:0.1.12] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/bc703ccbab3b1c770f7bff99d5de4589/transformed/jetified-mpv-android-lib-0.1.12/AndroidManifest.xml:7:5-11:19
-MERGED from [io.github.abdallahmehiz:mpv-android-lib:0.1.12] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/bc703ccbab3b1c770f7bff99d5de4589/transformed/jetified-mpv-android-lib-0.1.12/AndroidManifest.xml:7:5-11:19
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:32:5-70:19
+INJECTED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:32:5-70:19
 MERGED from [com.google.android.material:material:1.12.0] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/81a8eab4483279b99e3edc7f658a68df/transformed/material-1.12.0/AndroidManifest.xml:22:5-20
 MERGED from [com.google.android.material:material:1.12.0] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/81a8eab4483279b99e3edc7f658a68df/transformed/material-1.12.0/AndroidManifest.xml:22:5-20
 MERGED from [androidx.constraintlayout:constraintlayout:2.2.0] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/867763ac535cebe4dffa83fbc5b7648e/transformed/constraintlayout-2.2.0/AndroidManifest.xml:7:5-20
@@ -165,88 +174,78 @@ MERGED from [androidx.startup:startup-runtime:1.1.1] /data/data/com.termux/files
 MERGED from [androidx.startup:startup-runtime:1.1.1] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/ecdeb4fe19ef00ca4f9cdbcef679f91d/transformed/jetified-startup-runtime-1.1.1/AndroidManifest.xml:25:5-31:19
 MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/c7d73d1600b49e57415bb070cefd0af2/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:24:5-25:19
 MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/c7d73d1600b49e57415bb070cefd0af2/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:24:5-25:19
-	package
-		ADDED from [io.github.abdallahmehiz:mpv-android-lib:0.1.12] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/bc703ccbab3b1c770f7bff99d5de4589/transformed/jetified-mpv-android-lib-0.1.12/AndroidManifest.xml:8:9-29
 	android:extractNativeLibs
 		INJECTED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml
 	android:appComponentFactory
 		ADDED from [androidx.core:core:1.15.0] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/56375352fb2867c79023ae8b3c8aa7b3/transformed/core-1.15.0/AndroidManifest.xml:28:18-86
 	android:supportsRtl
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:35:9-35
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:38:9-35
 	android:label
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:33:9-33
-	android:versionName
-		ADDED from [io.github.abdallahmehiz:mpv-android-lib:0.1.12] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/bc703ccbab3b1c770f7bff99d5de4589/transformed/jetified-mpv-android-lib-0.1.12/AndroidManifest.xml:10:9-34
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:36:9-33
 	android:fullBackupContent
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:31:9-42
-	android:versionCode
-		ADDED from [io.github.abdallahmehiz:mpv-android-lib:0.1.12] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/bc703ccbab3b1c770f7bff99d5de4589/transformed/jetified-mpv-android-lib-0.1.12/AndroidManifest.xml:9:9-32
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:34:9-42
 	android:roundIcon
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:34:9-50
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:37:9-54
 	android:icon
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:32:9-45
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:35:9-43
 	android:allowBackup
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:30:9-36
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:33:9-36
 	android:theme
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:36:9-46
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:39:9-46
 	android:usesCleartextTraffic
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:37:9-44
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:40:9-44
 activity#com.teleflix.app.MainActivity
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:39:9-48:20
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:42:9-51:20
 	android:label
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:41:13-37
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:44:13-37
 	android:exported
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:42:13-36
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:45:13-36
 	android:theme
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:43:13-50
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:46:13-50
 	android:name
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:40:13-57
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:43:13-57
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:44:13-47:29
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:47:13-50:29
 action#android.intent.action.MAIN
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:45:17-69
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:48:17-69
 	android:name
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:45:25-66
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:48:25-66
 category#android.intent.category.LAUNCHER
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:46:17-77
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:49:17-77
 	android:name
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:46:27-74
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:49:27-74
 activity#com.teleflix.app.SettingsActivity
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:50:9-53:53
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:53:9-56:53
 	android:exported
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:52:13-37
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:55:13-37
 	android:theme
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:53:13-50
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:56:13-50
 	android:name
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:51:13-61
-activity#com.teleflix.app.PlayerActivity
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:55:9-60:53
-	android:screenOrientation
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:59:13-56
-	android:exported
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:58:13-37
-	android:configChanges
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:57:13-90
-	android:theme
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:60:13-50
-	android:name
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:56:13-59
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:54:13-61
 service#com.teleflix.app.TelegramService
-ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:62:9-66:56
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:58:9-62:56
 	android:enabled
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:64:13-35
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:60:13-35
 	android:exported
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:65:13-37
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:61:13-37
 	android:foregroundServiceType
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:66:13-53
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:62:13-53
 	android:name
-		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:63:13-60
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:59:13-60
+service#com.teleflix.app.TeleflixDownloadService
+ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:64:9-68:56
+	android:enabled
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:66:13-35
+	android:exported
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:67:13-37
+	android:foregroundServiceType
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:68:13-53
+	android:name
+		ADDED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml:65:13-68
 uses-sdk
 INJECTED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml
 INJECTED from /root/teleflix-android-app/app/src/main/AndroidManifest.xml
-MERGED from [io.github.abdallahmehiz:mpv-android-lib:0.1.12] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/bc703ccbab3b1c770f7bff99d5de4589/transformed/jetified-mpv-android-lib-0.1.12/AndroidManifest.xml:5:5-44
-MERGED from [io.github.abdallahmehiz:mpv-android-lib:0.1.12] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/bc703ccbab3b1c770f7bff99d5de4589/transformed/jetified-mpv-android-lib-0.1.12/AndroidManifest.xml:5:5-44
 MERGED from [com.google.android.material:material:1.12.0] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/81a8eab4483279b99e3edc7f658a68df/transformed/material-1.12.0/AndroidManifest.xml:20:5-44
 MERGED from [com.google.android.material:material:1.12.0] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/81a8eab4483279b99e3edc7f658a68df/transformed/material-1.12.0/AndroidManifest.xml:20:5-44
 MERGED from [androidx.constraintlayout:constraintlayout:2.2.0] /data/data/com.termux/files/home/.gradle/caches/8.12/transforms/867763ac535cebe4dffa83fbc5b7648e/transformed/constraintlayout-2.2.0/AndroidManifest.xml:5:5-44

@@ -1,16 +1,24 @@
 R_DEF: Internal format may change without notice
 local
 color accent_blue
-color accent_red
-color accent_red_glow
-color amber_gold
-color bg_card
-color bg_primary
-color bg_secondary
-color emerald_green
-color text_gray
-color text_white
+color background
+color card
+color card_stroke
+color primary
+color primary_glow
+color secondary
+color success
+color surface
+color text_primary
+color text_secondary
+color warning
+drawable ic_bookmark_ribbon_active
+drawable ic_bookmark_ribbon_inactive
 drawable ic_launcher
+drawable teleflix_feature_graphic
+drawable teleflix_logo
+mipmap ic_launcher
+mipmap ic_launcher_round
 string app_name
 style Theme.Teleflix
 style Theme.Teleflix.Fullscreen

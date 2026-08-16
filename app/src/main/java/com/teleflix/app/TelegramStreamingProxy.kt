@@ -283,7 +283,7 @@ object TelegramStreamingProxy {
                     val mediaMessages = runCatching {
                         kotlinx.coroutines.runBlocking(Dispatchers.IO) {
                             kotlinx.coroutines.withTimeoutOrNull(4000L) {
-                                TelegramRepository.fetchChannelMedia(reqChatId.toString(), limit = 1000).first
+                                TelegramRepository.fetchChannelMediaAroundMessage(reqChatId.toString(), targetMsgId = reqMessageId, limit = 100).first
                             }
                         }
                     }.getOrNull()
@@ -417,7 +417,7 @@ object TelegramStreamingProxy {
                     val mediaMessages = runCatching {
                         kotlinx.coroutines.runBlocking(Dispatchers.IO) {
                             kotlinx.coroutines.withTimeoutOrNull(4000L) {
-                                TelegramRepository.fetchChannelMedia(reqChatId.toString(), limit = 1000).first
+                                TelegramRepository.fetchChannelMediaAroundMessage(reqChatId.toString(), targetMsgId = reqMessageId, limit = 100).first
                             }
                         }
                     }.getOrNull()
