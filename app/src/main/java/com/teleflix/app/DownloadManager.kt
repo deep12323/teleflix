@@ -1150,7 +1150,7 @@ object DownloadManager {
 
             for (item in downloadsMap.values) {
                 // Ignore downloads that are already finalized
-                if (item.status == DownloadStatus.COMPLETED || item.status == DownloadStatus.FAILED || item.status == DownloadStatus.CANCELLED) {
+                if (item.status == DownloadStatus.COMPLETED || item.status == DownloadStatus.FAILED) {
                     continue
                 }
 
