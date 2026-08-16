@@ -31,40 +31,82 @@ jobs:
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
-      - name: Build Debug APK
+      - name: Build Multi-Architecture Debug APKs
         run: ./gradlew :app:assembleDebug --no-daemon
 
-      - name: Upload Debug APK Artifact
+      - name: Generate SHA256 Checksums
+        run: |
+          cd app/build/outputs/apk/debug/
+          sha256sum *.apk > sha256_checksums.txt
+          cat sha256_checksums.txt
+
+      - name: Upload Debug APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Teleflix-Debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Teleflix-Debug-APKs
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/debug/sha256_checksums.txt
 
       - name: Get Short SHA
         id: slug
         run: echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      - name: Create GitHub Release with APK
+      - name: Prepare Release Notes
+        id: notes
+        run: |
+          cd app/build/outputs/apk/debug/
+          CHECKSUM_TABLE="| Architecture | APK File | Size | SHA-256 Checksum |"$'\n'"| :--- | :--- | :--- | :--- |"
+          for f in *.apk; do
+            sum=$(sha256sum "$f" | awk '{print $1}')
+            size=$(ls -lh "$f" | awk '{print $5}')
+            arch=$(echo "$f" | sed -e 's/app-//' -e 's/-debug.apk//' -e 's/-release.apk//')
+            case "$arch" in
+              "arm64-v8a") desc="**ARM64** (Modern Phones & Tablets)";;
+              "armeabi-v7a") desc="**ARMv7** (Older 32-bit Phones & TVs)";;
+              "x86_64") desc="**x86_64** (64-bit Emulators & PCs)";;
+              "x86") desc="**x86** (32-bit Emulators)";;
+              "universal") desc="**Universal** (All-in-one bundle)";;
+              *) desc="$arch";;
+            esac
+            CHECKSUM_TABLE="$CHECKSUM_TABLE"$'\n'"| $desc | \`$f\` | $size | \`$sum\` |"
+          done
+
+          # Export multiline output to GITHUB_OUTPUT
+          echo "checksum_table<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHECKSUM_TABLE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release with Multi-Arch APKs
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0-build.${{ github.run_number }}
           name: "Teleflix v1.0.0 (Build #${{ github.run_number }})"
           body: |
-            ## 📱 Teleflix - Auto Build
+            ## 📱 Teleflix - Auto Build (Multi-Architecture)
 
             **Commit:** `${{ steps.slug.outputs.sha }}`
             **Branch:** `master`
 
-            ### Key Features
-            - **Dual-Mode Catalogs:** Switch seamlessly between Cinemeta movies/series & Monitored Telegram Channels
-            - **Live Video Thumbnails & Posters:** Widescreen 16:9 thumbnails for video items & real human-readable Telegram chat titles
-            - **Real-Time Split & ZIP Archive Streaming:** Automatic grouping of split archives (`.001/.002`, `.part1`, `.zip`) with on-the-fly streaming directly from Telegram cloud without extracting
-            - **Intelligent Caption Parsing:** Automatically resolves titles from video captions for educational lectures and unnamed media
-            - **Built-in & External Player Integration:** Smooth resumption & playback in ExoPlayer, VLC, MX Player, and MPV
+            ### 🚀 Architecture-Specific Downloads & Checksums
+            ${{ steps.notes.outputs.checksum_table }}
 
-            ### Install
-            Download `app-debug.apk` below and install on your Android device.
-          files: app/build/outputs/apk/debug/app-debug.apk
+            ### 💡 Which APK should I install?
+            - **`app-arm64-v8a-debug.apk`**: Recommended for almost all modern Android phones & tablets (~78 MB).
+            - **`app-armeabi-v7a-debug.apk`**: For older 32-bit devices and Android TV boxes (~60 MB).
+            - **`app-universal-debug.apk`**: Compatible with any device (~282 MB).
+            - **`app-x86_64-debug.apk` / `app-x86-debug.apk`**: For Android emulators & Chromebooks.
+
+            ### Key Features
+            - **Multi-Architecture Support:** Lightweight per-ABI APKs saving up to 75% download size
+            - **Dual-Mode Catalogs:** Switch seamlessly between Cinemeta movies/series & Monitored Telegram Channels
+            - **Live Video Thumbnails & Posters:** Widescreen 16:9 thumbnails for video items & real Telegram chat titles
+            - **Real-Time Split & ZIP Archive Streaming:** Automatic grouping of split archives (`.001/.002`, `.part1`, `.zip`) with on-the-fly streaming directly from Telegram cloud
+            - **Parallel Downloading:** Multi-task concurrent downloads with automatic split-part pre-fetching
+            - **Built-in & External Player Integration:** Smooth playback in ExoPlayer, VLC, MX Player, and MPV
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/debug/sha256_checksums.txt
           draft: false
           prerelease: false
