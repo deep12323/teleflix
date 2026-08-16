@@ -68,13 +68,31 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         // Header
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 16))
+        }
+
+        val logoImg = ImageView(this).apply {
+            val logoResId = resources.getIdentifier("teleflix_logo", "drawable", packageName)
+            if (logoResId != 0) {
+                setImageResource(logoResId)
+            }
+            val iconSize = UITheme.dpToPx(this@SettingsActivity, 28)
+            layoutParams = LinearLayout.LayoutParams(iconSize, iconSize).apply {
+                setMargins(0, 0, UITheme.dpToPx(this@SettingsActivity, 10), 0)
+            }
+        }
+
         val header = TextView(this).apply {
             text = "TELEGRAM & TDLIB SETTINGS"
             UITheme.applyLargeTitleStyle(this)
             setTextColor(Color.parseColor(UITheme.PRIMARY))
-            setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 16))
         }
-        root.addView(header)
+        headerRow.addView(logoImg)
+        headerRow.addView(header)
+        root.addView(headerRow)
 
         fun createCollapsibleSection(titleText: String): LinearLayout {
             val headerCard = LinearLayout(this).apply {
