@@ -275,12 +275,18 @@ object TelegramStreamingProxy {
                     urlSize = queryStr.split("&").find { it.startsWith("size=") }?.substringAfter("=")?.toLongOrNull() ?: 0L
                 }
 
-                val isSplitPart = fileName != null && Regex("(?i)\\.(zip\\.\\d+|z\\d+|part\\d+|7z\\.\\d+)$").containsMatchIn(fileName)
+                val isSplitPart = fileName != null && Regex("(?i)\\.(zip\\.\\d+|z\\d+|part\\d+|7z\\.\\d+|r\\d+|\\d{3,4}|mkv\\.\\d+|mp4\\.\\d+)$").containsMatchIn(fileName)
                 val reqChatId = queryStr.split("&").find { it.startsWith("chatId=") }?.substringAfter("=")?.toLongOrNull() ?: 0L
                 val reqMessageId = queryStr.split("&").find { it.startsWith("messageId=") }?.substringAfter("=")?.toLongOrNull() ?: 0L
 
                 if (isSplitPart && reqChatId != 0L && reqMessageId != 0L) {
-                    val mediaMessages = runCatching { TelegramRepository.fetchChannelMedia(reqChatId.toString(), limit = 1000).first }.getOrNull()
+                    val mediaMessages = runCatching {
+                        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                            kotlinx.coroutines.withTimeoutOrNull(4000L) {
+                                TelegramRepository.fetchChannelMedia(reqChatId.toString(), limit = 1000).first
+                            }
+                        }
+                    }.getOrNull()
                     if (mediaMessages != null) {
                         val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
                         val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
@@ -291,6 +297,13 @@ object TelegramStreamingProxy {
                             fileName = matchGroup.group.baseName
                             urlSize = mergedSizes.sum()
                             fileId = mergedFileIds.firstOrNull()
+
+                            matchGroup.group.parts.forEach { part ->
+                                if (part.fileId != 0 && part.messageId != 0L) {
+                                    registerFileMessage(part.fileId, reqChatId, part.messageId)
+                                }
+                            }
+                            TeleflixLogger.log(TAG, "Proxy auto-resolved split group '${matchGroup.group.baseName}' with ${mergedFileIds.size} parts (total ${String.format("%.2f MB", urlSize / 1048576.0)})")
                         }
                     }
                 }
@@ -396,12 +409,18 @@ object TelegramStreamingProxy {
                 urlSize = queryStr.split("&").find { it.startsWith("size=") }
                     ?.substringAfter("=")?.toLongOrNull() ?: 0L
 
-                val isSplitPart = zipInnerName != null && Regex("(?i)\\.(zip\\.\\d+|z\\d+|part\\d+|7z\\.\\d+)$").containsMatchIn(zipInnerName)
+                val isSplitPart = zipInnerName != null && Regex("(?i)\\.(zip\\.\\d+|z\\d+|part\\d+|7z\\.\\d+|r\\d+|\\d{3,4}|mkv\\.\\d+|mp4\\.\\d+)$").containsMatchIn(zipInnerName)
                 val reqChatId = queryStr.split("&").find { it.startsWith("chatId=") }?.substringAfter("=")?.toLongOrNull() ?: 0L
                 val reqMessageId = queryStr.split("&").find { it.startsWith("messageId=") }?.substringAfter("=")?.toLongOrNull() ?: 0L
 
                 if (isSplitPart && reqChatId != 0L && reqMessageId != 0L) {
-                    val mediaMessages = runCatching { TelegramRepository.fetchChannelMedia(reqChatId.toString(), limit = 1000).first }.getOrNull()
+                    val mediaMessages = runCatching {
+                        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                            kotlinx.coroutines.withTimeoutOrNull(4000L) {
+                                TelegramRepository.fetchChannelMedia(reqChatId.toString(), limit = 1000).first
+                            }
+                        }
+                    }.getOrNull()
                     if (mediaMessages != null) {
                         val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
                         val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
@@ -418,6 +437,7 @@ object TelegramStreamingProxy {
                                     registerFileMessage(part.fileId, reqChatId, part.messageId)
                                 }
                             }
+                            TeleflixLogger.log(TAG, "Proxy auto-resolved split ZIP group '${matchGroup.group.baseName}' with ${mergedFileIds.size} parts (total ${String.format("%.2f MB", urlSize / 1048576.0)})")
                         }
                     }
                 }

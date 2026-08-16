@@ -542,8 +542,30 @@ class MainActivity : AppCompatActivity() {
                             val chatId = parts.getOrNull(0)?.toLongOrNull()
                             val messageId = parts.getOrNull(1)?.toLongOrNull()
 
-                            if (chatId != null && messageId != null && streamInfo == null) {
+                            val isSplitFilename = Regex("(?i)\\.(zip\\.\\d+|z\\d+|part\\d+|7z\\.\\d+|r\\d+|\\d{3,4}|mkv\\.\\d+|mp4\\.\\d+)$").containsMatchIn(fileName)
+
+                            if (chatId != null && messageId != null && (streamInfo == null || isSplitFilename)) {
+                                Toast.makeText(this@MainActivity, "Resolving archive stream...", Toast.LENGTH_SHORT).show()
                                 CoroutineScope(Dispatchers.Main).launch {
+                                    if (isSplitFilename) {
+                                        val mediaMessages = withContext(Dispatchers.IO) {
+                                            TelegramRepository.fetchChannelMedia(chatId.toString(), limit = 1000).first
+                                        }
+                                        val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+                                        val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
+                                            .find { g -> g.group.parts.any { it.messageId == messageId } }
+                                        if (matchGroup != null && matchGroup.group.parts.size > 1) {
+                                            val gParts = matchGroup.group.parts.map { Pair(it.chatId, it.messageId) }
+                                            val gSizes = matchGroup.group.parts.map { it.fileSize }
+                                            telegramGroupCache[item.id] = Pair(gParts, gSizes)
+                                            telegramGroupPartsCache[item.id] = matchGroup.group.parts
+                                            val freshUrl = TelegramRepository.getFreshMergedMediaUrl(gParts, matchGroup.group.baseName, gSizes)
+                                            if (freshUrl != null && freshUrl.isNotBlank()) {
+                                                checkResumeAndSelectPlayer(freshUrl, matchGroup.group.baseName, item.posterUrl, item.id, fileName)
+                                                return@launch
+                                            }
+                                        }
+                                    }
                                     val freshUrl = TelegramRepository.getFreshMediaUrl(chatId, messageId)
                                     if (freshUrl != null && freshUrl.isNotBlank()) {
                                         checkResumeAndSelectPlayer(freshUrl, titleToPlay, item.posterUrl, item.id, fileName)
