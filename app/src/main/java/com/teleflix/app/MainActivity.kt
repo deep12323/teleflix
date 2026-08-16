@@ -234,32 +234,13 @@ class MainActivity : AppCompatActivity() {
             setPadding(pH, 0, pH, pB)
         }
 
-        val brandLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        val logoImg = ImageView(this).apply {
-            val logoResId = resources.getIdentifier("teleflix_logo", "drawable", packageName)
-            if (logoResId != 0) {
-                setImageResource(logoResId)
-            }
-            val iconSize = UITheme.dpToPx(this@MainActivity, 32)
-            layoutParams = LinearLayout.LayoutParams(iconSize, iconSize).apply {
-                setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 8), 0)
-            }
-        }
-
         val titleView = TextView(this).apply {
             text = "TELEFLIX"
             UITheme.applyLargeTitleStyle(this)
             setTextColor(Color.parseColor(UITheme.PRIMARY)) // Netflix Red
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-
-        brandLayout.addView(logoImg)
-        brandLayout.addView(titleView)
-        headerLayout.addView(brandLayout)
+        headerLayout.addView(titleView)
 
         statusButton = TextView(this).apply {
             text = "⚙️"
