@@ -1149,14 +1149,17 @@ object DownloadManager {
             val now = System.currentTimeMillis()
 
             for (item in downloadsMap.values) {
-                val matchesSingle = !item.isMultiPart && (item.fileId == file.id || (item.fileId == 0 && file.id != 0))
+                // Ignore downloads that are already finalized
+                if (item.status == DownloadStatus.COMPLETED || item.status == DownloadStatus.FAILED || item.status == DownloadStatus.CANCELLED) {
+                    continue
+                }
+
+                // Strict match: Never match fileId == 0 to random incoming TDLib file events (thumbnails/probes)
+                val matchesSingle = !item.isMultiPart && (item.fileId != 0 && item.fileId == file.id)
                 val matchesMulti = item.isMultiPart && item.partFileIds.contains(file.id)
 
                 if (matchesSingle || matchesMulti) {
                     if (matchesSingle) {
-                        if (item.fileId == 0) {
-                            item.fileId = file.id
-                        }
                         item.downloadedBytes = file.local.downloadedSize
                         val reportedSize = if (file.expectedSize > 0) file.expectedSize else if (file.size > 0) file.size else 0L
                         if (reportedSize > item.totalBytes || item.totalBytes == 0L) {
@@ -1187,46 +1190,60 @@ object DownloadManager {
                     if (matchesSingle) {
                         val tdlibPath = file.local?.path ?: ""
 
-                        val isCompleted = file.local.isDownloadingCompleted || 
-                            (item.totalBytes > 0 && file.local.downloadedSize >= item.totalBytes)
+                        val isCompleted = item.status == DownloadStatus.DOWNLOADING &&
+                            (file.local.isDownloadingCompleted || (item.totalBytes > 0 && file.local.downloadedSize >= item.totalBytes))
 
                         if (isCompleted) {
-                            item.status = DownloadStatus.COMPLETED
-                            if (item.totalBytes > 0) item.downloadedBytes = item.totalBytes
-                            item.speedBytesPerSec = 0L
-                            resetSpeedTracking(item.id)
-                            TeleflixLogger.log(TAG, "Download COMPLETED for '${item.title}': downloaded=${item.downloadedBytes}/${item.totalBytes} bytes")
-
+                            var copySuccess = false
                             if (tdlibPath.isNotBlank()) {
                                 try {
                                     val source = File(tdlibPath)
                                     val cleanPath = cleanFilePath(item.localPath)
                                     item.localPath = cleanPath
                                     val target = File(cleanPath)
-                                    if (target.parentFile?.exists() == false) {
-                                        target.parentFile?.mkdirs()
-                                    }
-                                    if (source.exists() && source.absolutePath != target.absolutePath) {
-                                        fastCopyFile(source, target)
-                                        if (source.exists() && target.length() < source.length()) {
-                                            TeleflixLogger.log(TAG, "fastCopyFile incomplete (${target.length()}/${source.length()} bytes). Falling back to InputStream copy...")
-                                            source.copyTo(target, overwrite = true)
-                                        }
-                                        TeleflixLogger.log(TAG, "Copied completed download to ${target.absolutePath} (${target.length()} bytes)")
-                                        if (target.exists() && source.exists() && target.length() >= source.length()) {
-                                            runCatching { TelegramClient.deleteFile(item.fileId) }
-                                            runCatching { source.delete() }
-                                            TeleflixLogger.log(TAG, "Purged internal TDLib download cache for completed fileId=${item.fileId}")
+
+                                    if (source.exists() && source.length() > 0) {
+                                        // Verify size sanity: ensure source isn't truncated before declaring complete
+                                        if (item.totalBytes > 0 && source.length() < (item.totalBytes * 0.95)) {
+                                            TeleflixLogger.log(TAG, "Source file size (${source.length()}) significantly less than expected totalBytes (${item.totalBytes}) for '${item.title}'. Postponing copy...", isError = true)
                                         } else {
-                                            TeleflixLogger.log(TAG, "Preserving source TDLib cache: target file size mismatch (${target.length()} vs ${source.length()} bytes)", isError = true)
+                                            if (target.parentFile?.exists() == false) {
+                                                target.parentFile?.mkdirs()
+                                            }
+                                            if (source.absolutePath != target.absolutePath) {
+                                                fastCopyFile(source, target)
+                                                if (source.exists() && target.length() < source.length()) {
+                                                    TeleflixLogger.log(TAG, "fastCopyFile incomplete (${target.length()}/${source.length()} bytes). Falling back to InputStream copy...")
+                                                    source.copyTo(target, overwrite = true)
+                                                }
+                                                TeleflixLogger.log(TAG, "Copied completed download to ${target.absolutePath} (${target.length()} bytes)")
+                                                if (target.exists() && target.length() >= source.length() && target.length() > 0) {
+                                                    copySuccess = true
+                                                    runCatching { TelegramClient.deleteFile(item.fileId) }
+                                                    runCatching { source.delete() }
+                                                    TeleflixLogger.log(TAG, "Purged internal TDLib download cache for completed fileId=${item.fileId}")
+                                                } else {
+                                                    TeleflixLogger.log(TAG, "Preserving source TDLib cache: target file size mismatch (${target.length()} vs ${source.length()} bytes)", isError = true)
+                                                }
+                                            } else {
+                                                copySuccess = true
+                                            }
                                         }
                                     }
                                 } catch (e: Exception) {
                                     TeleflixLogger.log(TAG, "Failed copying completed download: ${e.message}", isError = true)
                                 }
                             }
-                            processNextQueuedItem(context)
-                        } else if (file.local.isDownloadingActive) {
+
+                            if (copySuccess || tdlibPath.isBlank()) {
+                                item.status = DownloadStatus.COMPLETED
+                                if (item.totalBytes > 0) item.downloadedBytes = item.totalBytes
+                                item.speedBytesPerSec = 0L
+                                resetSpeedTracking(item.id)
+                                TeleflixLogger.log(TAG, "Download COMPLETED for '${item.title}': downloaded=${item.downloadedBytes}/${item.totalBytes} bytes")
+                                processNextQueuedItem(context)
+                            }
+                        } else if (file.local.isDownloadingActive && item.status != DownloadStatus.DOWNLOADING) {
                             item.status = DownloadStatus.DOWNLOADING
                         }
                     } else if (matchesMulti && file.local.isDownloadingActive && item.status == DownloadStatus.PAUSED) {
