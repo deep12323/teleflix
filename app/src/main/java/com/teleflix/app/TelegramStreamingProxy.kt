@@ -31,6 +31,7 @@ object TelegramStreamingProxy {
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
     private val activeStreamRequests = java.util.concurrent.ConcurrentHashMap<Int, MutableSet<String>>()
+    private val activeSeekProbes = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     private val latestActiveStreamReqId = java.util.concurrent.ConcurrentHashMap<Int, String>()
     private val activeFileJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
     private val activeDownloadWindows = java.util.concurrent.ConcurrentHashMap<Int, Pair<Long, Long>>()
@@ -560,7 +561,9 @@ object TelegramStreamingProxy {
             metrics = m
             activeStreamRequests.getOrPut(fileId) { java.util.concurrent.ConcurrentHashMap.newKeySet<String>() }.add(m.reqId)
 
-            if (m.requestType != "seek_probe") {
+            if (m.requestType == "seek_probe") {
+                activeSeekProbes.compute(fileId) { _, v -> (v ?: 0) + 1 }
+            } else {
                 latestActiveStreamReqId[fileId] = m.reqId
                 val jobKey = "file_$fileId"
                 currentJobRegisteredKey = jobKey
@@ -617,6 +620,12 @@ object TelegramStreamingProxy {
 
             var offset = start
             while (offset <= end && running) {
+                // If a seek probe is actively reading container metadata (ends in <500ms), let it finish uninterrupted
+                if (m.requestType != "seek_probe" && (activeSeekProbes[fileId] ?: 0) > 0) {
+                    delay(80L)
+                    continue
+                }
+
                 val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
                 val alignedOffset = offset - (offset % (1024 * 1024))
                 val safeLimit = calculateSafeTdlibLimit(alignedOffset, totalSize, prefetchSizeMb, chunkSize)
@@ -648,6 +657,12 @@ object TelegramStreamingProxy {
             }
             m.logEnd()
         } finally {
+            if (metrics?.requestType == "seek_probe") {
+                activeSeekProbes.compute(fileId) { _, v ->
+                    val next = (v ?: 1) - 1
+                    if (next <= 0) null else next
+                }
+            }
             if (currentJob != null && currentJobRegisteredKey != null) {
                 activeFileJobs.remove(currentJobRegisteredKey, currentJob)
             }

@@ -37,6 +37,7 @@ object DownloadManager {
     private var lastProgressLogTimeMap = HashMap<String, Long>()
     private var lastBytesIncreaseTimeMap = HashMap<String, Long>()
     private var lastBytesCountMap = HashMap<String, Long>()
+    private var consecutiveFetchFailuresMap = HashMap<String, Int>()
     private var downloadLoopJob: Job? = null
 
     fun init(context: Context) {
@@ -522,6 +523,8 @@ object DownloadManager {
         if (currentFileId != 0) {
             var fileObj: TdApi.File? = try {
                 TelegramClient.sendRequest(TdApi.GetFile(currentFileId)) as? TdApi.File
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 TeleflixLogger.log(TAG, "GetFile failed for fileId $currentFileId: ${e.message}, attempting message refresh...", isError = true)
                 null
@@ -541,12 +544,15 @@ object DownloadManager {
                         fileObj = TelegramClient.sendRequest(TdApi.GetFile(currentFileId)) as? TdApi.File
                         TeleflixLogger.log(TAG, "Successfully refreshed & queued fileId for item ${item.id}: new fileId=$refreshedId")
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     TeleflixLogger.log(TAG, "Message refresh after GetFile failure failed for ${item.id}: ${e.message}", isError = true)
                 }
             }
 
             if (fileObj != null) {
+                consecutiveFetchFailuresMap.remove(item.id)
                 withContext(Dispatchers.Main) {
                     onFileUpdate(context, fileObj)
                 }
@@ -618,16 +624,26 @@ object DownloadManager {
                     }
                 }
             } else {
-                TeleflixLogger.log(TAG, "Download item ${item.id} has invalid fileId=$currentFileId and could not be fetched. Marking FAILED.", isError = true)
+                val failures = (consecutiveFetchFailuresMap[item.id] ?: 0) + 1
+                consecutiveFetchFailuresMap[item.id] = failures
+                if (failures >= 15) {
+                    TeleflixLogger.log(TAG, "Download item ${item.id} has invalid fileId=$currentFileId and could not be fetched after $failures attempts. Marking FAILED.", isError = true)
+                    item.status = DownloadStatus.FAILED
+                    saveToPrefs(context)
+                    updateFlow()
+                } else {
+                    TeleflixLogger.log(TAG, "Download item ${item.id} temporary GetFile failure (attempt $failures/15) for fileId=$currentFileId. Retrying...")
+                }
+            }
+        } else {
+            val failures = (consecutiveFetchFailuresMap[item.id] ?: 0) + 1
+            consecutiveFetchFailuresMap[item.id] = failures
+            if (failures >= 15) {
+                TeleflixLogger.log(TAG, "Download item ${item.id} has fileId=0 and cannot be refreshed after $failures attempts. Marking FAILED.", isError = true)
                 item.status = DownloadStatus.FAILED
                 saveToPrefs(context)
                 updateFlow()
             }
-        } else {
-            TeleflixLogger.log(TAG, "Download item ${item.id} has fileId=0 and cannot be refreshed. Marking FAILED.", isError = true)
-            item.status = DownloadStatus.FAILED
-            saveToPrefs(context)
-            updateFlow()
         }
     }
 
@@ -660,6 +676,8 @@ object DownloadManager {
         if (partFileId != 0) {
             var fileObj: TdApi.File? = try {
                 TelegramClient.sendRequest(TdApi.GetFile(partFileId)) as? TdApi.File
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "GetFile failed for part $partFileId: ${e.message}, attempting refresh...")
                 null
@@ -676,12 +694,15 @@ object DownloadManager {
                         try { TelegramClient.sendRequest(TdApi.AddFileToDownloads(refreshedId, chatId, messageId, 32)) } catch (_: Exception) {}
                         fileObj = TelegramClient.sendRequest(TdApi.GetFile(partFileId)) as? TdApi.File
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.e(TAG, "Refresh after GetFile failure failed for part ${item.id}", e)
                 }
             }
 
             if (fileObj != null) {
+                consecutiveFetchFailuresMap.remove("${item.id}_part_$idx")
                 val sumCompletedParts = item.partFileSizes.take(idx).sum()
                 val currentPartDownloaded = fileObj.local.downloadedSize
                 item.downloadedBytes = sumCompletedParts + currentPartDownloaded
@@ -815,10 +836,17 @@ object DownloadManager {
                 }
                 updateFlow()
             } else {
-                Log.e(TAG, "Multipart item ${item.id} part index $idx cannot resolve valid fileId. Marking FAILED.")
-                item.status = DownloadStatus.FAILED
-                saveToPrefs(context)
-                updateFlow()
+                val key = "${item.id}_part_$idx"
+                val failures = (consecutiveFetchFailuresMap[key] ?: 0) + 1
+                consecutiveFetchFailuresMap[key] = failures
+                if (failures >= 15) {
+                    Log.e(TAG, "Multipart item ${item.id} part index $idx cannot resolve valid fileId after $failures attempts. Marking FAILED.")
+                    item.status = DownloadStatus.FAILED
+                    saveToPrefs(context)
+                    updateFlow()
+                } else {
+                    TeleflixLogger.log(TAG, "Multipart item ${item.id} part index $idx temporary GetFile failure (attempt $failures/15) for partFileId=$partFileId. Retrying...")
+                }
             }
         }
     }
@@ -941,47 +969,49 @@ object DownloadManager {
                 val chatId = if (item.isMultiPart) item.partChatIds.getOrNull(item.currentPartIndex) ?: item.chatId else item.chatId
                 val messageId = if (item.isMultiPart) item.partMessageIds.getOrNull(item.currentPartIndex) ?: item.messageId else item.messageId
 
-                if (activeId != 0) {
-                    lastDownloadRetryTimeMap[activeId] = System.currentTimeMillis()
+                if (activeId != 0 || (chatId != 0L && messageId != 0L)) {
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(activeId, false))
-                            if (chatId != 0L && messageId != 0L) {
-                                TelegramClient.sendRequest(TdApi.AddFileToDownloads(activeId, chatId, messageId, 32))
-                            } else {
-                                TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
-                                    req.fileId = activeId
-                                    req.priority = 32
-                                    req.offset = 0
-                                    req.limit = 0
-                                    req.synchronous = false
-                                })
-                            }
-                        } catch (e: Exception) {
-                            TeleflixLogger.log(TAG, "Failed resume download request for activeId=$activeId: ${e.message}", isError = true)
+                            var targetId = activeId
                             if (chatId != 0L && messageId != 0L) {
                                 try {
                                     val msg = TelegramClient.sendRequest(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message
                                     val freshId = extractFileIdFromMessage(msg)
-                                    if (freshId != null && freshId != 0 && freshId != activeId) {
+                                    if (freshId != null && freshId != 0) {
+                                        targetId = freshId
+                                        item.fileId = freshId
                                         if (item.isMultiPart && item.partFileIds.size > item.currentPartIndex) {
                                             item.partFileIds[item.currentPartIndex] = freshId
                                         }
-                                        item.fileId = freshId
-                                        TelegramClient.sendRequest(TdApi.AddFileToDownloads(freshId, chatId, messageId, 32))
-                                        TeleflixLogger.log(TAG, "Refreshed stale fileId=$activeId to fresh fileId=$freshId on resume for '${item.title}'")
+                                        TeleflixLogger.log(TAG, "Pre-warmed message and resolved targetId=$freshId on resume for '${item.title}'")
                                     }
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    TeleflixLogger.log(TAG, "GetMessage failed during resumeDownload for $chatId/$messageId: ${e.message}", isError = true)
+                                }
                             }
+                            if (targetId != 0) {
+                                lastDownloadRetryTimeMap[targetId] = System.currentTimeMillis()
+                                try { TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(targetId, false)) } catch (_: Exception) {}
+                                val res = if (chatId != 0L && messageId != 0L) {
+                                    TelegramClient.sendRequest(TdApi.AddFileToDownloads(targetId, chatId, messageId, 32))
+                                } else {
+                                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                        req.fileId = targetId
+                                        req.priority = 32
+                                        req.offset = 0
+                                        req.limit = 0
+                                        req.synchronous = false
+                                    })
+                                }
+                                TeleflixLogger.log(TAG, "Resume AddFileToDownloads/DownloadFile for $targetId returned: ${res?.javaClass?.simpleName}")
+                            }
+                        } catch (e: Exception) {
+                            TeleflixLogger.log(TAG, "Failed resume download request for activeId=$activeId: ${e.message}", isError = true)
                         }
                         TeleflixLogger.log(TAG, "Download RESUMED for '${item.title}'")
                     }
                 }
                 TeleflixDownloadService.start(context)
-                synchronized(this) {
-                    downloadLoopJob?.cancel()
-                    downloadLoopJob = null
-                }
                 startDownloadLoop(context)
             }
         }
@@ -1243,6 +1273,7 @@ object DownloadManager {
         lastBytesIncreaseTimeMap.remove(downloadId)
         lastBytesCountMap.remove(downloadId)
         lastProgressLogTimeMap.remove(downloadId)
+        consecutiveFetchFailuresMap.remove(downloadId)
     }
 
     fun isFileIdActive(fileId: Int): Boolean {
