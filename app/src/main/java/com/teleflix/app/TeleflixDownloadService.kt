@@ -98,6 +98,7 @@ class TeleflixDownloadService : Service() {
                     val activeItem = activeList.first()
                     val totalDownloaded = activeList.sumOf { it.downloadedBytes }
                     val totalSize = activeList.sumOf { it.totalBytes }
+                    val totalSpeed = activeList.sumOf { it.speedBytesPerSec }
                     val overallProgress = if (totalSize > 0) ((totalDownloaded * 100) / totalSize).toInt().coerceIn(0, 100) else 0
 
                     val titleText = if (activeList.size == 1) {
@@ -108,7 +109,8 @@ class TeleflixDownloadService : Service() {
 
                     val formattedTransferred = formatBytes(totalDownloaded)
                     val formattedTotal = if (totalSize > 0) formatBytes(totalSize) else "..."
-                    val subText = "${activeItem.getFormattedSpeed()} • ${activeItem.progressPercent}% ($formattedTransferred / $formattedTotal)"
+                    val formattedSpeed = if (totalSpeed <= 0L) "0.0 KB/s" else formatBytes(totalSpeed) + "/s"
+                    val subText = "$formattedSpeed • $overallProgress% ($formattedTransferred / $formattedTotal)"
 
                     val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     val notification = buildNotification(titleText, overallProgress, activeList.size, subText)

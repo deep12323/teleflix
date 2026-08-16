@@ -184,6 +184,15 @@ object DownloadManager {
         getPrefs(context).edit().putString("custom_storage_path", path.trim()).apply()
     }
 
+    fun getMaxConcurrentDownloads(context: Context): Int {
+        return getPrefs(context).getInt("max_concurrent_downloads", 2)
+    }
+
+    fun setMaxConcurrentDownloads(context: Context, max: Int) {
+        getPrefs(context).edit().putInt("max_concurrent_downloads", max.coerceIn(1, 6)).apply()
+        processNextQueuedItem(context)
+    }
+
     fun getActiveDownloadsDir(context: Context): File {
         val mode = getStorageMode(context)
         val dir = when (mode) {
@@ -264,8 +273,9 @@ object DownloadManager {
             val downloadsDir = getActiveDownloadsDir(context)
             val destFile = File(downloadsDir, cleanName)
 
-            val isAnotherActive = downloadsMap.values.any { it.status == DownloadStatus.DOWNLOADING }
-            val initialStatus = if (isAnotherActive) DownloadStatus.QUEUED else DownloadStatus.DOWNLOADING
+            val maxConcurrent = getMaxConcurrentDownloads(context)
+            val currentActiveCount = downloadsMap.values.count { it.status == DownloadStatus.DOWNLOADING }
+            val initialStatus = if (currentActiveCount >= maxConcurrent) DownloadStatus.QUEUED else DownloadStatus.DOWNLOADING
 
             val item = DownloadItem(
                 id = downloadId,
@@ -290,7 +300,7 @@ object DownloadManager {
             if (initialStatus == DownloadStatus.DOWNLOADING) {
                 // Request TDLib to start downloading file
                 if (fileId != 0 || (chatId != 0L && messageId != 0L)) {
-                    TeleflixLogger.log(TAG, "Starting download '${title}': fileId=$fileId, chatId=$chatId, messageId=$messageId")
+                    TeleflixLogger.log(TAG, "Starting download '${title}': fileId=$fileId, chatId=$chatId, messageId=$messageId (Parallel slot ${currentActiveCount + 1}/$maxConcurrent)")
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
                             var targetId = fileId
@@ -330,7 +340,7 @@ object DownloadManager {
                     TeleflixLogger.log(TAG, "Starting download '${title}' with fileId=0, chatId=$chatId, messageId=$messageId", isError = true)
                 }
             } else {
-                TeleflixLogger.log(TAG, "Queued download '${title}' behind active downloading item")
+                TeleflixLogger.log(TAG, "Queued download '${title}' behind active downloading items ($currentActiveCount/$maxConcurrent active)")
             }
 
             // Start background service & active polling loop
@@ -367,8 +377,9 @@ object DownloadManager {
 
             val totalSize = parts.sumOf { it.fileSize }
 
-            val isAnotherActive = downloadsMap.values.any { it.status == DownloadStatus.DOWNLOADING }
-            val initialStatus = if (isAnotherActive) DownloadStatus.QUEUED else DownloadStatus.DOWNLOADING
+            val maxConcurrent = getMaxConcurrentDownloads(context)
+            val currentActiveCount = downloadsMap.values.count { it.status == DownloadStatus.DOWNLOADING }
+            val initialStatus = if (currentActiveCount >= maxConcurrent) DownloadStatus.QUEUED else DownloadStatus.DOWNLOADING
 
             val item = DownloadItem(
                 id = downloadId,
@@ -402,7 +413,7 @@ object DownloadManager {
             val firstFileId = firstPart?.fileId ?: 0
 
             if (initialStatus == DownloadStatus.DOWNLOADING) {
-                TeleflixLogger.log(TAG, "Starting multipart download '$cleanTitle': parts=${parts.size}, firstFileId=$firstFileId")
+                TeleflixLogger.log(TAG, "Starting multipart download '$cleanTitle': parts=${parts.size}, firstFileId=$firstFileId (Parallel slot ${currentActiveCount + 1}/$maxConcurrent)")
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
                         var targetId = firstFileId
@@ -834,6 +845,33 @@ object DownloadManager {
                         }
                     }
                 }
+
+                // Pre-trigger the next split part concurrently in the background so TDLib downloads parts in parallel
+                if (idx + 1 < item.partFileIds.size) {
+                    val nextPartId = item.partFileIds[idx + 1]
+                    val nextChatId = item.partChatIds.getOrNull(idx + 1) ?: 0L
+                    val nextMsgId = item.partMessageIds.getOrNull(idx + 1) ?: 0L
+                    val lastNextPing = lastDownloadRetryTimeMap[nextPartId] ?: 0L
+                    if (now - lastNextPing > 20000L && nextPartId != 0) {
+                        lastDownloadRetryTimeMap[nextPartId] = now
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                if (nextChatId != 0L && nextMsgId != 0L) {
+                                    TelegramClient.sendRequest(TdApi.AddFileToDownloads(nextPartId, nextChatId, nextMsgId, 24))
+                                } else {
+                                    TelegramClient.sendRequest(TdApi.DownloadFile().also { req ->
+                                        req.fileId = nextPartId
+                                        req.priority = 24
+                                        req.offset = 0
+                                        req.limit = 0
+                                        req.synchronous = false
+                                    })
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+
                 updateFlow()
             } else {
                 val key = "${item.id}_part_$idx"
@@ -946,12 +984,14 @@ object DownloadManager {
         synchronized(downloadsMap) {
             val item = downloadsMap[downloadId] ?: return
             if (item.status == DownloadStatus.PAUSED || item.status == DownloadStatus.FAILED || item.status == DownloadStatus.QUEUED) {
-                // Demote any currently downloading items to QUEUED so this item gets 100% bandwidth
-                for (other in downloadsMap.values) {
-                    if (other.id != downloadId && other.status == DownloadStatus.DOWNLOADING) {
-                        other.status = DownloadStatus.QUEUED
-                        other.speedBytesPerSec = 0L
-                        val activeOtherId = if (other.isMultiPart) other.partFileIds.getOrNull(other.currentPartIndex) ?: other.fileId else other.fileId
+                val maxConcurrent = getMaxConcurrentDownloads(context)
+                val otherDownloading = downloadsMap.values.filter { it.id != downloadId && it.status == DownloadStatus.DOWNLOADING }
+                if (otherDownloading.size >= maxConcurrent) {
+                    val toDemote = otherDownloading.maxByOrNull { it.addedTime }
+                    if (toDemote != null) {
+                        toDemote.status = DownloadStatus.QUEUED
+                        toDemote.speedBytesPerSec = 0L
+                        val activeOtherId = if (toDemote.isMultiPart) toDemote.partFileIds.getOrNull(toDemote.currentPartIndex) ?: toDemote.fileId else toDemote.fileId
                         if (activeOtherId != 0) {
                             CoroutineScope(Dispatchers.IO).launch {
                                 try { TelegramClient.sendRequest(TdApi.ToggleDownloadIsPaused(activeOtherId, true)) } catch (_: Exception) {}
@@ -1019,13 +1059,16 @@ object DownloadManager {
 
     private fun processNextQueuedItem(context: Context) {
         synchronized(downloadsMap) {
-            val hasActive = downloadsMap.values.any { it.status == DownloadStatus.DOWNLOADING }
-            if (!hasActive) {
-                val nextQueued = downloadsMap.values
+            val maxConcurrent = getMaxConcurrentDownloads(context)
+            val currentActive = downloadsMap.values.count { it.status == DownloadStatus.DOWNLOADING }
+            val slotsAvailable = maxConcurrent - currentActive
+            if (slotsAvailable > 0) {
+                val nextQueuedItems = downloadsMap.values
                     .filter { it.status == DownloadStatus.QUEUED }
-                    .minByOrNull { it.addedTime }
-                if (nextQueued != null) {
-                    TeleflixLogger.log(TAG, "Auto-starting next queued download '${nextQueued.title}'")
+                    .sortedBy { it.addedTime }
+                    .take(slotsAvailable)
+                for (nextQueued in nextQueuedItems) {
+                    TeleflixLogger.log(TAG, "Auto-starting next queued download '${nextQueued.title}' ($slotsAvailable parallel slot(s) available)")
                     resumeDownload(context, nextQueued.id)
                 }
             }

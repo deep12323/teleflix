@@ -373,6 +373,82 @@ class SettingsActivity : AppCompatActivity() {
         downloadBox.addView(optCustomStorage)
         downloadBox.addView(customPathInputLayout)
 
+        // Parallel Downloads (Concurrency) Setting
+        val parallelTitle = TextView(this).apply {
+            text = "⚡ Parallel Downloads (Concurrent Tasks)"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 14f
+            setPadding(0, UITheme.dpToPx(this@SettingsActivity, 16), 0, UITheme.dpToPx(this@SettingsActivity, 4))
+        }
+        val parallelSub = TextView(this).apply {
+            text = "Download multiple files simultaneously for maximum network saturation and faster completion."
+            UITheme.applyMetadataStyle(this)
+            setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 10))
+        }
+        downloadBox.addView(parallelTitle)
+        downloadBox.addView(parallelSub)
+
+        val parallelGrid = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 8))
+            }
+        }
+
+        val concurrencyOptions = listOf(
+            1 to "1 File\nSequential",
+            2 to "2 Files\nRecommended",
+            3 to "3 Files\nFast",
+            4 to "4 Files\nMax Speed"
+        )
+        val concurrencyButtons = mutableListOf<TextView>()
+        val currentMax = DownloadManager.getMaxConcurrentDownloads(this)
+
+        fun updateConcurrencyUI(selected: Int) {
+            DownloadManager.setMaxConcurrentDownloads(this@SettingsActivity, selected)
+            concurrencyButtons.forEachIndexed { i, btn ->
+                val count = concurrencyOptions[i].first
+                val isSel = count == selected
+                btn.background = UITheme.createRippleCardShape(
+                    this@SettingsActivity,
+                    if (isSel) UITheme.SURFACE else UITheme.CARD,
+                    12,
+                    if (isSel) UITheme.PRIMARY else UITheme.STROKE_COLOR
+                )
+                btn.setTextColor(if (isSel) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
+            }
+            Toast.makeText(this@SettingsActivity, "Parallel downloads set to $selected file(s)", Toast.LENGTH_SHORT).show()
+        }
+
+        concurrencyOptions.forEach { (count, label) ->
+            val btn = TextView(this).apply {
+                text = label
+                gravity = android.view.Gravity.CENTER
+                textSize = 11f
+                setTypeface(null, Typeface.BOLD)
+                val isSel = count == currentMax
+                background = UITheme.createRippleCardShape(
+                    this@SettingsActivity,
+                    if (isSel) UITheme.SURFACE else UITheme.CARD,
+                    12,
+                    if (isSel) UITheme.PRIMARY else UITheme.STROKE_COLOR
+                )
+                setTextColor(if (isSel) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
+                val pV = UITheme.dpToPx(this@SettingsActivity, 10)
+                val pH = UITheme.dpToPx(this@SettingsActivity, 4)
+                setPadding(pH, pV, pH, pV)
+                isClickable = true
+                isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    setMargins(UITheme.dpToPx(this@SettingsActivity, 2), 0, UITheme.dpToPx(this@SettingsActivity, 2), 0)
+                }
+                setOnClickListener { updateConcurrencyUI(count) }
+            }
+            concurrencyButtons.add(btn)
+            parallelGrid.addView(btn)
+        }
+        downloadBox.addView(parallelGrid)
+
         downloadSettingsContainer.addView(downloadBox)
 
         // 3. Video Playback & Preferred Player Section (Collapsible)
