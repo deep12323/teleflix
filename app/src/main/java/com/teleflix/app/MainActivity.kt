@@ -307,7 +307,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        headerLayout.addView(titleView)
         headerLayout.addView(modeToggleButton)
         val headerGap = android.view.View(this).apply {
             layoutParams = LinearLayout.LayoutParams(UITheme.dpToPx(this@MainActivity, 8), 1)
