@@ -6,7 +6,7 @@
 
 Teleflix is an Android app that lets you stream movies, TV shows, and videos directly from Telegram channels and Cinemeta catalogs without downloading entire files first.
 
-It runs a local HTTP streaming proxy powered by TDLib. When you play a video, the app fetches byte ranges on demand directly from Telegram's servers and pipes them to your player (built-in ExoPlayer, VLC, MPV, MX Player, etc.).
+It runs a local HTTP streaming proxy powered by TDLib. When you play a video, the app fetches byte ranges on demand directly from Telegram's servers and pipes them to your player (ExoPlayer, VLC, MPV, MX Player, etc.).
 
 ---
 
