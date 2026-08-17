@@ -545,7 +545,6 @@ class MainActivity : AppCompatActivity() {
                             val isSplitFilename = Regex("(?i)\\.(zip\\.\\d+|z\\d+|part\\d+|7z\\.\\d+|r\\d+|\\d{3,4}|mkv\\.\\d+|mp4\\.\\d+)$").containsMatchIn(fileName)
 
                             if (chatId != null && messageId != null && (streamInfo == null || isSplitFilename)) {
-                                Toast.makeText(this@MainActivity, "Resolving archive stream...", Toast.LENGTH_SHORT).show()
                                 CoroutineScope(Dispatchers.Main).launch {
                                     if (isSplitFilename) {
                                         val mediaMessages = withContext(Dispatchers.IO) {
