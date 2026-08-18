@@ -211,7 +211,7 @@ object TdlibManager {
                     val group = item.group
                     val totalSize = group.parts.sumOf { it.fileSize }
                     val firstPart = group.parts.first()
-                    val isZipGroup = group.baseName.lowercase().contains(".zip") || group.parts.any { it.fileName.lowercase().contains(".zip") }
+                    val isZipGroup = group.baseName.lowercase().endsWith(".zip") || group.parts.any { TelegramRepository.isZipArchiveFilename(it.fileName, it.mimeType) }
 
                     if (isZipGroup) {
                         val freshIds = group.parts.map { it.fileId }
@@ -241,15 +241,22 @@ object TdlibManager {
                     } else {
                         val groupId = "group_${firstPart.chatId}_${group.baseName}"
                         TelegramRepository.groupPartsCache[groupId] = group.parts
-                        val firstStreamUrl = TelegramRepository.getStreamUrl(firstPart.fileId, firstPart.fileName, firstPart.fileSize)
+                        val freshIds = group.parts.map { it.fileId }
+                        val partSizes = group.parts.map { it.fileSize }
+                        val groupChats = group.parts.map { it.chatId }
+                        val groupMsgs = group.parts.map { it.messageId }
+                        TelegramRepository.groupCache[groupId] = Pair(groupChats.zip(groupMsgs), partSizes)
+                        val qualityTag = extractQualityTag(group.baseName).ifBlank { "SPLIT PACK" }
+                        val mergedStreamUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes, groupChats, groupMsgs)
                         resultSources.add(
                             StreamSource(
                                 id = groupId,
-                                quality = "SPLIT PACK (${group.parts.size} Parts)",
+                                quality = "$qualityTag (${group.parts.size} Parts)",
                                 fileName = "📦 ${group.baseName}",
                                 size = formatBytes(totalSize),
                                 channel = "Telegram Multi-Part",
-                                url = firstStreamUrl,
+                                url = mergedStreamUrl,
+                                isZip = false,
                                 isSplit = true,
                                 chatId = firstPart.chatId
                             )

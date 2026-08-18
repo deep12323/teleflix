@@ -1616,15 +1616,11 @@ object TelegramRepository {
         val lower = filename.lowercase().trim()
         val mime = mimeType?.lowercase()?.trim() ?: ""
 
-        if (mime.contains("zip") || mime.contains("rar") || mime.contains("7z") || mime.contains("tar") || mime.contains("gzip")) return true
+        if (mime.contains("application/zip") || mime.contains("application/x-zip-compressed")) return true
 
-        if (lower.endsWith(".zip") || lower.endsWith(".7z") || lower.endsWith(".rar") || lower.endsWith(".tar") || lower.endsWith(".gz")) return true
-        if (lower.contains(".zip.") || lower.contains(".7z.") || lower.contains(".rar.")) return true
-        
-        // Numeric split extensions (.001, .002, .003, etc., or .mkv.001)
-        if (Regex("""(?i)\.\d{3,4}$""").containsMatchIn(lower)) return true
-        if (Regex("""(?i)\.(zip|7z|rar|mkv|mp4|avi|ts|flv|mov|webm)\.\d+$""").containsMatchIn(lower)) return true
-        if (Regex("""(?i)\.(z\d+|part\d+|r\d+)$""").containsMatchIn(lower)) return true
+        // True ZIP files only: e.g. movie.zip, movie.zip.001
+        if (lower.endsWith(".zip") || lower.contains(".zip.")) return true
+
         return false
     }
 
