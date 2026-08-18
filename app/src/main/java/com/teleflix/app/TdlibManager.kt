@@ -219,16 +219,22 @@ object TdlibManager {
                         val groupChats = group.parts.map { it.chatId }
                         val groupMsgs = group.parts.map { it.messageId }
                         val zipUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes, groupChats, groupMsgs)
+                        val groupId = "group_${firstPart.chatId}_${group.baseName}"
+                        val zipId = "zip_${firstPart.chatId}_${firstPart.messageId}"
+                        TelegramRepository.groupPartsCache[groupId] = group.parts
+                        TelegramRepository.groupPartsCache[zipId] = group.parts
+                        TelegramRepository.groupCache[groupId] = Pair(groupChats.zip(groupMsgs), partSizes)
+                        TelegramRepository.groupCache[zipId] = Pair(groupChats.zip(groupMsgs), partSizes)
                         resultSources.add(
                             StreamSource(
-                                id = "zip_${firstPart.chatId}_${firstPart.messageId}",
-                                quality = "🗄️ ZIP",
+                                id = groupId,
+                                quality = "🗄️ ZIP (${group.parts.size} Parts)",
                                 fileName = "🗄️ ${group.baseName}",
                                 size = formatBytes(totalSize),
                                 channel = "Telegram Stream",
                                 url = zipUrl,
                                 isZip = true,
-                                isSplit = false,
+                                isSplit = true,
                                 chatId = firstPart.chatId
                             )
                         )
@@ -256,7 +262,7 @@ object TdlibManager {
                     val isZip = TelegramRepository.isZipArchiveFilename(msg.fileName)
                     val sizeStr = formatBytes(msg.fileSize)
                     val streamUrl = if (isZip && msg.fileSize > 1_000_000) {
-                        TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
+                        TelegramRepository.getZipStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
                     } else {
                         TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
                     }
@@ -264,13 +270,14 @@ object TdlibManager {
                     val prefix = if (isZip) "🗄️ " else "📺 "
                     resultSources.add(
                         StreamSource(
-                            id = "${msg.chatId}_${msg.messageId}",
+                            id = if (isZip) "zip_${msg.chatId}_${msg.messageId}" else "${msg.chatId}_${msg.messageId}",
                             quality = if (qualityTag.isNotBlank()) qualityTag else ext.uppercase().ifBlank { "VIDEO" },
                             fileName = prefix + msg.fileName.ifBlank { "telegram_video.$ext" },
                             size = sizeStr,
                             channel = "Telegram Stream",
                             url = streamUrl,
-                            isZip = isZip
+                            isZip = isZip,
+                            chatId = msg.chatId
                         )
                     )
                 }

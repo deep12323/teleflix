@@ -228,6 +228,12 @@ object DownloadManager {
             .removePrefix("Select:").removePrefix("Select").trim()
         if (clean.isBlank()) return "download.$defaultExt"
 
+        // Fix split multi-part extensions (e.g. .zip.001, .z01, .part1.rar, .7z.001)
+        val splitExtRegex = Regex("""(?i)\.(zip\.\d+|z\d+|part\d+|7z\.\d+|r\d+|\d{3,4}|mkv\.\d+|mp4\.\d+)$""")
+        if (splitExtRegex.containsMatchIn(clean)) {
+            clean = clean.replace(splitExtRegex, "")
+        }
+
         // Fix fake archive extensions appended to videos to bypass filters (e.g. .mkv.zip -> .mkv)
         val fakeArchiveExtRegex = Regex("""(?i)\.(mp4|mkv|avi|mov|wmv|flv|webm|ts)\.(zip|rar|7z|bin|dat|txt)$""")
         while (fakeArchiveExtRegex.containsMatchIn(clean)) {
@@ -242,6 +248,12 @@ object DownloadManager {
             clean = clean.replace(doubleExtRegex) { matchResult ->
                 "." + matchResult.groupValues[1]
             }
+        }
+
+        // If clean ends with archive extension but a specific video extension is requested, convert it
+        val singleArchiveExtRegex = Regex("""(?i)\.(zip|rar|7z|tar|gz|bz2|xz)$""")
+        if (defaultExt != "mp4" && defaultExt != "zip" && singleArchiveExtRegex.containsMatchIn(clean)) {
+            clean = clean.replace(singleArchiveExtRegex, ".$defaultExt")
         }
 
         // Check if filename already has a valid file extension (e.g. .mp3, .mp4, .mkv, .avi, etc.)
