@@ -753,6 +753,35 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        val gestureDetector = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
+            private val SWIPE_THRESHOLD = 100
+            private val SWIPE_VELOCITY_THRESHOLD = 100
+
+            override fun onFling(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                if (e1 == null) return false
+                val diffY = e2.y - e1.y
+                val diffX = e2.x - e1.x
+                if (Math.abs(diffX) > Math.abs(diffY)) {
+                    if (Math.abs(diffX) > SWIPE_THRESHOLD && Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
+                        if (diffX > 0) {
+                            handleTabSwipe(1)
+                        } else {
+                            handleTabSwipe(-1)
+                        }
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+
+        recyclerView.addOnItemTouchListener(object : androidx.recyclerview.widget.RecyclerView.SimpleOnItemTouchListener() {
+            override fun onInterceptTouchEvent(rv: androidx.recyclerview.widget.RecyclerView, e: android.view.MotionEvent): Boolean {
+                gestureDetector.onTouchEvent(e)
+                return false
+            }
+        })
+
         rootView.addView(recyclerView)
 
         val mainContainer = FrameLayout(this).apply {
@@ -4008,6 +4037,17 @@ class MainActivity : AppCompatActivity() {
         }
         cardList.addView(subHeaderText)
 
+        var reverseOrder = false
+        val reverseCheckBox = android.widget.CheckBox(this).apply {
+            text = "Reverse Part Order (Use if video fails to play)"
+            setTextColor(android.graphics.Color.WHITE)
+            setOnCheckedChangeListener { _, isChecked -> reverseOrder = isChecked }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 12))
+            }
+        }
+        cardList.addView(reverseCheckBox)
+
         var dialog: AlertDialog? = null
 
         // Combined Stream Option Card
@@ -4027,15 +4067,16 @@ class MainActivity : AppCompatActivity() {
                 val titleToPlay = streamInfo?.second ?: item.title
                 val fileName = item.originalFileName.ifBlank { titleToPlay }
                 val groupInfo = telegramGroupCache[item.id]
-                val combinedMediaId = if (item.id.startsWith("group_")) item.id else "group_${finalParts.firstOrNull()?.chatId ?: 0}_$cleanTitle"
+                val activeParts = if (reverseOrder) finalParts.reversed() else finalParts
+                val combinedMediaId = if (item.id.startsWith("group_")) item.id else "group_${activeParts.firstOrNull()?.chatId ?: 0}_$cleanTitle"
                 CoroutineScope(Dispatchers.Main).launch {
-                    val urlToPlay = if (groupInfo != null) {
+                    val urlToPlay = if (groupInfo != null && !reverseOrder) {
                         TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second) ?: item.streamUrl
                     } else {
-                        val freshIds = finalParts.map { it.fileId }
-                        val partSizes = finalParts.map { it.fileSize }
-                        val groupChats = finalParts.map { it.chatId }
-                        val groupMsgs = finalParts.map { it.messageId }
+                        val freshIds = activeParts.map { it.fileId }
+                        val partSizes = activeParts.map { it.fileSize }
+                        val groupChats = activeParts.map { it.chatId }
+                        val groupMsgs = activeParts.map { it.messageId }
                         TelegramRepository.getMergedStreamUrl(freshIds, cleanTitle, partSizes, groupChats, groupMsgs)
                     }
                     val freshUrl = TelegramStreamingProxy.refreshUrl(urlToPlay)
@@ -4087,7 +4128,8 @@ class MainActivity : AppCompatActivity() {
             isClickable = true
             setOnClickListener {
                 dialog?.dismiss()
-                DownloadManager.startMultiPartDownload(this@MainActivity, cleanTitle, baseName, finalParts, item.posterUrl)
+                val activeParts = if (reverseOrder) finalParts.reversed() else finalParts
+                DownloadManager.startMultiPartDownload(this@MainActivity, cleanTitle, baseName, activeParts, item.posterUrl)
                 Toast.makeText(this@MainActivity, "Started downloading full combined video ($totalSizeStr) 📥", Toast.LENGTH_SHORT).show()
             }
         }
@@ -4581,6 +4623,17 @@ class MainActivity : AppCompatActivity() {
         }
         cardList.addView(subHeaderText)
 
+        var reverseOrder = false
+        val reverseCheckBox = android.widget.CheckBox(this).apply {
+            text = "Reverse Part Order (Use if combined video fails to play)"
+            setTextColor(android.graphics.Color.WHITE)
+            setOnCheckedChangeListener { _, isChecked -> reverseOrder = isChecked }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 12))
+            }
+        }
+        cardList.addView(reverseCheckBox)
+
         var dialog: AlertDialog? = null
 
         // Option 1: Download & Combine All Parts
@@ -4596,7 +4649,8 @@ class MainActivity : AppCompatActivity() {
             isClickable = true
             setOnClickListener {
                 dialog?.dismiss()
-                DownloadManager.startMultiPartDownload(this@MainActivity, cleanTitle, item.originalFileName.ifBlank { cleanTitle }, finalParts, item.posterUrl)
+                val activeParts = if (reverseOrder) finalParts.reversed() else finalParts
+                DownloadManager.startMultiPartDownload(this@MainActivity, cleanTitle, item.originalFileName.ifBlank { cleanTitle }, activeParts, item.posterUrl)
                 Toast.makeText(this@MainActivity, "Started downloading & combining '$cleanTitle' 📥", Toast.LENGTH_SHORT).show()
             }
         }
@@ -5210,6 +5264,42 @@ class MainActivity : AppCompatActivity() {
                 dialog.dismiss()
             }
             .show()
+    }
+
+    private fun handleTabSwipe(direction: Int) {
+        if (isTelegramCatalogMode) return
+        
+        var currentIndex = categories.indexOfFirst { it.second == selectedCategory }
+        if (currentIndex == -1) {
+            currentIndex = 0
+        }
+        
+        var newIndex = currentIndex - direction
+        
+        if (newIndex in categories.indices && categories[newIndex].second == "genres/picker") {
+            newIndex -= direction
+        }
+        
+        if (newIndex in categories.indices) {
+            val (label, catalogId) = categories[newIndex]
+            if (catalogId == "library/list") {
+                loadLibraryCatalog(label)
+            } else {
+                selectedCategory = catalogId
+                selectedLabel = label
+                categoryLabel.text = label
+                categoryLabel.isClickable = false
+                loadInitialCinemeta(catalogId, label)
+                updateTabSelection(catalogId)
+            }
+            tabScroll.post {
+                val tab = tabRow.getChildAt(newIndex)
+                if (tab != null) {
+                    val scrollX = tab.left - (tabScroll.width / 2) + (tab.width / 2)
+                    tabScroll.smoothScrollTo(scrollX, 0)
+                }
+            }
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

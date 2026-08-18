@@ -228,6 +228,14 @@ object DownloadManager {
             .removePrefix("Select:").removePrefix("Select").trim()
         if (clean.isBlank()) return "download.$defaultExt"
 
+        // Fix fake archive extensions appended to videos to bypass filters (e.g. .mkv.zip -> .mkv)
+        val fakeArchiveExtRegex = Regex("""(?i)\.(mp4|mkv|avi|mov|wmv|flv|webm|ts)\.(zip|rar|7z|bin|dat|txt)$""")
+        while (fakeArchiveExtRegex.containsMatchIn(clean)) {
+            clean = clean.replace(fakeArchiveExtRegex) { matchResult ->
+                "." + matchResult.groupValues[1]
+            }
+        }
+
         // Fix double extensions like .mp3.mp4, .mkv.mp4, .mp4.mp4, .avi.mp4, .zip.mp4, etc.
         val doubleExtRegex = Regex("""(?i)\.(mp3|mp4|mkv|avi|mov|wmv|flv|webm|m4a|aac|flac|ogg|wav|m3u8|ts|zip|rar|7z|apk|pdf|srt|vtt|ass)\.(mp4|mkv|avi)$""")
         while (doubleExtRegex.containsMatchIn(clean)) {
