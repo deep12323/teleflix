@@ -57,6 +57,7 @@ object TelegramRepository {
     private const val TAG = "TelegramRepository"
 
     val groupPartsCache = java.util.concurrent.ConcurrentHashMap<String, List<TelegramVideoMessage>>()
+    val groupCache = java.util.concurrent.ConcurrentHashMap<String, Pair<List<Pair<Long, Long>>, List<Long>>>()
     @Volatile private var cachedJoinedChats: List<TelegramChatInfo>? = null
     val cachedForumTopics = java.util.concurrent.ConcurrentHashMap<Long, List<ForumTopicData>>()
     val channelMediaCache = java.util.concurrent.ConcurrentHashMap<String, Pair<List<TelegramVideoMessage>, Long>>()
