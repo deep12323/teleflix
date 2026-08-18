@@ -225,16 +225,17 @@ object TdlibManager {
                         TelegramRepository.groupPartsCache[zipId] = group.parts
                         TelegramRepository.groupCache[groupId] = Pair(groupChats.zip(groupMsgs), partSizes)
                         TelegramRepository.groupCache[zipId] = Pair(groupChats.zip(groupMsgs), partSizes)
+                        val qualityTag = extractQualityTag(group.baseName)
                         resultSources.add(
                             StreamSource(
                                 id = groupId,
-                                quality = "🗄️ ZIP (${group.parts.size} Parts)",
+                                quality = qualityTag,
                                 fileName = "🗄️ ${group.baseName}",
                                 size = formatBytes(totalSize),
                                 channel = "Telegram Stream",
                                 url = zipUrl,
                                 isZip = true,
-                                isSplit = true,
+                                isSplit = false,
                                 chatId = firstPart.chatId
                             )
                         )

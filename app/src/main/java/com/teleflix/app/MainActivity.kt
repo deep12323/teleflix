@@ -3068,9 +3068,11 @@ class MainActivity : AppCompatActivity() {
                         setPadding(0, dp(8), 0, 0)
                     }
 
-                    if (stream.quality.isNotBlank()) {
+                    val isZipFile = stream.isZip || stream.id.startsWith("zip_") || TelegramRepository.isZipArchiveFilename(stream.fileName)
+
+                    if (stream.quality.isNotBlank() && !stream.quality.equals("ZIP", ignoreCase = true) && !stream.quality.contains("🗄️")) {
                         val qualityBadge = TextView(this@MainActivity).apply {
-                            text = "🎬 ${stream.quality}"
+                            text = if (stream.quality.startsWith("🎬 ") || stream.quality.startsWith("📦 ") || stream.quality.startsWith("🗄️ ")) stream.quality else "🎬 ${stream.quality}"
                             UITheme.applyCaptionStyle(this)
                             textSize = 10f
                             setSingleLine(true)
@@ -3085,22 +3087,7 @@ class MainActivity : AppCompatActivity() {
                         badgesRow.addView(qualityBadge)
                     }
 
-                    if (stream.isSplit) {
-                        val splitBadge = TextView(this@MainActivity).apply {
-                            text = "📦 SPLIT PACK"
-                            UITheme.applyCaptionStyle(this)
-                            textSize = 10f
-                            setSingleLine(true)
-                            setTypeface(null, android.graphics.Typeface.BOLD)
-                            background = UITheme.createCardShape(this@MainActivity, "#451A03", 8, "#F59E0B", 1)
-                            setTextColor(Color.parseColor("#F59E0B"))
-                            setPadding(dp(8), dp(3), dp(8), dp(3))
-                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                                setMargins(0, 0, dp(6), 0)
-                            }
-                        }
-                        badgesRow.addView(splitBadge)
-                    } else if (stream.isZip) {
+                    if (isZipFile) {
                         val zipBadge = TextView(this@MainActivity).apply {
                             text = "🤐 ZIP"
                             UITheme.applyCaptionStyle(this)
@@ -3115,6 +3102,21 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                         badgesRow.addView(zipBadge)
+                    } else if (stream.isSplit || stream.id.startsWith("group_")) {
+                        val splitBadge = TextView(this@MainActivity).apply {
+                            text = "📦 SPLIT PACK"
+                            UITheme.applyCaptionStyle(this)
+                            textSize = 10f
+                            setSingleLine(true)
+                            setTypeface(null, android.graphics.Typeface.BOLD)
+                            background = UITheme.createCardShape(this@MainActivity, "#451A03", 8, "#F59E0B", 1)
+                            setTextColor(Color.parseColor("#F59E0B"))
+                            setPadding(dp(8), dp(3), dp(8), dp(3))
+                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                                setMargins(0, 0, dp(6), 0)
+                            }
+                        }
+                        badgesRow.addView(splitBadge)
                     }
 
                     if (stream.size.isNotBlank()) {
