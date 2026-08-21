@@ -3297,6 +3297,17 @@ class MainActivity : AppCompatActivity() {
     private fun handlePlayerLaunch(streamUrl: String, title: String, resumeMs: Long, mediaId: String = "") {
         val isMerged = streamUrl.contains("/merged/")
         val isZip = isMerged || streamUrl.contains("/zip/") || title.contains(".zip", ignoreCase = true)
+
+        fun proceedToLaunch() {
+            val prefPlayer = getSharedPreferences("teleflix_preferences", android.content.Context.MODE_PRIVATE)
+                .getString("default_player", "ask") ?: "ask"
+            if (prefPlayer == "ask") {
+                showPlayerActionDialog(streamUrl, title, resumeMs, mediaId)
+            } else {
+                openStreamInPlayer(prefPlayer, streamUrl, title, resumeMs, mediaId)
+            }
+        }
+
         if (isZip) {
             val fileIds = if (isMerged) {
                 streamUrl.substringAfter("/merged/").substringBefore("?").substringBefore("/").split(",").mapNotNull { it.toIntOrNull() }
@@ -3306,20 +3317,33 @@ class MainActivity : AppCompatActivity() {
             val primaryFileId = fileIds.firstOrNull()
             if (primaryFileId != null) {
                 val cachedMethod = TelegramStreamingProxy.getCachedZipCompression(primaryFileId)
-                if (cachedMethod != null && cachedMethod != 0) {
-                    showCompressedZipWarningDialog(cachedMethod, title, streamUrl, resumeMs, mediaId)
+                if (cachedMethod != null) {
+                    if (cachedMethod != 0) {
+                        showCompressedZipWarningDialog(cachedMethod, title, streamUrl, resumeMs, mediaId)
+                    } else {
+                        proceedToLaunch()
+                    }
                     return
                 }
+
+                val sizes = if (isMerged) {
+                    streamUrl.substringAfter("?", "").split("&").find { it.startsWith("sizes=") }
+                        ?.substringAfter("=")?.split(",")?.mapNotNull { it.toLongOrNull() } ?: emptyList()
+                } else emptyList()
+
+                lifecycleScope.launch {
+                    val probedMethod = TelegramStreamingProxy.probeZipCompression(fileIds, sizes)
+                    if (probedMethod != null && probedMethod != 0) {
+                        showCompressedZipWarningDialog(probedMethod, title, streamUrl, resumeMs, mediaId)
+                    } else {
+                        proceedToLaunch()
+                    }
+                }
+                return
             }
         }
 
-        val prefPlayer = getSharedPreferences("teleflix_preferences", android.content.Context.MODE_PRIVATE)
-            .getString("default_player", "ask") ?: "ask"
-        if (prefPlayer == "ask") {
-            showPlayerActionDialog(streamUrl, title, resumeMs, mediaId)
-        } else {
-            openStreamInPlayer(prefPlayer, streamUrl, title, resumeMs, mediaId)
-        }
+        proceedToLaunch()
     }
 
     private fun showCompressedZipWarningDialog(
