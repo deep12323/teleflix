@@ -3344,13 +3344,13 @@ class MainActivity : AppCompatActivity() {
                     val segment = streamUrl.substringAfter("/merged/").substringBefore("?")
                     val ids = segment.substringBefore("/").split(",").mapNotNull { it.toIntOrNull() }
                     ids.forEach { fId ->
-                        DownloadManager.startDownload(this@MainActivity, "$title (Part)", "$title.part", fId, 0L, 0L, null, 0L)
+                        DownloadManager.startDownload(this@MainActivity, "$title (Part)", "$title.part", fId, 0L, 0L, "", 0L)
                     }
                     Toast.makeText(this, "Started downloading ${ids.size} parts", Toast.LENGTH_SHORT).show()
                 } else {
                     val fileId = streamUrl.substringAfter("/file/").substringBefore("/").substringBefore("?").toIntOrNull()
                     if (fileId != null) {
-                        DownloadManager.startDownload(this@MainActivity, title, title, fileId, 0L, 0L, null, 0L)
+                        DownloadManager.startDownload(this@MainActivity, title, title, fileId, 0L, 0L, "", 0L)
                         Toast.makeText(this, "Started download", Toast.LENGTH_SHORT).show()
                     }
                 }
