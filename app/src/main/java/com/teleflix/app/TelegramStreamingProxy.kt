@@ -47,7 +47,38 @@ object TelegramStreamingProxy {
     private fun getFileMutex(fileId: Int): Mutex = fileMutexes.getOrPut(fileId) { Mutex() }
     private val fileToMessageMap = java.util.concurrent.ConcurrentHashMap<Int, Pair<Long, Long>>()
     private val fileIdTranslationMap = java.util.concurrent.ConcurrentHashMap<Int, Int>()
+    private val zipCompressionCache = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     @Volatile private var lastStreamedFileId: Int? = null
+
+    fun getCachedZipCompression(fileId: Int): Int? = zipCompressionCache[fileId]
+
+    fun setCachedZipCompression(fileId: Int, method: Int) {
+        zipCompressionCache[fileId] = method
+    }
+
+    suspend fun probeZipCompression(fileIds: List<Int>, sizes: List<Long>): Int? {
+        val firstFileId = fileIds.firstOrNull() ?: return null
+        val cached = zipCompressionCache[firstFileId]
+        if (cached != null) return cached
+
+        return withContext(Dispatchers.IO) {
+            try {
+                withTimeoutOrNull(2000L) {
+                    val header = readBufferFromMerged(fileIds, sizes, 0L, 30)
+                    if (header != null && header.size >= 30 &&
+                        header[0] == 0x50.toByte() && header[1] == 0x4B.toByte() &&
+                        header[2] == 0x03.toByte() && header[3] == 0x04.toByte()
+                    ) {
+                        val method = (header[8].toInt() and 0xFF) or ((header[9].toInt() and 0xFF) shl 8)
+                        zipCompressionCache[firstFileId] = method
+                        method
+                    } else null
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
 
     fun registerFileMessage(fileId: Int, chatId: Long, messageId: Long) {
         if (fileId != 0 && chatId != 0L && messageId != 0L) {
@@ -1113,6 +1144,10 @@ object TelegramStreamingProxy {
                     val dataOffset = 30L + nameLen + extraLen
                     val methodStr = if (compressionMethod == 0) "STORE (Uncompressed)" else "COMPRESSED (method $compressionMethod - DEFLATE/LZMA)"
                     TeleflixLogger.log(TAG, "ZIP local header parsed: compressionMethod=$methodStr, dataOffset=$dataOffset, nameLen=$nameLen, extraLen=$extraLen")
+                    val primaryFId = fileIds.firstOrNull() ?: 0
+                    if (primaryFId != 0) {
+                        zipCompressionCache[primaryFId] = compressionMethod
+                    }
                     if (compressionMethod == 0) {
                         val innerNameBytes = if (nameLen > 0) readBufferFromMerged(fileIds, sizes, 30L, nameLen, m) else null
                         val innerName = if (innerNameBytes != null && innerNameBytes.isNotEmpty()) String(innerNameBytes, Charsets.UTF_8).trim() else null
@@ -1125,6 +1160,9 @@ object TelegramStreamingProxy {
                         return
                     } else {
                         TeleflixLogger.log(TAG, "⚠️ ZIP file is COMPRESSED ($methodStr). Direct HTTP video range streaming is not possible for compressed archives. File must be downloaded and extracted.", isError = true)
+                        output.write("HTTP/1.1 422 Unprocessable Entity\r\nContent-Type: text/plain\r\n\r\nZIP file is compressed ($methodStr). Only STORED (uncompressed) files can be streamed. Please download all parts to extract and play.".toByteArray())
+                        output.flush()
+                        return
                     }
                 }
                 streamMergedFileRaw(fileIds, sizes, requestedInnerName, rangeHeader, output, isHead)
@@ -1222,7 +1260,14 @@ object TelegramStreamingProxy {
             }
 
             if (target.compressionMethod != 0) {
-                output.write("HTTP/1.1 422 Unprocessable Entity\r\nContent-Type: text/plain\r\n\r\nFile '${target.name}' is compressed (method ${target.compressionMethod}). Only STORED (uncompressed) files can be streamed.".toByteArray())
+                val primaryFId = fileIds.firstOrNull() ?: 0
+                if (primaryFId != 0) {
+                    zipCompressionCache[primaryFId] = target.compressionMethod
+                }
+                val methodStr = if (target.compressionMethod == 8) "DEFLATE" else "method ${target.compressionMethod}"
+                TeleflixLogger.log(TAG, "⚠️ File '${target.name}' is compressed ($methodStr). Direct HTTP video range streaming is not possible for compressed archives. File must be downloaded and extracted.", isError = true)
+                output.write("HTTP/1.1 422 Unprocessable Entity\r\nContent-Type: text/plain\r\n\r\nFile '${target.name}' is compressed ($methodStr). Only STORED (uncompressed) files can be streamed. Please download all parts to extract and play.".toByteArray())
+                output.flush()
                 return
             }
 

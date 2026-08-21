@@ -3295,6 +3295,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handlePlayerLaunch(streamUrl: String, title: String, resumeMs: Long, mediaId: String = "") {
+        val isMerged = streamUrl.contains("/merged/")
+        val isZip = isMerged || streamUrl.contains("/zip/") || title.contains(".zip", ignoreCase = true)
+        if (isZip) {
+            val fileIds = if (isMerged) {
+                streamUrl.substringAfter("/merged/").substringBefore("?").substringBefore("/").split(",").mapNotNull { it.toIntOrNull() }
+            } else {
+                listOfNotNull(streamUrl.substringAfter("/zip/").substringAfter("/file/").substringBefore("/").substringBefore("?").toIntOrNull())
+            }
+            val primaryFileId = fileIds.firstOrNull()
+            if (primaryFileId != null) {
+                val cachedMethod = TelegramStreamingProxy.getCachedZipCompression(primaryFileId)
+                if (cachedMethod != null && cachedMethod != 0) {
+                    showCompressedZipWarningDialog(cachedMethod, title, streamUrl, resumeMs, mediaId)
+                    return
+                }
+            }
+        }
+
         val prefPlayer = getSharedPreferences("teleflix_preferences", android.content.Context.MODE_PRIVATE)
             .getString("default_player", "ask") ?: "ask"
         if (prefPlayer == "ask") {
@@ -3302,6 +3320,52 @@ class MainActivity : AppCompatActivity() {
         } else {
             openStreamInPlayer(prefPlayer, streamUrl, title, resumeMs, mediaId)
         }
+    }
+
+    private fun showCompressedZipWarningDialog(
+        compressionMethod: Int,
+        title: String,
+        streamUrl: String,
+        resumeMs: Long,
+        mediaId: String
+    ) {
+        val methodName = when (compressionMethod) {
+            8 -> "DEFLATE"
+            14 -> "LZMA"
+            12 -> "BZIP2"
+            else -> "Method $compressionMethod"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("📦 Compressed ZIP Archive ($methodName)")
+            .setMessage("This split archive was uploaded using $methodName compression.\n\nVideo players cannot stream compressed archives over the network because random seeking is not supported by compression algorithms.\n\nTo watch this movie, please download all parts to your device and extract them with 7-Zip or ZArchiver.")
+            .setPositiveButton("📥 Download Parts") { _, _ ->
+                val isMerged = streamUrl.contains("/merged/")
+                if (isMerged) {
+                    val segment = streamUrl.substringAfter("/merged/").substringBefore("?")
+                    val ids = segment.substringBefore("/").split(",").mapNotNull { it.toIntOrNull() }
+                    ids.forEach { fId ->
+                        DownloadManager.startDownload(this@MainActivity, "$title (Part)", "$title.part", fId, 0L, 0L, null, 0L)
+                    }
+                    Toast.makeText(this, "Started downloading ${ids.size} parts", Toast.LENGTH_SHORT).show()
+                } else {
+                    val fileId = streamUrl.substringAfter("/file/").substringBefore("/").substringBefore("?").toIntOrNull()
+                    if (fileId != null) {
+                        DownloadManager.startDownload(this@MainActivity, title, title, fileId, 0L, 0L, null, 0L)
+                        Toast.makeText(this, "Started download", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNeutralButton("Try Playing Anyway") { _, _ ->
+                val prefPlayer = getSharedPreferences("teleflix_preferences", android.content.Context.MODE_PRIVATE)
+                    .getString("default_player", "ask") ?: "ask"
+                if (prefPlayer == "ask") {
+                    showPlayerActionDialog(streamUrl, title, resumeMs, mediaId)
+                } else {
+                    openStreamInPlayer(prefPlayer, streamUrl, title, resumeMs, mediaId)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun formatMillisToTime(millis: Long): String {
