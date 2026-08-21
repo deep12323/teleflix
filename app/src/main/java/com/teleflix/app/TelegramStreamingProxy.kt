@@ -1088,7 +1088,7 @@ object TelegramStreamingProxy {
                 readBufferFromMerged(fileIds, sizes, cdOffset, cdSize.toInt(), m)
             } else null
 
-            fun fallbackToLocalHeaderOrRaw() {
+            suspend fun fallbackToLocalHeaderOrRaw() {
                 val startHeader = readBufferFromMerged(fileIds, sizes, 0L, 30, m)
                 if (startHeader != null && startHeader.size >= 30 &&
                     startHeader[0] == 0x50.toByte() && startHeader[1] == 0x4B.toByte() &&
