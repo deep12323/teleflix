@@ -1111,6 +1111,8 @@ object TelegramStreamingProxy {
                     val nameLen = readLocalUInt16(startHeader, 26)
                     val extraLen = readLocalUInt16(startHeader, 28)
                     val dataOffset = 30L + nameLen + extraLen
+                    val methodStr = if (compressionMethod == 0) "STORE (Uncompressed)" else "COMPRESSED (method $compressionMethod - DEFLATE/LZMA)"
+                    TeleflixLogger.log(TAG, "ZIP local header parsed: compressionMethod=$methodStr, dataOffset=$dataOffset, nameLen=$nameLen, extraLen=$extraLen")
                     if (compressionMethod == 0) {
                         val innerNameBytes = if (nameLen > 0) readBufferFromMerged(fileIds, sizes, 30L, nameLen, m) else null
                         val innerName = if (innerNameBytes != null && innerNameBytes.isNotEmpty()) String(innerNameBytes, Charsets.UTF_8).trim() else null
@@ -1121,6 +1123,8 @@ object TelegramStreamingProxy {
                         }
                         streamMergedFileRaw(fileIds, sizes, effectiveName, rangeHeader, output, isHead, dataOffset)
                         return
+                    } else {
+                        TeleflixLogger.log(TAG, "⚠️ ZIP file is COMPRESSED ($methodStr). Direct HTTP video range streaming is not possible for compressed archives. File must be downloaded and extracted.", isError = true)
                     }
                 }
                 streamMergedFileRaw(fileIds, sizes, requestedInnerName, rangeHeader, output, isHead)
