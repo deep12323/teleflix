@@ -68,12 +68,16 @@ object TelegramStreamingProxy {
                     if (header != null && header.size >= 4) {
                         val hex = header.take(4).joinToString(" ") { "%02X".format(it) }
                         var method: Int? = null
+
+                        // 1. Standard ZIP Local File Header
                         if (header.size >= 30 &&
                             header[0] == 0x50.toByte() && header[1] == 0x4B.toByte() &&
                             header[2] == 0x03.toByte() && header[3] == 0x04.toByte()
                         ) {
                             method = (header[8].toInt() and 0xFF) or ((header[9].toInt() and 0xFF) shl 8)
-                        } else if (header.size >= 34 &&
+                        }
+                        // 2. Split ZIP Span Marker (PK 07 08) followed by Local Header (PK 03 04)
+                        else if (header.size >= 34 &&
                             header[0] == 0x50.toByte() && header[1] == 0x4B.toByte() &&
                             header[2] == 0x07.toByte() && header[3] == 0x08.toByte() &&
                             header[4] == 0x50.toByte() && header[5] == 0x4B.toByte() &&
@@ -81,15 +85,36 @@ object TelegramStreamingProxy {
                         ) {
                             method = (header[12].toInt() and 0xFF) or ((header[13].toInt() and 0xFF) shl 8)
                         }
-                        if (method != null) {
-                            zipCompressionCache[firstFileId] = method
-                            val typeStr = if (method == 0) "STORE (Uncompressed)" else "COMPRESSED (method $method)"
-                            TeleflixLogger.log(TAG, "probeZipCompression fileId=$firstFileId: magic=[$hex], compressionMethod=$typeStr")
-                            method
-                        } else {
-                            TeleflixLogger.log(TAG, "probeZipCompression fileId=$firstFileId: magic=[$hex] (not a ZIP header - raw media stream)")
-                            null
+                        // 3. Known Valid Raw Video / Audio Container Headers
+                        else {
+                            val isEbmlMkv = header.size >= 4 && header[0] == 0x1A.toByte() && header[1] == 0x45.toByte() && header[2] == 0xDF.toByte() && header[3] == 0xA3.toByte()
+                            val isMp4 = header.size >= 8 && (
+                                (header[4] == 'f'.code.toByte() && header[5] == 't'.code.toByte() && header[6] == 'y'.code.toByte() && header[7] == 'p'.code.toByte()) ||
+                                (header[4] == 'm'.code.toByte() && header[5] == 'o'.code.toByte() && header[6] == 'o'.code.toByte() && header[7] == 'v'.code.toByte()) ||
+                                (header[4] == 'm'.code.toByte() && header[5] == 'd'.code.toByte() && header[6] == 'a'.code.toByte() && header[7] == 't'.code.toByte())
+                            )
+                            val isTs = header[0] == 0x47.toByte()
+                            val isAvi = header.size >= 12 && header[0] == 'R'.code.toByte() && header[1] == 'I'.code.toByte() && header[2] == 'F'.code.toByte() && header[3] == 'F'.code.toByte()
+                            val isAudio = (header.size >= 4 && header[0] == 'f'.code.toByte() && header[1] == 'L'.code.toByte() && header[2] == 'a'.code.toByte() && header[3] == 'C'.code.toByte()) ||
+                                          (header.size >= 4 && header[0] == 'O'.code.toByte() && header[1] == 'g'.code.toByte() && header[2] == 'g'.code.toByte() && header[3] == 'S'.code.toByte()) ||
+                                          (header.size >= 3 && header[0] == 'I'.code.toByte() && header[1] == 'D'.code.toByte() && header[2] == '3'.code.toByte()) ||
+                                          (header.size >= 2 && header[0] == 0xFF.toByte() && (header[1].toInt() and 0xE0) == 0xE0)
+
+                            if (isEbmlMkv || isMp4 || isTs || isAvi || isAudio) {
+                                method = 0 // Valid playable raw media stream
+                            } else {
+                                method = 999 // Non-video / Compressed Archive data (e.g. 7z, RAR, DEFLATE without standard header)
+                            }
                         }
+
+                        zipCompressionCache[firstFileId] = method
+                        val typeStr = when (method) {
+                            0 -> "STREAMABLE (Valid Media Container / Store ZIP)"
+                            999 -> "NON-STREAMABLE / COMPRESSED DATA (magic=[$hex])"
+                            else -> "COMPRESSED (method $method)"
+                        }
+                        TeleflixLogger.log(TAG, "probeZipCompression fileId=$firstFileId: magic=[$hex] -> $typeStr")
+                        method
                     } else {
                         TeleflixLogger.log(TAG, "probeZipCompression fileId=$firstFileId: buffer read failed or timed out")
                         null

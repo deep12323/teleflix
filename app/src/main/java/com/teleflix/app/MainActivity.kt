@@ -3353,17 +3353,18 @@ class MainActivity : AppCompatActivity() {
         resumeMs: Long,
         mediaId: String
     ) {
-        val methodName = when (compressionMethod) {
-            8 -> "DEFLATE"
-            14 -> "LZMA"
-            12 -> "BZIP2"
-            else -> "Method $compressionMethod"
+        val (methodName, descText) = when (compressionMethod) {
+            8 -> Pair("DEFLATE", "This split archive was uploaded using DEFLATE compression.")
+            14 -> Pair("LZMA", "This split archive was uploaded using LZMA compression.")
+            12 -> Pair("BZIP2", "This split archive was uploaded using BZIP2 compression.")
+            999 -> Pair("Non-Streamable Archive", "This multi-part file is a compressed archive and does not contain raw video stream headers.")
+            else -> Pair("Method $compressionMethod", "This file is compressed using method $compressionMethod.")
         }
-        TeleflixLogger.log("MainActivity", "Showing compressed ZIP dialog for '$title' ($methodName)")
+        TeleflixLogger.log("MainActivity", "Showing compressed archive dialog for '$title' ($methodName)")
         runOnUiThread {
             AlertDialog.Builder(this)
-                .setTitle("📦 Compressed ZIP Archive ($methodName)")
-                .setMessage("This split archive was uploaded using $methodName compression.\n\nVideo players cannot stream compressed archives over the network because random seeking is not supported by compression algorithms.\n\nTo watch this movie, please download all parts to your device and extract them with 7-Zip or ZArchiver.")
+                .setTitle("📦 Compressed Archive ($methodName)")
+                .setMessage("$descText\n\nVideo players cannot stream compressed archives over the network and will misidentify them as broken audio files.\n\nTo watch this movie, please download all parts to your device and extract them with 7-Zip or ZArchiver.")
                 .setPositiveButton("📥 Download Parts") { _, _ ->
                     val isMerged = streamUrl.contains("/merged/")
                     if (isMerged) {
