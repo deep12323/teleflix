@@ -872,9 +872,22 @@ object TelegramStreamingProxy {
             m.logStart()
 
 
-            val cleanName = fileName?.removeSuffix(".zip") ?: "video.mkv"
-            val ext = cleanName.substringAfterLast('.', "mkv").lowercase()
-            val mimeType = getMimeType(ext)
+            var cleanName = (fileName ?: "video.mkv").trim()
+            if (cleanName.endsWith(".zip", ignoreCase = true)) {
+                cleanName = cleanName.substring(0, cleanName.length - 4).trim()
+            }
+            val existingExt = if (cleanName.contains('.')) cleanName.substringAfterLast('.').lowercase() else ""
+            val videoExtensions = setOf("mkv", "mp4", "avi", "mov", "webm", "flv", "wmv", "ts", "m2ts", "m4v")
+            val isAudioExt = existingExt in setOf("mp3", "flac", "aac", "ogg", "opus", "wav", "m4a")
+            val effectiveExt = when {
+                isAudioExt -> existingExt
+                existingExt in videoExtensions -> existingExt
+                else -> "mkv"
+            }
+            if (existingExt !in videoExtensions && !isAudioExt) {
+                cleanName = "$cleanName.mkv"
+            }
+            val mimeType = getMimeType(effectiveExt)
 
             val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
             val safeFileName = cleanName.replace("\"", "\\\"")
@@ -1101,7 +1114,14 @@ object TelegramStreamingProxy {
                     val extraLen = readLocalUInt16(startHeader, 28)
                     val dataOffset = 30L + nameLen + extraLen
                     if (compressionMethod == 0) {
-                        streamMergedFileRaw(fileIds, sizes, requestedInnerName, rangeHeader, output, isHead, dataOffset)
+                        val innerNameBytes = if (nameLen > 0) readBufferFromMerged(fileIds, sizes, 30L, nameLen, m) else null
+                        val innerName = if (innerNameBytes != null && innerNameBytes.isNotEmpty()) String(innerNameBytes, Charsets.UTF_8).trim() else null
+                        val effectiveName = if (!innerName.isNullOrBlank() && !innerName.endsWith(".zip", ignoreCase = true)) {
+                            innerName
+                        } else {
+                            requestedInnerName
+                        }
+                        streamMergedFileRaw(fileIds, sizes, effectiveName, rangeHeader, output, isHead, dataOffset)
                         return
                     }
                 }

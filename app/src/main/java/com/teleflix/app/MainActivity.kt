@@ -3405,18 +3405,28 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        val cleanDisplayTitle = title.replace(Regex("""^[📦🗄️⚡🎬🎥📽️\s]+"""), "").trim()
         val isPlaylist = streamUrl.contains("/playlist/") || streamUrl.lowercase().contains(".m3u8") || streamUrl.lowercase().contains(".m3u")
-        val isMkv = !isPlaylist && (title.endsWith(".mkv", ignoreCase = true) || streamUrl.lowercase().contains(".mkv"))
+        val isAudio = !isPlaylist && Regex("""(?i)\.(mp3|flac|aac|ogg|opus|wav|wma|m4a|aiff)$""").containsMatchIn(cleanDisplayTitle)
+        val isMkv = !isPlaylist && !isAudio && (cleanDisplayTitle.endsWith(".mkv", ignoreCase = true) || streamUrl.lowercase().contains(".mkv") || streamUrl.contains("/merged/") || streamUrl.contains("/zip/"))
         val mimeType = when {
             isPlaylist -> "application/vnd.apple.mpegurl"
+            isAudio -> "audio/*"
             isMkv -> "video/x-matroska"
-            else -> "video/*"
+            else -> "video/mp4"
         }
+
+        val videoSafeTitle = if (!isPlaylist && !isAudio && !cleanDisplayTitle.endsWith(".mkv", ignoreCase = true) && !cleanDisplayTitle.endsWith(".mp4", ignoreCase = true)) {
+            val base = cleanDisplayTitle.removeSuffix(".zip").removeSuffix(".7z").removeSuffix(".rar").trim()
+            "$base.mkv"
+        } else cleanDisplayTitle
 
         val baseIntent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(Uri.parse(streamUrl), mimeType)
-            putExtra("title", title)
-            putExtra("filename", title)
+            putExtra("title", videoSafeTitle)
+            putExtra("filename", videoSafeTitle)
+            putExtra("org.videolan.vlc.player.ForceVideo", true)
+            putExtra("ForceVideo", true)
             putExtra("return_result", true)
             if (resumeMs > 0) {
                 putExtra("position", resumeMs.toInt())
