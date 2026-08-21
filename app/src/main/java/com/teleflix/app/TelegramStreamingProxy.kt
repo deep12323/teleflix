@@ -63,18 +63,40 @@ object TelegramStreamingProxy {
 
         return withContext(Dispatchers.IO) {
             try {
-                withTimeoutOrNull(2000L) {
-                    val header = readBufferFromMerged(fileIds, sizes, 0L, 30)
-                    if (header != null && header.size >= 30 &&
-                        header[0] == 0x50.toByte() && header[1] == 0x4B.toByte() &&
-                        header[2] == 0x03.toByte() && header[3] == 0x04.toByte()
-                    ) {
-                        val method = (header[8].toInt() and 0xFF) or ((header[9].toInt() and 0xFF) shl 8)
-                        zipCompressionCache[firstFileId] = method
-                        method
-                    } else null
+                withTimeoutOrNull(3000L) {
+                    val header = readBufferFromMerged(fileIds, sizes, 0L, 40)
+                    if (header != null && header.size >= 4) {
+                        val hex = header.take(4).joinToString(" ") { "%02X".format(it) }
+                        var method: Int? = null
+                        if (header.size >= 30 &&
+                            header[0] == 0x50.toByte() && header[1] == 0x4B.toByte() &&
+                            header[2] == 0x03.toByte() && header[3] == 0x04.toByte()
+                        ) {
+                            method = (header[8].toInt() and 0xFF) or ((header[9].toInt() and 0xFF) shl 8)
+                        } else if (header.size >= 34 &&
+                            header[0] == 0x50.toByte() && header[1] == 0x4B.toByte() &&
+                            header[2] == 0x07.toByte() && header[3] == 0x08.toByte() &&
+                            header[4] == 0x50.toByte() && header[5] == 0x4B.toByte() &&
+                            header[6] == 0x03.toByte() && header[7] == 0x04.toByte()
+                        ) {
+                            method = (header[12].toInt() and 0xFF) or ((header[13].toInt() and 0xFF) shl 8)
+                        }
+                        if (method != null) {
+                            zipCompressionCache[firstFileId] = method
+                            val typeStr = if (method == 0) "STORE (Uncompressed)" else "COMPRESSED (method $method)"
+                            TeleflixLogger.log(TAG, "probeZipCompression fileId=$firstFileId: magic=[$hex], compressionMethod=$typeStr")
+                            method
+                        } else {
+                            TeleflixLogger.log(TAG, "probeZipCompression fileId=$firstFileId: magic=[$hex] (not a ZIP header - raw media stream)")
+                            null
+                        }
+                    } else {
+                        TeleflixLogger.log(TAG, "probeZipCompression fileId=$firstFileId: buffer read failed or timed out")
+                        null
+                    }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                TeleflixLogger.log(TAG, "probeZipCompression error: ${e.message}", isError = true)
                 null
             }
         }
