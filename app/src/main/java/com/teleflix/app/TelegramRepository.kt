@@ -1508,20 +1508,58 @@ object TelegramRepository {
      * Split files have numeric extensions (.001, .002), patterns like .part1, .z01, or identical names.
      * Returns a pair of (grouped split files, remaining individual files).
      */
+    data class SplitCandidate(
+        val partNum: Int,
+        val baseName: String,
+        val message: TelegramVideoMessage
+    )
+
+    /**
+     * Detects split file groups from a list of messages.
+     * Split files have numeric extensions (.001, .002), patterns like .part1, .z01, or identical names.
+     * Returns a pair of (grouped split files, remaining individual files).
+     */
     fun groupSplitFiles(messages: List<TelegramVideoMessage>): Pair<List<SplitFileGroup>, List<TelegramVideoMessage>> {
-        val splitPattern = Regex("""^(.+?)\.(\d{1,4})$""")  // matches file.001, file.02, file.1, file.2
+        val splitPattern = Regex("""^(.+?)\.(\d{1,4})$""")  // matches file.001, file.02, file.zip.01, file.1
         val partPattern = Regex("""^(.+?)[\._\s-]*(?:part|pt|cd)[\._\s-]*(\d{1,4})(\.[a-zA-Z0-9]+)?$""", RegexOption.IGNORE_CASE)  // matches file.part1.rar, file part1.mkv, file-pt1.mp4
         val parenPattern = Regex("""^(.+?)[\._\s-]*\((?:part|pt)?\s*(\d{1,4})\)(\.[a-zA-Z0-9]+)?$""", RegexOption.IGNORE_CASE)  // matches file (1).mkv, file (part 1).mkv
         val zPattern = Regex("""^(.+?)\.z(\d{1,3})$""", RegexOption.IGNORE_CASE) // matches file.z01, file.z1
         
+        fun isAudioChannelFalsePositive(rawBase: String, digits: String): Boolean {
+            if (digits.length > 2) return false // .001, .0001 are split files, not audio channels
+            val lastChar = rawBase.trimEnd().takeLast(1)
+            val isAudioChannelDigit = lastChar in listOf("5", "7", "2", "1", "0")
+            if (!isAudioChannelDigit) return false
+
+            // If it has a known archive/media extension before the dot, e.g. .zip.01, .mkv.1, .rar.1
+            val hasPriorContainerExt = Regex("""\.(zip|mkv|mp4|avi|mov|wmv|ts|flv|rar|7z|tar|iso)$""", RegexOption.IGNORE_CASE).containsMatchIn(rawBase)
+            if (hasPriorContainerExt) return false
+
+            // Check if preceded by audio indicator: DD 5.1, DTS 5.1, AC3 5.1, AAC 2.0, TrueHD 7.1, etc.
+            val hasAudioKeyword = Regex("""(?i)\b(dd|ddp|dts|dts-hd|ac3|aac|eac3|atmos|truehd|flac|audio|ch|channels)[\._\s-]*[0-9]$""").containsMatchIn(rawBase)
+            if (hasAudioKeyword) return true
+
+            // If digits is single digit (e.g. 5.1, 7.1, 2.0) and ends with audio channel digit without prior container ext
+            if (digits.length == 1 && digits in listOf("0", "1", "2")) return true
+
+            return false
+        }
+
         fun normalizeKey(name: String): String {
-            return name.lowercase()
+            val ext = when {
+                isZipArchiveFilename(name) -> "zip"
+                name.endsWith(".rar", ignoreCase = true) || name.contains(".rar.", ignoreCase = true) -> "rar"
+                name.endsWith(".7z", ignoreCase = true) || name.contains(".7z.", ignoreCase = true) -> "7z"
+                else -> "video"
+            }
+            val cleaned = name.lowercase()
                 .replace(Regex("""\.(mkv|mp4|avi|mov|wmv|ts|flv|rar|zip|7z)$""", RegexOption.IGNORE_CASE), "")
                 .replace(Regex("""[\[\]\(\)\{\}\._\s-]+"""), " ")
                 .trim()
+            return "$cleaned::$ext"
         }
 
-        val groups = mutableMapOf<String, Pair<String, MutableList<Pair<Int, TelegramVideoMessage>>>>()
+        val groups = mutableMapOf<String, MutableList<SplitCandidate>>()
         val singles = mutableListOf<TelegramVideoMessage>()
         
         for (msg in messages) {
@@ -1532,11 +1570,11 @@ object TelegramRepository {
             val zMatch = zPattern.find(name)
             
             when {
-                splitMatch != null -> {
+                splitMatch != null && !isAudioChannelFalsePositive(splitMatch.groupValues[1], splitMatch.groupValues[2]) -> {
                     val baseName = splitMatch.groupValues[1]
                     val partNum = splitMatch.groupValues[2].toIntOrNull() ?: 0
                     val key = normalizeKey(baseName)
-                    groups.getOrPut(key) { Pair(baseName, mutableListOf()) }.second.add(partNum to msg)
+                    groups.getOrPut(key) { mutableListOf() }.add(SplitCandidate(partNum, baseName, msg))
                 }
                 partMatch != null -> {
                     val rawBase = partMatch.groupValues[1]
@@ -1548,7 +1586,7 @@ object TelegramRepository {
                         rawBase
                     }
                     val key = normalizeKey(baseName)
-                    groups.getOrPut(key) { Pair(baseName, mutableListOf()) }.second.add(partNum to msg)
+                    groups.getOrPut(key) { mutableListOf() }.add(SplitCandidate(partNum, baseName, msg))
                 }
                 parenMatch != null -> {
                     val rawBase = parenMatch.groupValues[1]
@@ -1560,13 +1598,13 @@ object TelegramRepository {
                         rawBase
                     }
                     val key = normalizeKey(baseName)
-                    groups.getOrPut(key) { Pair(baseName, mutableListOf()) }.second.add(partNum to msg)
+                    groups.getOrPut(key) { mutableListOf() }.add(SplitCandidate(partNum, baseName, msg))
                 }
                 zMatch != null -> {
-                    val baseName = zMatch.groupValues[1]
+                    val baseName = "${zMatch.groupValues[1]}.zip"
                     val partNum = zMatch.groupValues[2].toIntOrNull() ?: 0
                     val key = normalizeKey(baseName)
-                    groups.getOrPut(key) { Pair(baseName, mutableListOf()) }.second.add(partNum to msg)
+                    groups.getOrPut(key) { mutableListOf() }.add(SplitCandidate(partNum, baseName, msg))
                 }
                 else -> {
                     singles.add(msg)
@@ -1578,11 +1616,11 @@ object TelegramRepository {
         val remainingSingles = mutableListOf<TelegramVideoMessage>()
         for (singleMsg in singles) {
             val singleKey = normalizeKey(singleMsg.fileName)
-            val matchingGroupEntry = groups[singleKey]
-            if (matchingGroupEntry != null && singleMsg.fileSize > 0 && matchingGroupEntry.second.none { it.second.messageId == singleMsg.messageId }) {
-                val hasPart1 = matchingGroupEntry.second.any { it.first == 1 }
+            val matchingCandidates = groups[singleKey]
+            if (matchingCandidates != null && singleMsg.fileSize > 0 && matchingCandidates.none { it.message.messageId == singleMsg.messageId }) {
+                val hasPart1 = matchingCandidates.any { it.partNum == 1 }
                 if (!hasPart1) {
-                    matchingGroupEntry.second.add(1 to singleMsg)
+                    matchingCandidates.add(SplitCandidate(1, singleMsg.fileName, singleMsg))
                 } else {
                     remainingSingles.add(singleMsg)
                 }
@@ -1593,19 +1631,51 @@ object TelegramRepository {
         
         val splitGroups = mutableListOf<SplitFileGroup>()
         
-        for ((_, pair) in groups) {
-            val (baseName, parts) = pair
-            val validParts = parts.filter { it.second.fileSize > 0 }
-            if (validParts.size < 2) {
-                remainingSingles.addAll(validParts.map { it.second })
+        for ((_, candidates) in groups) {
+            val validCandidates = candidates.filter { it.message.fileSize > 0 }
+            if (validCandidates.size < 2) {
+                remainingSingles.addAll(validCandidates.map { it.message })
                 continue
             }
-            val sorted = validParts.sortedWith(compareBy({ it.first }, { it.second.messageId })).map { it.second }
-            splitGroups.add(SplitFileGroup(
-                baseName = baseName,
-                parts = sorted,
-                totalSize = sorted.sumOf { it.fileSize }
-            ))
+
+            // Cluster candidates by message order to separate distinct uploads / releases of the same title
+            val sortedByMsg = validCandidates.sortedBy { it.message.messageId }
+            val clusters = mutableListOf<MutableList<SplitCandidate>>()
+            var currentCluster = mutableListOf<SplitCandidate>()
+
+            for (candidate in sortedByMsg) {
+                val isDuplicatePart = currentCluster.any { it.partNum == candidate.partNum }
+                val isNewPart1 = candidate.partNum == 1 && currentCluster.size >= 2
+
+                if (isDuplicatePart || isNewPart1) {
+                    if (currentCluster.isNotEmpty()) {
+                        clusters.add(currentCluster)
+                    }
+                    currentCluster = mutableListOf(candidate)
+                } else {
+                    currentCluster.add(candidate)
+                }
+            }
+            if (currentCluster.isNotEmpty()) {
+                clusters.add(currentCluster)
+            }
+
+            for (cluster in clusters) {
+                val validClusterParts = cluster.filter { it.message.fileSize > 0 }
+                if (validClusterParts.size >= 2) {
+                    val sorted = validClusterParts.sortedWith(compareBy({ it.partNum }, { it.message.messageId }))
+                    val clusterBaseName = sorted.first().baseName
+                    splitGroups.add(
+                        SplitFileGroup(
+                            baseName = clusterBaseName,
+                            parts = sorted.map { it.message },
+                            totalSize = sorted.sumOf { it.message.fileSize }
+                        )
+                    )
+                } else {
+                    remainingSingles.addAll(validClusterParts.map { it.message })
+                }
+            }
         }
 
         return splitGroups to remainingSingles
