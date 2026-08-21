@@ -807,8 +807,15 @@ object TelegramStreamingProxy {
         output: java.io.OutputStream,
         isHead: Boolean = false
     ) {
-        val isZip = fileName != null && TelegramRepository.isZipArchiveFilename(fileName)
-        if (isZip) {
+        val hasZipName = fileName != null && TelegramRepository.isZipArchiveFilename(fileName)
+        val hasZipHeader = run {
+            val header = readBufferFromMerged(fileIds, sizes, 0L, 4)
+            header != null && header.size >= 4 &&
+                header[0] == 0x50.toByte() && header[1] == 0x4B.toByte() &&
+                header[2] == 0x03.toByte() && header[3] == 0x04.toByte()
+        }
+
+        if (hasZipName || hasZipHeader) {
             streamZipEntryFromMergedOrSingle(fileIds, sizes, fileName, rangeHeader, output, isHead)
             return
         }
@@ -834,7 +841,7 @@ object TelegramStreamingProxy {
         val primaryFileId = fileIds.first()
         val (rangeStart, rangeEnd) = parseRange(rangeHeader)
         val start: Long
-        val end: Long
+        var end: Long
 
         if (rangeStart == null && rangeEnd != null) {
             start = maxOf(0L, effectiveSize - rangeEnd)
@@ -843,7 +850,7 @@ object TelegramStreamingProxy {
             start = rangeStart ?: 0L
             end = rangeEnd ?: (effectiveSize - 1L)
         }
-        val length = end - start + 1
+        end = minOf(end, effectiveSize - 1L)
 
         val m = StreamMetrics(
             fileId = primaryFileId,
@@ -871,6 +878,15 @@ object TelegramStreamingProxy {
             }
             m.logStart()
 
+            if (start >= effectiveSize || start > end) {
+                m.exitReason = "range_not_satisfiable"
+                m.logEnd()
+                output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$effectiveSize\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                output.flush()
+                return
+            }
+
+            val length = end - start + 1
 
             var cleanName = (fileName ?: "video.mkv").trim()
             if (cleanName.endsWith(".zip", ignoreCase = true)) {
@@ -1255,7 +1271,7 @@ object TelegramStreamingProxy {
 
             val (rangeStart, rangeEnd) = parseRange(rangeHeader)
             val reqStart: Long
-            val reqEnd: Long
+            var reqEnd: Long
 
             if (rangeStart == null && rangeEnd != null) {
                 reqStart = maxOf(0L, innerFileSize - rangeEnd)
@@ -1264,13 +1280,34 @@ object TelegramStreamingProxy {
                 reqStart = rangeStart ?: 0L
                 reqEnd = rangeEnd ?: (innerFileSize - 1L)
             }
+            reqEnd = minOf(reqEnd, innerFileSize - 1L)
+
+            if (reqStart >= innerFileSize || reqStart > reqEnd) {
+                m.exitReason = "range_not_satisfiable"
+                m.logEnd()
+                output.write("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$innerFileSize\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                output.flush()
+                return
+            }
+
             val length = reqEnd - reqStart + 1
 
             val ext = target.name.substringAfterLast('.', "").lowercase()
-            val mimeType = getMimeType(ext)
+            val videoExtensions = setOf("mkv", "mp4", "avi", "mov", "webm", "flv", "wmv", "ts", "m2ts", "m4v")
+            val isAudioExt = ext in setOf("mp3", "flac", "aac", "ogg", "opus", "wav", "m4a")
+            val effectiveExt = when {
+                isAudioExt -> ext
+                ext in videoExtensions -> ext
+                else -> "mkv"
+            }
+            var cleanTargetName = target.name
+            if (!cleanTargetName.contains('.')) {
+                cleanTargetName = "$cleanTargetName.mkv"
+            }
+            val mimeType = getMimeType(effectiveExt)
 
             val status = if (rangeHeader != null) "206 Partial Content" else "200 OK"
-            val safeFileName = target.name.replace("\"", "\\\"")
+            val safeFileName = cleanTargetName.replace("\"", "\\\"")
             val headers = StringBuilder().apply {
                 append("HTTP/1.1 $status\r\n")
                 append("Accept-Ranges: bytes\r\n")
@@ -1404,7 +1441,17 @@ object TelegramStreamingProxy {
         }
         val ids = fileIds.joinToString(",")
         val szs = sizes.joinToString(",")
-        val encodedName = java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
+        var cleanName = fileName.trim()
+        if (cleanName.endsWith(".zip", ignoreCase = true)) {
+            cleanName = cleanName.substring(0, cleanName.length - 4).trim()
+        }
+        val existingExt = if (cleanName.contains('.')) cleanName.substringAfterLast('.').lowercase() else ""
+        val videoExtensions = setOf("mkv", "mp4", "avi", "mov", "webm", "flv", "wmv", "ts", "m2ts", "m4v")
+        val isAudioExt = existingExt in setOf("mp3", "flac", "aac", "ogg", "opus", "wav", "m4a")
+        if (existingExt !in videoExtensions && !isAudioExt) {
+            cleanName = "$cleanName.mkv"
+        }
+        val encodedName = java.net.URLEncoder.encode(cleanName, "UTF-8").replace("+", "%20")
         var url = "http://127.0.0.1:$port/merged/$ids/$encodedName?sizes=$szs"
         if (chatIds.isNotEmpty() && messageIds.isNotEmpty() && chatIds.any { it != 0L }) {
             url += "&chats=${chatIds.joinToString(",")}&messages=${messageIds.joinToString(",")}"

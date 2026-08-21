@@ -3529,9 +3529,23 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             "vlc" -> {
-                val vlcIntent = Intent(baseIntent).apply { setPackage("org.videolan.vlc") }
-                try { playerLauncher.launch(vlcIntent) } catch (e: Exception) {
-                    Toast.makeText(this, "VLC Player is not installed on your device", Toast.LENGTH_SHORT).show()
+                val vlcIntent = Intent(baseIntent).apply {
+                    setClassName("org.videolan.vlc", "org.videolan.vlc.gui.video.VideoPlayerActivity")
+                }
+                var launched = false
+                try {
+                    playerLauncher.launch(vlcIntent)
+                    launched = true
+                } catch (_: Exception) {}
+
+                if (!launched) {
+                    val fallbackIntent = Intent(baseIntent).apply { setPackage("org.videolan.vlc") }
+                    try {
+                        playerLauncher.launch(fallbackIntent)
+                        launched = true
+                    } catch (e: Exception) {
+                        Toast.makeText(this, "VLC Player is not installed on your device", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
             else -> {
