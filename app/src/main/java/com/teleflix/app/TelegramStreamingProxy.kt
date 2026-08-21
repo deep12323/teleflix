@@ -865,15 +865,6 @@ object TelegramStreamingProxy {
             if (m.requestType != "seek_probe") {
                 fileIds.forEach { fId ->
                     latestActiveStreamReqId[fId] = m.reqId
-                    val jobKey = "file_$fId"
-                    currentJobRegisteredKeys.add(jobKey)
-                    if (currentJob != null) {
-                        val oldJob = activeFileJobs.put(jobKey, currentJob)
-                        if (oldJob != null && oldJob != currentJob && oldJob.isActive) {
-                            TeleflixLogger.log(TAG, "Cancelling previous stream job for fileId=$fId due to new request $jobKey")
-                            oldJob.cancel()
-                        }
-                    }
                 }
             }
             m.logStart()
@@ -995,15 +986,6 @@ object TelegramStreamingProxy {
             if (m.requestType != "seek_probe") {
                 fileIds.forEach { fId ->
                     latestActiveStreamReqId[fId] = m.reqId
-                    val jobKey = "file_$fId"
-                    currentJobRegisteredKeys.add(jobKey)
-                    if (currentJob != null) {
-                        val oldJob = activeFileJobs.put(jobKey, currentJob)
-                        if (oldJob != null && oldJob != currentJob && oldJob.isActive) {
-                            TeleflixLogger.log(TAG, "Cancelling previous stream job for fileId=$fId due to new request $jobKey")
-                            oldJob.cancel()
-                        }
-                    }
                 }
             }
             m.logStart()
@@ -1317,7 +1299,8 @@ object TelegramStreamingProxy {
                 }
                 append("Content-Type: $mimeType\r\n")
                 append("Content-Disposition: inline; filename=\"$safeFileName\"\r\n")
-                append("Connection: close\r\n\r\n")
+                append("Connection: keep-alive\r\n")
+                append("Keep-Alive: timeout=60, max=1000\r\n\r\n")
             }.toString()
 
             output.write(headers.toByteArray())
