@@ -16,6 +16,10 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:mimeType="video/*" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="audio/*" />
+        </intent>
         <package android:name="id.nzxm.mpvex" />
         <package android:name="id.nzxm.mpvex.debug" />
         <package android:name="id.nzxm.mpv" />
@@ -26,6 +30,10 @@
         <package android:name="com.mxtech.videoplayer.ad" />
         <package android:name="com.mxtech.videoplayer.pro" />
         <package android:name="dev.anilbeesetti.nextplayer" />
+        <package android:name="dev.anilbeesetti.nextplayer.play" />
+        <package android:name="dev.anilbeesetti.nextplayer.debug" />
+        <package android:name="dev.anilbeesetti.nextplayer.preview" />
+        <package android:name="com.brouken.player" />
         <package android:name="com.brianvalente.videoplayer" />
     </queries>
 

@@ -3504,12 +3504,27 @@ class MainActivity : AppCompatActivity() {
 
         when (playerType) {
             "exo" -> {
-                val packagesToTry = listOf("com.brouken.player", "dev.anilbeesetti.nextplayer", "com.nextplayer.app", "com.google.android.exoplayer", "com.mxtech.videoplayer.ad", "com.mxtech.videoplayer.pro")
+                val packagesToTry = listOf(
+                    "dev.anilbeesetti.nextplayer",
+                    "dev.anilbeesetti.nextplayer.play",
+                    "dev.anilbeesetti.nextplayer.debug",
+                    "dev.anilbeesetti.nextplayer.preview",
+                    "com.brouken.player",
+                    "com.nextplayer.app",
+                    "com.google.android.exoplayer",
+                    "com.mxtech.videoplayer.ad",
+                    "com.mxtech.videoplayer.pro"
+                )
 
                 var launched = false
                 for (pkg in packagesToTry) {
                     try {
-                        val intent = Intent(baseIntent).apply { setPackage(pkg) }
+                        val intent = Intent(baseIntent).apply {
+                            setPackage(pkg)
+                            if (isAudio && (pkg.contains("nextplayer") || pkg.contains("brouken"))) {
+                                setDataAndType(Uri.parse(streamUrl), "video/*")
+                            }
+                        }
                         playerLauncher.launch(intent)
                         launched = true
                         break
@@ -3525,7 +3540,12 @@ class MainActivity : AppCompatActivity() {
                             pkgName.contains("brouken") || pkgName.contains("nextplayer") || label.contains("just player") || label.contains("next player") || label.contains("exo")
                         }
                         if (exoMatch != null) {
-                            val intent = Intent(baseIntent).apply { setPackage(exoMatch.activityInfo.packageName) }
+                            val intent = Intent(baseIntent).apply {
+                                setPackage(exoMatch.activityInfo.packageName)
+                                if (isAudio && (exoMatch.activityInfo.packageName.contains("nextplayer") || exoMatch.activityInfo.packageName.contains("brouken"))) {
+                                    setDataAndType(Uri.parse(streamUrl), "video/*")
+                                }
+                            }
                             playerLauncher.launch(intent)
                             launched = true
                         }
