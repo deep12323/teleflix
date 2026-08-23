@@ -134,30 +134,86 @@ class MainActivity : AppCompatActivity() {
             val posLong = intent.getLongExtra("position", -1L)
                 .takeIf { it >= 0 } ?: intent.getLongExtra("extra_position", -1L)
                 .takeIf { it >= 0 } ?: intent.getLongExtra("position_ms", -1L)
-                .takeIf { it >= 0 } ?: intent.getIntExtra("position", -1).toLong()
-                .takeIf { it >= 0 } ?: intent.getIntExtra("extra_position", -1).toLong()
-                .takeIf { it >= 0 } ?: 0L
+                .takeIf { it >= 0 } ?: intent.getIntExtra("position", -1).takeIf { it >= 0 }?.toLong()
+                .takeIf { it != null && it >= 0 } ?: intent.getIntExtra("extra_position", -1).takeIf { it >= 0 }?.toLong()
+                .takeIf { it != null && it >= 0 } ?: intent.getIntExtra("position_ms", -1).takeIf { it >= 0 }?.toLong()
+                ?: 0L
 
-            if (posLong > 3000L) {
-                val prefsLink = getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE)
-                val prefsTitle = getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
-                val editLink = prefsLink.edit()
-                val editTitle = prefsTitle.edit()
+            val durLong = intent.getLongExtra("duration", -1L)
+                .takeIf { it > 0 } ?: intent.getLongExtra("extra_duration", -1L)
+                .takeIf { it > 0 } ?: intent.getLongExtra("duration_ms", -1L)
+                .takeIf { it > 0 } ?: intent.getIntExtra("duration", -1).takeIf { it > 0 }?.toLong()
+                .takeIf { it != null && it > 0 } ?: intent.getIntExtra("extra_duration", -1).takeIf { it > 0 }?.toLong()
+                .takeIf { it != null && it > 0 } ?: intent.getIntExtra("duration_ms", -1).takeIf { it > 0 }?.toLong()
+                ?: 0L
 
+            val endBy = (intent.getStringExtra("end_by") ?: intent.getStringExtra("endBy") ?: "").trim()
+            val isExplicitCompleted = endBy.equals("playback_completion", ignoreCase = true) ||
+                endBy.equals("completion", ignoreCase = true) ||
+                endBy.equals("completed", ignoreCase = true) ||
+                intent.getBooleanExtra("completed", false) ||
+                intent.getBooleanExtra("playback_completed", false) ||
+                intent.getBooleanExtra("is_completed", false)
+
+            val isPositionCompleted = if (durLong > 10_000L && posLong > 0L) {
+                posLong >= (durLong * 0.92).toLong() || posLong >= (durLong - 25_000L)
+            } else false
+
+            val isCompleted = isExplicitCompleted || isPositionCompleted
+
+            val prefsLink = getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE)
+            val prefsTitle = getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
+            val editLink = prefsLink.edit()
+            val editTitle = prefsTitle.edit()
+
+            if (isCompleted || posLong <= 3000L) {
+                // Video finished completely or stopped right at start - clear resume points
                 if (activeMediaIdForResume.isNotBlank()) {
-                    editLink.putLong("id_$activeMediaIdForResume", posLong)
-                    editLink.putLong(activeMediaIdForResume, posLong)
+                    editLink.remove("id_$activeMediaIdForResume")
+                    editLink.remove(activeMediaIdForResume)
+                    editLink.remove("dur_id_$activeMediaIdForResume")
+                    editLink.remove("dur_$activeMediaIdForResume")
                 }
                 if (activeStreamUrlForResume.isNotBlank()) {
-                    editLink.putLong(activeStreamUrlForResume, posLong)
+                    editLink.remove(activeStreamUrlForResume)
+                    editLink.remove("dur_$activeStreamUrlForResume")
                 }
                 if (activeTitleForResume.isNotBlank()) {
-                    editTitle.putLong("resume_$activeTitleForResume", posLong)
+                    editTitle.remove("resume_$activeTitleForResume")
+                    editTitle.remove("dur_$activeTitleForResume")
                 }
                 editLink.apply()
                 editTitle.apply()
 
-                TeleflixLogger.log("MainActivity", "Saved resume position $posLong ms for $activeTitleForResume")
+                if (isCompleted) {
+                    TeleflixLogger.log("MainActivity", "Playback completed for '$activeTitleForResume' (pos=$posLong ms, dur=$durLong ms). Cleared resume position.")
+                }
+            } else {
+                // Partially watched - save resume position and duration
+                if (activeMediaIdForResume.isNotBlank()) {
+                    editLink.putLong("id_$activeMediaIdForResume", posLong)
+                    editLink.putLong(activeMediaIdForResume, posLong)
+                    if (durLong > 0L) {
+                        editLink.putLong("dur_id_$activeMediaIdForResume", durLong)
+                        editLink.putLong("dur_$activeMediaIdForResume", durLong)
+                    }
+                }
+                if (activeStreamUrlForResume.isNotBlank()) {
+                    editLink.putLong(activeStreamUrlForResume, posLong)
+                    if (durLong > 0L) {
+                        editLink.putLong("dur_$activeStreamUrlForResume", durLong)
+                    }
+                }
+                if (activeTitleForResume.isNotBlank()) {
+                    editTitle.putLong("resume_$activeTitleForResume", posLong)
+                    if (durLong > 0L) {
+                        editTitle.putLong("dur_$activeTitleForResume", durLong)
+                    }
+                }
+                editLink.apply()
+                editTitle.apply()
+
+                TeleflixLogger.log("MainActivity", "Saved resume position $posLong ms (dur=$durLong ms) for $activeTitleForResume")
             }
         }
 
@@ -3257,17 +3313,41 @@ class MainActivity : AppCompatActivity() {
         val prefsLink = getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE)
         val prefsTitle = getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
         var savedPositionMs = 0L
+        var savedDurationMs = 0L
         if (mediaId.isNotBlank()) {
             savedPositionMs = prefsLink.getLong("id_$mediaId", 0L)
+            savedDurationMs = prefsLink.getLong("dur_id_$mediaId", 0L).takeIf { it > 0 } ?: prefsLink.getLong("dur_$mediaId", 0L)
             if (savedPositionMs <= 3_000L) {
                 savedPositionMs = prefsLink.getLong(mediaId, 0L)
             }
         }
         if (savedPositionMs <= 3_000L) {
             savedPositionMs = prefsLink.getLong(streamUrl, 0L)
+            if (savedDurationMs <= 0L) {
+                savedDurationMs = prefsLink.getLong("dur_$streamUrl", 0L)
+            }
         }
         if (savedPositionMs <= 3_000L) {
             savedPositionMs = prefsTitle.getLong("resume_$title", 0L)
+            if (savedDurationMs <= 0L) {
+                savedDurationMs = prefsTitle.getLong("dur_$title", 0L)
+            }
+        }
+
+        // If saved position is near the end (completed), clear resume point and start from beginning (0L)
+        if (savedDurationMs > 10_000L && savedPositionMs > 3_000L) {
+            if (savedPositionMs >= (savedDurationMs * 0.92).toLong() || savedPositionMs >= savedDurationMs - 25_000L) {
+                savedPositionMs = 0L
+                val editLink = prefsLink.edit()
+                val editTitle = prefsTitle.edit()
+                if (mediaId.isNotBlank()) {
+                    editLink.remove("id_$mediaId").remove(mediaId).remove("dur_id_$mediaId").remove("dur_$mediaId")
+                }
+                editLink.remove(streamUrl).remove("dur_$streamUrl")
+                editTitle.remove("resume_$title").remove("dur_$title")
+                editLink.apply()
+                editTitle.apply()
+            }
         }
 
         if (savedPositionMs > 3_000L) {
@@ -3284,6 +3364,15 @@ class MainActivity : AppCompatActivity() {
                         handlePlayerLaunch(streamUrl, title, savedPositionMs, mediaId)
                     }
                     .setNegativeButton("🔄 Start Over") { _, _ ->
+                        val editLink = prefsLink.edit()
+                        val editTitle = prefsTitle.edit()
+                        if (mediaId.isNotBlank()) {
+                            editLink.remove("id_$mediaId").remove(mediaId).remove("dur_id_$mediaId").remove("dur_$mediaId")
+                        }
+                        editLink.remove(streamUrl).remove("dur_$streamUrl")
+                        editTitle.remove("resume_$title").remove("dur_$title")
+                        editLink.apply()
+                        editTitle.apply()
                         handlePlayerLaunch(streamUrl, title, 0L, mediaId)
                     }
                     .setNeutralButton("Cancel", null)
