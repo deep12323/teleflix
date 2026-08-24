@@ -78,6 +78,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tabRow: LinearLayout
     private lateinit var fabSelectChats: ImageButton
     private lateinit var searchContainer: LinearLayout
+    private lateinit var categoryHeaderLayout: LinearLayout
     private lateinit var channelMenuButton: TextView
     private var isTelegramCatalogMode = false
     private var currentOpenChannelId: String? = null
@@ -357,31 +358,33 @@ class MainActivity : AppCompatActivity() {
         headerLayout.addView(statusButton)
         rootView.addView(headerLayout)
 
-        // Category Banner / Current Selection Header Layout
-        val categoryHeaderLayout = LinearLayout(this).apply {
+        // Category Banner / Current Selection Header Layout (Compact & auto-hidden for standard categories)
+        categoryHeaderLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            val pH = UITheme.dpToPx(this@MainActivity, 10)
-            val pT = UITheme.dpToPx(this@MainActivity, 4)
-            val pB = UITheme.dpToPx(this@MainActivity, 10)
+            val pH = UITheme.dpToPx(this@MainActivity, 8)
+            val pT = UITheme.dpToPx(this@MainActivity, 2)
+            val pB = UITheme.dpToPx(this@MainActivity, 4)
             setPadding(pH, pT, pH, pB)
+            visibility = android.view.View.GONE
         }
 
         categoryLabel = TextView(this).apply {
             text = selectedLabel
             UITheme.applySectionTitleStyle(this)
+            textSize = 13.5f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         categoryHeaderLayout.addView(categoryLabel)
 
         channelMenuButton = TextView(this).apply {
             text = "⋮"
-            textSize = 20f
+            textSize = 18f
             gravity = android.view.Gravity.CENTER
             setTextColor(Color.WHITE)
-            background = UITheme.createCardShape(this@MainActivity, UITheme.SURFACE, 12, UITheme.STROKE_COLOR, 1)
-            val pV = UITheme.dpToPx(this@MainActivity, 4)
-            val pH = UITheme.dpToPx(this@MainActivity, 12)
+            background = UITheme.createCardShape(this@MainActivity, UITheme.SURFACE, 10, UITheme.STROKE_COLOR, 1)
+            val pV = UITheme.dpToPx(this@MainActivity, 2)
+            val pH = UITheme.dpToPx(this@MainActivity, 10)
             setPadding(pH, pV, pH, pV)
             visibility = android.view.View.GONE
             isClickable = true
@@ -398,21 +401,23 @@ class MainActivity : AppCompatActivity() {
             text = "Loading catalog..."
             UITheme.applyMetadataStyle(this)
             background = UITheme.createCardShape(this@MainActivity, UITheme.SURFACE, 12, UITheme.STROKE_COLOR, 1)
-            val pV = UITheme.dpToPx(this@MainActivity, 10)
-            val pH = UITheme.dpToPx(this@MainActivity, 14)
+            val pV = UITheme.dpToPx(this@MainActivity, 8)
+            val pH = UITheme.dpToPx(this@MainActivity, 12)
             setPadding(pH, pV, pH, pV)
             visibility = android.view.View.GONE
         }
         rootView.addView(loadingText)
 
-        // Search Box (Cinemeta Search)
+        // Search Box (Cinemeta Search) - Compact Design
         searchContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
             background = UITheme.createInputBackground(this@MainActivity)
-            setPadding(UITheme.dpToPx(this@MainActivity, 6), UITheme.dpToPx(this@MainActivity, 4), UITheme.dpToPx(this@MainActivity, 6), UITheme.dpToPx(this@MainActivity, 4))
+            val pH = UITheme.dpToPx(this@MainActivity, 6)
+            val pV = UITheme.dpToPx(this@MainActivity, 2)
+            setPadding(pH, pV, pH, pV)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 14))
+                setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
             }
         }
 
@@ -421,10 +426,10 @@ class MainActivity : AppCompatActivity() {
             setHintTextColor(Color.parseColor(UITheme.TEXT_SECONDARY))
             setTextColor(Color.WHITE)
             background = null
-            val pV = UITheme.dpToPx(this@MainActivity, 10)
-            val pH = UITheme.dpToPx(this@MainActivity, 12)
+            val pV = UITheme.dpToPx(this@MainActivity, 6)
+            val pH = UITheme.dpToPx(this@MainActivity, 10)
             setPadding(pH, pV, pH, pV)
-            textSize = 14f
+            textSize = 13.5f
             maxLines = 1
             inputType = android.text.InputType.TYPE_CLASS_TEXT
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
@@ -451,8 +456,13 @@ class MainActivity : AppCompatActivity() {
 
         searchButton = Button(this).apply {
             text = "🔍"
-            textSize = 16f
-            background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.PRIMARY, 12)
+            textSize = 14f
+            minHeight = 0
+            minimumHeight = 0
+            val pV = UITheme.dpToPx(this@MainActivity, 6)
+            val pH = UITheme.dpToPx(this@MainActivity, 12)
+            setPadding(pH, pV, pH, pV)
+            background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.PRIMARY, 10)
             setTextColor(Color.WHITE)
             setOnClickListener {
                 val q = searchInput.text.toString()
@@ -470,10 +480,10 @@ class MainActivity : AppCompatActivity() {
         searchContainer.addView(searchButton)
         rootView.addView(searchContainer)
 
-        // Category Tabs (Horizontal Scroll)
+        // Category Tabs (Horizontal Scroll) - Compact Design
         tabScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
-            setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 12))
+            setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
         }
 
         tabRow = LinearLayout(this).apply {
@@ -483,7 +493,12 @@ class MainActivity : AppCompatActivity() {
         categories.forEach { (label, catalogId) ->
             val tab = Button(this).apply {
                 text = label
-                textSize = 12f
+                textSize = 11.5f
+                minHeight = 0
+                minimumHeight = 0
+                val pV = UITheme.dpToPx(this@MainActivity, 5)
+                val pH = UITheme.dpToPx(this@MainActivity, 11)
+                setPadding(pH, pV, pH, pV)
                 setTypeface(null, android.graphics.Typeface.NORMAL)
                 val isSelected = catalogId == selectedCategory
                 setTextColor(if (isSelected) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
@@ -491,7 +506,7 @@ class MainActivity : AppCompatActivity() {
                 val lp = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 8), 0) }
+                ).apply { setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 6), 0) }
                 layoutParams = lp
                 setOnClickListener {
                     if (catalogId == "genres/picker") {
@@ -504,8 +519,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     selectedCategory = catalogId
                     selectedLabel = label
-                    categoryLabel.text = label
-                    categoryLabel.isClickable = false
+                    updateCategoryBanner(label)
                     loadInitialCinemeta(catalogId, label)
                     updateTabSelection(catalogId)
                 }
@@ -879,12 +893,29 @@ class MainActivity : AppCompatActivity() {
             modeToggleButton.text = "💬 Telegram Channels"
             modeToggleButton.setTextColor(Color.parseColor(UITheme.SUCCESS))
             modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.SUCCESS, 1)
-            categoryLabel.text = "Monitored Telegram Channels"
-            categoryLabel.isClickable = false
+            updateCategoryBanner("Monitored Telegram Channels")
             searchInput.hint = "Default Telegram search (all chats & channels)..."
             loadTelegramChannelsCatalog()
         } else {
             loadInitialCinemeta("movie/top", "Top Movies")
+        }
+    }
+
+    private fun updateCategoryBanner(text: String, isClickable: Boolean = false, onClick: (() -> Unit)? = null) {
+        categoryLabel.text = text
+        categoryLabel.isClickable = isClickable
+        categoryLabel.isFocusable = isClickable
+        if (onClick != null) {
+            categoryLabel.setOnClickListener { onClick() }
+        } else {
+            categoryLabel.setOnClickListener(null)
+        }
+        val isBackAction = text.contains("⬅ Back")
+        val isClearAction = text.contains("Clear History") || text.contains("Clear Library")
+        val isSearchAction = text.startsWith("Search:") || text.startsWith("Telegram Default Search:")
+        val isTelegramMode = isTelegramCatalogMode || (::channelMenuButton.isInitialized && channelMenuButton.visibility == android.view.View.VISIBLE)
+        if (::categoryHeaderLayout.isInitialized) {
+            categoryHeaderLayout.visibility = if (isBackAction || isClearAction || isSearchAction || isTelegramMode) android.view.View.VISIBLE else android.view.View.GONE
         }
     }
 
@@ -1024,8 +1055,7 @@ class MainActivity : AppCompatActivity() {
                 val label = "🎬 Top $genre Movies"
                 selectedCategory = catalogId
                 selectedLabel = label
-                categoryLabel.text = label
-                categoryLabel.isClickable = false
+                updateCategoryBanner(label)
                 updateTabSelection(catalogId)
                 loadInitialCinemeta(catalogId, label)
             }
@@ -1047,8 +1077,7 @@ class MainActivity : AppCompatActivity() {
                 val label = "📺 Top $genre Series"
                 selectedCategory = catalogId
                 selectedLabel = label
-                categoryLabel.text = label
-                categoryLabel.isClickable = false
+                updateCategoryBanner(label)
                 updateTabSelection(catalogId)
                 loadInitialCinemeta(catalogId, label)
             }
@@ -1070,8 +1099,7 @@ class MainActivity : AppCompatActivity() {
         isLoadingMore = false
         selectedCategory = "library/list"
         selectedLabel = label
-        categoryLabel.text = label
-        categoryLabel.isClickable = false
+        updateCategoryBanner(label)
         updateTabSelection("library/list")
 
         val libraryItems = LibraryManager.getBookmarkedItems(this)
@@ -1084,9 +1112,7 @@ class MainActivity : AppCompatActivity() {
             loadingText.visibility = android.view.View.VISIBLE
         } else {
             loadingText.visibility = android.view.View.GONE
-            categoryLabel.text = "$label  •  [ 🗑️ Clear Library ]"
-            categoryLabel.isClickable = true
-            categoryLabel.setOnClickListener {
+            updateCategoryBanner("$label  •  [ 🗑️ Clear Library ]", isClickable = true) {
                 AlertDialog.Builder(this)
                     .setTitle("Clear Library?")
                     .setMessage("Are you sure you want to remove all bookmarked items from your Library?")
@@ -1094,8 +1120,7 @@ class MainActivity : AppCompatActivity() {
                         LibraryManager.clearLibrary(this)
                         mediaList.clear()
                         mediaAdapter?.notifyDataSetChanged()
-                        categoryLabel.text = label
-                        categoryLabel.isClickable = false
+                        updateCategoryBanner(label)
                         loadingText.text = "Your Library is empty."
                         loadingText.visibility = android.view.View.VISIBLE
                         Toast.makeText(this, "Library cleared", Toast.LENGTH_SHORT).show()
@@ -1128,15 +1153,12 @@ class MainActivity : AppCompatActivity() {
             mediaList.addAll(history)
             mediaAdapter?.notifyDataSetChanged()
             if (history.isEmpty()) {
-                categoryLabel.text = label
-                categoryLabel.isClickable = false
+                updateCategoryBanner(label)
                 loadingText.text = "Watch history is empty. Movies and series you open will be automatically saved here!"
                 loadingText.visibility = android.view.View.VISIBLE
             } else {
                 loadingText.visibility = android.view.View.GONE
-                categoryLabel.text = "$label  •  [ 🗑️ Clear History ]"
-                categoryLabel.isClickable = true
-                categoryLabel.setOnClickListener {
+                updateCategoryBanner("$label  •  [ 🗑️ Clear History ]", isClickable = true) {
                     AlertDialog.Builder(this)
                         .setTitle("Clear Watch History?")
                         .setMessage("Are you sure you want to permanently delete your entire Watch History and saved playback positions?")
@@ -1146,8 +1168,7 @@ class MainActivity : AppCompatActivity() {
                             getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE).edit().clear().apply()
                             mediaList.clear()
                             mediaAdapter?.notifyDataSetChanged()
-                            categoryLabel.text = label
-                            categoryLabel.isClickable = false
+                            updateCategoryBanner(label)
                             loadingText.text = "Watch history is empty. Movies and series you open will be automatically saved here!"
                             loadingText.visibility = android.view.View.VISIBLE
                             Toast.makeText(this, "Watch history deleted", Toast.LENGTH_SHORT).show()
@@ -1272,7 +1293,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun performSearch(query: String) {
         isInSearchMode = true
-        categoryLabel.text = "Search: \"$query\""
+        updateCategoryBanner("Search: \"$query\"")
         loadingText.text = "Searching Cinemeta..."
         loadingText.visibility = android.view.View.VISIBLE
 
@@ -1336,8 +1357,7 @@ class MainActivity : AppCompatActivity() {
             modeToggleButton.text = "💬 Telegram Channels"
             modeToggleButton.setTextColor(Color.parseColor(UITheme.SUCCESS))
             modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.SUCCESS, 1)
-            categoryLabel.text = "Monitored Telegram Channels"
-            categoryLabel.isClickable = false
+            updateCategoryBanner("Monitored Telegram Channels")
             searchInput.hint = "Default Telegram search (all chats & channels)..."
             if (currentOpenChannelId != null) {
                 if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
@@ -1358,8 +1378,7 @@ class MainActivity : AppCompatActivity() {
             searchInput.hint = "Search Movies & Series..."
             selectedCategory = "movie/top"
             selectedLabel = "Top Movies"
-            categoryLabel.text = selectedLabel
-            categoryLabel.isClickable = false
+            updateCategoryBanner(selectedLabel)
             loadInitialCinemeta(selectedCategory, selectedLabel)
         }
     }
@@ -1371,8 +1390,7 @@ class MainActivity : AppCompatActivity() {
         isLoadingMore = false
         if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
         if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
-        categoryLabel.text = "Monitored Telegram Channels"
-        categoryLabel.isClickable = false
+        updateCategoryBanner("Monitored Telegram Channels")
 
         val channels = try {
             TelegramRepository.getCustomChannels(this@MainActivity)
@@ -1515,10 +1533,7 @@ class MainActivity : AppCompatActivity() {
         mediaAdapter?.notifyDataSetChanged()
         loadingText.visibility = android.view.View.VISIBLE
         loadingText.text = "Checking forum topics in $title..."
-        categoryLabel.text = "⬅ Back to Channels  •  Browsing: $title"
-        categoryLabel.isClickable = true
-        categoryLabel.isFocusable = true
-        categoryLabel.setOnClickListener {
+        updateCategoryBanner("⬅ Back to Channels  •  Browsing: $title", isClickable = true) {
             loadTelegramChannelsCatalog()
         }
 
@@ -1534,9 +1549,9 @@ class MainActivity : AppCompatActivity() {
                     mediaList.clear()
                     hasMoreItems = false
                     isLoadingMore = false
-                    categoryLabel.text = "⬅ Back to Channels  •  Topics in $title"
-                    categoryLabel.isClickable = true
-                    categoryLabel.setOnClickListener { loadTelegramChannelsCatalog() }
+                    updateCategoryBanner("⬅ Back to Channels  •  Topics in $title", isClickable = true) {
+                        loadTelegramChannelsCatalog()
+                    }
 
                     topics.forEach { topic ->
                         val thumbUrl = if (topic.thumbnailChatId != 0L && topic.thumbnailMessageId != 0L) {
@@ -1606,10 +1621,7 @@ class MainActivity : AppCompatActivity() {
         mediaAdapter?.notifyDataSetChanged()
         loadingText.visibility = android.view.View.VISIBLE
         loadingText.text = "Loading media files from topic: $topicTitle..."
-        categoryLabel.text = "⬅ Back to Topics  •  Topic: $topicTitle"
-        categoryLabel.isClickable = true
-        categoryLabel.isFocusable = true
-        categoryLabel.setOnClickListener {
+        updateCategoryBanner("⬅ Back to Topics  •  Topic: $topicTitle", isClickable = true) {
             if (channelUsername.isNotBlank()) {
                 loadTelegramChannelMedia(channelUsername, channelUsername)
             } else {
@@ -1982,7 +1994,9 @@ class MainActivity : AppCompatActivity() {
         mediaAdapter?.notifyDataSetChanged()
         loadingText.visibility = android.view.View.VISIBLE
         loadingText.text = "Loading media from beginning of $title..."
-        categoryLabel.text = "⬅ Back to Channels  •  Beginning of: $title"
+        updateCategoryBanner("⬅ Back to Channels  •  Beginning of: $title", isClickable = true) {
+            loadTelegramChannelsCatalog()
+        }
 
         CoroutineScope(Dispatchers.IO).launch {
             val (mediaMessages, _) = try {
@@ -2071,7 +2085,9 @@ class MainActivity : AppCompatActivity() {
         mediaAdapter?.notifyDataSetChanged()
         loadingText.visibility = android.view.View.VISIBLE
         loadingText.text = "Searching \"$query\" in $title..."
-        categoryLabel.text = "⬅ Back to Channels  •  Search: \"$query\" in $title"
+        updateCategoryBanner("⬅ Back to Channels  •  Search: \"$query\" in $title", isClickable = true) {
+            loadTelegramChannelsCatalog()
+        }
 
         CoroutineScope(Dispatchers.IO).launch {
             val mediaMessages = try {
@@ -2547,7 +2563,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun performTelegramSearch(query: String) {
         isInSearchMode = true
-        categoryLabel.text = "Telegram Default Search: \"$query\""
+        updateCategoryBanner("Telegram Default Search: \"$query\"")
         loadingText.text = "Searching across all Telegram chats, groups & channels..."
         loadingText.visibility = android.view.View.VISIBLE
         mediaList.clear()
@@ -4206,8 +4222,7 @@ class MainActivity : AppCompatActivity() {
                             mediaList.addAll(loadWatchHistory())
                             mediaAdapter?.notifyDataSetChanged()
                             if (mediaList.isEmpty()) {
-                                categoryLabel.text = selectedLabel
-                                categoryLabel.isClickable = false
+                                updateCategoryBanner(selectedLabel)
                                 loadingText.text = "Watch history is empty. Movies and series you open will be automatically saved here!"
                                 loadingText.visibility = android.view.View.VISIBLE
                             }
@@ -4220,8 +4235,7 @@ class MainActivity : AppCompatActivity() {
                         getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE).edit().clear().apply()
                         mediaList.clear()
                         mediaAdapter?.notifyDataSetChanged()
-                        categoryLabel.text = selectedLabel
-                        categoryLabel.isClickable = false
+                        updateCategoryBanner(selectedLabel)
                         loadingText.text = "Watch history is empty. Movies and series you open will be automatically saved here!"
                         loadingText.visibility = android.view.View.VISIBLE
                         Toast.makeText(this, "Watch history deleted", Toast.LENGTH_SHORT).show()
@@ -4766,8 +4780,7 @@ class MainActivity : AppCompatActivity() {
             if (isTelegramCatalogMode) {
                 loadTelegramChannelsCatalog()
             } else {
-                categoryLabel.text = selectedLabel
-                categoryLabel.isClickable = false
+                updateCategoryBanner(selectedLabel)
                 loadInitialCinemeta(selectedCategory, selectedLabel)
             }
             return
@@ -5652,8 +5665,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 selectedCategory = catalogId
                 selectedLabel = label
-                categoryLabel.text = label
-                categoryLabel.isClickable = false
+                updateCategoryBanner(label)
                 loadInitialCinemeta(catalogId, label)
                 updateTabSelection(catalogId)
             }
