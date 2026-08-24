@@ -1312,6 +1312,7 @@ object TelegramRepository {
 
     suspend fun fetchChannelMediaFromBeginning(
         channelUsernameOrId: String,
+        fromMessageId: Long = 1L,
         topicId: Int = 0,
         limit: Int = 100
     ): Pair<List<TelegramVideoMessage>, Long> = coroutineScope {
@@ -1326,6 +1327,7 @@ object TelegramRepository {
             TdApi.SearchMessagesFilterAudio()
         )
 
+        val targetFromId = if (fromMessageId > 0L) fromMessageId else 1L
         var maxNextMessageId = 0L
 
         val tasks = filters.map { filter ->
@@ -1335,8 +1337,8 @@ object TelegramRepository {
                         req.chatId = chatId
                         req.query = ""
                         req.senderId = null
-                        req.fromMessageId = 1L
-                        req.offset = -99
+                        req.fromMessageId = targetFromId
+                        req.offset = -limit + 1
                         req.limit = limit
                         req.filter = filter
                         req.topicId = topicFilter
@@ -1345,7 +1347,7 @@ object TelegramRepository {
                     for (msg in found.messages) {
                         extractMediaMessage(msg, seen, results)
                     }
-                    found.messages.lastOrNull()?.id ?: 0L
+                    found.messages.maxOfOrNull { it.id } ?: 0L
                 } catch (e: Exception) {
                     Log.e(TAG, "fetchChannelMediaFromBeginning search error: ${e.message}")
                     0L
@@ -1353,14 +1355,14 @@ object TelegramRepository {
             }
         }.toMutableList()
 
-        // Also query GetChatHistory starting from message 1 for complete coverage of beginning messages
+        // Also query GetChatHistory starting from targetFromId for complete coverage of beginning messages
         tasks.add(
             async(Dispatchers.IO) {
                 try {
                     val historyResult = TelegramClient.sendRequest(TdApi.GetChatHistory().also { req ->
                         req.chatId = chatId
-                        req.fromMessageId = 1L
-                        req.offset = -99
+                        req.fromMessageId = targetFromId
+                        req.offset = -limit + 1
                         req.limit = limit
                         req.onlyLocal = false
                     })
@@ -1368,7 +1370,7 @@ object TelegramRepository {
                     for (msg in msgs.messages) {
                         extractMediaMessage(msg, seen, results)
                     }
-                    msgs.messages.lastOrNull()?.id ?: 0L
+                    msgs.messages.maxOfOrNull { it.id } ?: 0L
                 } catch (e: Exception) {
                     Log.e(TAG, "fetchChannelMediaFromBeginning GetChatHistory error: ${e.message}")
                     0L
@@ -1383,7 +1385,8 @@ object TelegramRepository {
             }
         }
         val sorted = results.sortedBy { it.messageId }
-        Pair(sorted, maxNextMessageId)
+        val nextId = if (maxNextMessageId > targetFromId) maxNextMessageId else 0L
+        Pair(sorted, nextId)
     }
 
     suspend fun searchChannelMedia(

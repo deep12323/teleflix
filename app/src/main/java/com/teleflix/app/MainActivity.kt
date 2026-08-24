@@ -98,6 +98,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     private var lastTelegramFromMessageId: Long = 0L
+    private var isBrowsingFromBeginning: Boolean = false
     private val telegramStreamCache = mutableMapOf<String, Pair<String, String>>()
     private val telegramGroupCache get() = TelegramRepository.groupCache
     private val telegramGroupPartsCache get() = TelegramRepository.groupPartsCache
@@ -1385,6 +1386,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadTelegramChannelsCatalog() {
         isInSearchMode = false
+        isBrowsingFromBeginning = false
         currentOpenChannelId = null
         hasMoreItems = false
         isLoadingMore = false
@@ -1522,6 +1524,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         isInSearchMode = false
+        isBrowsingFromBeginning = false
         currentOpenChannelId = channelUsername
         currentOpenTopicId = 0
         lastTelegramFromMessageId = 0L
@@ -1611,6 +1614,7 @@ class MainActivity : AppCompatActivity() {
         val channelUsername = parts.getOrNull(3) ?: currentOpenChannelId ?: ""
 
         isInSearchMode = false
+        isBrowsingFromBeginning = false
         currentOpenTopicId = topicId
         lastTelegramFromMessageId = 0L
         hasMoreItems = true
@@ -1988,8 +1992,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadChannelMediaFromBeginning(channelUsername: String, topicId: Int, title: String) {
         isInSearchMode = false
-        hasMoreItems = false
-        isLoadingMore = false
+        isBrowsingFromBeginning = true
+        currentOpenChannelId = channelUsername
+        currentOpenTopicId = topicId
+        lastTelegramFromMessageId = 1L
+        hasMoreItems = true
+        isLoadingMore = true
+        if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
+        if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.VISIBLE
         mediaList.clear()
         mediaAdapter?.notifyDataSetChanged()
         loadingText.visibility = android.view.View.VISIBLE
@@ -1999,20 +2009,26 @@ class MainActivity : AppCompatActivity() {
         }
 
         CoroutineScope(Dispatchers.IO).launch {
-            val (mediaMessages, _) = try {
-                TelegramRepository.fetchChannelMediaFromBeginning(channelUsername, topicId = topicId, limit = 100)
+            val (mediaMessages, nextFromId) = try {
+                TelegramRepository.fetchChannelMediaFromBeginning(channelUsername, fromMessageId = 1L, topicId = topicId, limit = 100)
             } catch (e: Exception) {
                 Pair(emptyList<TelegramVideoMessage>(), 0L)
+            }
+            if (nextFromId > 0L) {
+                lastTelegramFromMessageId = nextFromId
             }
             val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
 
             withContext(Dispatchers.Main) {
                 loadingText.visibility = android.view.View.GONE
                 mediaList.clear()
+                isLoadingMore = false
                 if (groupedItems.isEmpty()) {
+                    hasMoreItems = false
                     loadingText.visibility = android.view.View.VISIBLE
                     loadingText.text = "No media files found at the beginning of $title."
                 } else {
+                    hasMoreItems = (nextFromId > 0L)
                     populateMediaListFromDisplayItems(groupedItems)
                     recyclerView.post {
                         try { recyclerView.scrollToPosition(0) } catch (_: Exception) {}
@@ -2462,7 +2478,22 @@ class MainActivity : AppCompatActivity() {
 
         CoroutineScope(Dispatchers.IO).launch {
             val (mediaMessages, nextFromId) = try {
-                TelegramRepository.fetchChannelMedia(channelId, fromMessageId = lastTelegramFromMessageId, topicId = currentOpenTopicId, limit = 100, includeAudio = true)
+                if (isBrowsingFromBeginning) {
+                    TelegramRepository.fetchChannelMediaFromBeginning(
+                        channelId,
+                        fromMessageId = lastTelegramFromMessageId,
+                        topicId = currentOpenTopicId,
+                        limit = 100
+                    )
+                } else {
+                    TelegramRepository.fetchChannelMedia(
+                        channelId,
+                        fromMessageId = lastTelegramFromMessageId,
+                        topicId = currentOpenTopicId,
+                        limit = 100,
+                        includeAudio = true
+                    )
+                }
             } catch (e: Exception) {
                 Pair(emptyList<TelegramVideoMessage>(), 0L)
             }
