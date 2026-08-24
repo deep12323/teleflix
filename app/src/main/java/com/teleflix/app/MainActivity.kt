@@ -3763,8 +3763,8 @@ class MainActivity : AppCompatActivity() {
         try {
             val prefs = getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE)
             val currentList = loadRawWatchHistory().toMutableList()
-            // Only remove exact duplicate by ID (not by title — we want to keep different files of same movie/series)
-            currentList.removeAll { it.id == item.id || it.type == "channel" }
+            // Only remove exact duplicate by ID or streamUrl (not by title — we want to keep different files of same movie/series)
+            currentList.removeAll { it.id == item.id || (it.streamUrl.isNotBlank() && it.streamUrl == item.streamUrl) || it.type == "channel" }
             currentList.add(0, item)
             val trimmed = if (currentList.size > 120) currentList.subList(0, 120) else currentList
             val jsonArray = JSONArray()
@@ -3843,94 +3843,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadWatchHistory(): List<MediaItem> {
-        val rawList = loadRawWatchHistory()
+        val rawList = loadRawWatchHistory().distinctBy { it.id.ifBlank { it.streamUrl } }
         if (rawList.isEmpty()) return rawList
 
-        // Normalize title for grouping (strip episode/part prefixes & suffixes & bracket noise)
-        fun normalizeTitle(title: String): String {
-            var clean = title.trim()
+        val result = mutableListOf<MediaItem>()
+        for (single in rawList) {
+            val displayName = single.originalFileName.ifBlank { single.title }
+            val cleanTitle = displayName
                 .removePrefix("Select:")
                 .removePrefix("Select")
-                .removePrefix("📦")
-                .removePrefix("🗄️")
-                .removePrefix("📂")
+                .removePrefix("📦 ")
+                .removePrefix("🗄️ ")
+                .removePrefix("📂 ")
+                .removeSuffix(" (Combined)")
                 .trim()
-            clean = clean.removeSuffix(" (Combined)").trim()
-            clean = clean.replace(Regex("""[\._\s-]*(?:part|pt|cd)[\._\s-]*\d+.*$""", RegexOption.IGNORE_CASE), "")
-                         .replace(Regex("""\.\d{3,4}$"""), "")
-                         .replace(Regex("""\.(mkv|mp4|avi|mov|wmv|ts|flv)$""", RegexOption.IGNORE_CASE), "")
-                         .replace(Regex("""\[.*?\]"""), " ")
-                         .replace(Regex("""\(.*?\)"""), " ")
-                         .replace(Regex("""[\[\]\(\)\{\}\._\s-]+"""), " ")
-                         .trim()
-            return if (clean.isNotBlank()) clean.lowercase() else title.lowercase()
-        }
-
-        // Group items by normalized title, preserving insertion order
-        val groupMap = LinkedHashMap<String, MutableList<MediaItem>>()
-        fun findHistoryGroupKey(key: String): String {
-            if (key.isBlank()) return key
-            if (groupMap.containsKey(key)) return key
-            for (existingKey in groupMap.keys) {
-                if (existingKey.isNotBlank()) {
-                    if (key.startsWith(existingKey) || existingKey.startsWith(key)) {
-                        return existingKey
-                    }
-                }
-            }
-            return key
-        }
-
-        for (item in rawList) {
-            val rawKey = normalizeTitle(item.title)
-            val groupKey = findHistoryGroupKey(rawKey)
-            groupMap.getOrPut(groupKey) { mutableListOf() }.add(item)
-        }
-
-        val result = mutableListOf<MediaItem>()
-        for ((_, items) in groupMap) {
-            if (items.size == 1) {
-                val single = items.first()
-                val displayName = single.originalFileName.ifBlank { single.title }
-                val cleanTitle = displayName.removePrefix("Select:").removePrefix("Select").removePrefix("📦 ").removePrefix("🗄️ ").removePrefix("📂 ").removeSuffix(" (Combined)").trim()
-                val overviewText = if (single.overview.isNotBlank() && !single.overview.contains("Playing stream")) {
-                    single.overview
-                } else {
-                    "Playing stream:\n► $cleanTitle"
-                }
-                result.add(
-                    single.copy(
-                        title = cleanTitle,
-                        year = "Watched",
-                        rating = "▶",
-                        overview = overviewText,
-                        type = "telegram_media"
-                    )
-                )
+            val overviewText = if (single.overview.isNotBlank() && !single.overview.contains("Playing stream")) {
+                single.overview
             } else {
-                val mostRecent = items.first()
-                val displayTitle = mostRecent.originalFileName.ifBlank { mostRecent.title }
-                    .removePrefix("Select:").removePrefix("Select").removePrefix("📦 ").removePrefix("🗄️ ").removePrefix("📂 ").removeSuffix(" (Combined)").trim()
-                    .replace(Regex("""[\._\s-]*(?:part|pt|cd)[\._\s-]*\d+.*$""", RegexOption.IGNORE_CASE), "")
-                    .replace(Regex("""\.(mkv|mp4|avi|mov|wmv|ts|flv)$""", RegexOption.IGNORE_CASE), "")
-                    .trim()
-                    .ifBlank { mostRecent.title }
-
-                result.add(
-                    MediaItem(
-                        id = "history_group_${mostRecent.id}",
-                        title = displayTitle,
-                        posterUrl = mostRecent.posterUrl,
-                        year = "Watched",
-                        rating = "▶",
-                        overview = "Playing stream:\n► $displayTitle",
-                        type = "history_group",
-                        streamUrl = mostRecent.streamUrl,
-                        originalFileName = mostRecent.originalFileName,
-                        groupedFiles = items
-                    )
-                )
+                "Playing stream:\n► $cleanTitle"
             }
+            result.add(
+                single.copy(
+                    title = cleanTitle,
+                    year = "Watched",
+                    rating = "▶",
+                    overview = overviewText,
+                    type = if (single.type == "history_group") "telegram_media" else single.type
+                )
+            )
         }
         return result
     }
@@ -4416,25 +4356,6 @@ class MainActivity : AppCompatActivity() {
                         if (freshUrl != null && freshUrl.isNotBlank()) {
                             val groupId = if (item.id.startsWith("group_")) item.id else "group_${part.chatId}_$cleanTitle"
                             telegramGroupPartsCache[groupId] = finalParts
-                            for (p in finalParts) {
-                                val pId = "${p.chatId}_${p.messageId}"
-                                val pName = p.fileName.ifBlank { "Part ${p.fileId}" }
-                                val pTitle = pName
-                                val pUrl = TelegramRepository.getStreamUrl(p.fileId, p.fileName, p.fileSize, p.chatId, p.messageId)
-                                saveToHistory(
-                                    MediaItem(
-                                        id = pId,
-                                        title = pTitle,
-                                        posterUrl = item.posterUrl,
-                                        year = "Watched",
-                                        rating = "▶",
-                                        overview = "Telegram file: $pName",
-                                        type = "telegram_media",
-                                        streamUrl = pUrl,
-                                        originalFileName = p.fileName
-                                    )
-                                )
-                            }
                             checkResumeAndSelectPlayer(freshUrl, displayPartTitle, item.posterUrl, partMediaId, part.fileName)
                         } else {
                             Toast.makeText(this@MainActivity, "Media link expired", Toast.LENGTH_SHORT).show()
