@@ -249,8 +249,8 @@ class MainActivity : AppCompatActivity() {
         "New Movies" to "movie/year",
         "New Series" to "series/year",
         "IMDB Top" to "movie/imdbRating",
-        "🎭 Genres" to "genres/picker",
-        "📚 Library" to "library/list"
+        "📚 Library" to "library/list",
+        "🎭 Genres" to "genres/picker"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
