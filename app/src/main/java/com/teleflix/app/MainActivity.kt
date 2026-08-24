@@ -4307,6 +4307,27 @@ class MainActivity : AppCompatActivity() {
                 val groupInfo = telegramGroupCache[item.id]
                 val activeParts = if (reverseOrder) finalParts.reversed() else finalParts
                 val combinedMediaId = if (item.id.startsWith("group_")) item.id else "group_${activeParts.firstOrNull()?.chatId ?: 0}_$cleanTitle"
+                telegramGroupPartsCache[combinedMediaId] = activeParts
+                for (p in activeParts) {
+                    val pId = "${p.chatId}_${p.messageId}"
+                    val pName = p.fileName.ifBlank { "Part ${p.fileId}" }
+                    val pTitle = pName
+                    val pUrl = TelegramRepository.getStreamUrl(p.fileId, p.fileName, p.fileSize, p.chatId, p.messageId)
+                    saveToHistory(
+                        MediaItem(
+                            id = pId,
+                            title = pTitle,
+                            posterUrl = item.posterUrl,
+                            year = "Watched",
+                            rating = "▶",
+                            overview = "Telegram file: $pName",
+                            type = "telegram_media",
+                            streamUrl = pUrl,
+                            originalFileName = p.fileName,
+                            fileSize = p.fileSize
+                        )
+                    )
+                }
                 CoroutineScope(Dispatchers.Main).launch {
                     val urlToPlay = if (groupInfo != null && !reverseOrder) {
                         TelegramRepository.getFreshMergedMediaUrl(groupInfo.first, cleanTitle, groupInfo.second) ?: item.streamUrl
@@ -4427,6 +4448,26 @@ class MainActivity : AppCompatActivity() {
                         if (freshUrl != null && freshUrl.isNotBlank()) {
                             val groupId = if (item.id.startsWith("group_")) item.id else "group_${part.chatId}_$cleanTitle"
                             telegramGroupPartsCache[groupId] = finalParts
+                            for (p in finalParts) {
+                                val pId = "${p.chatId}_${p.messageId}"
+                                val pName = p.fileName.ifBlank { "Part ${p.fileId}" }
+                                val pTitle = pName
+                                val pUrl = TelegramRepository.getStreamUrl(p.fileId, p.fileName, p.fileSize, p.chatId, p.messageId)
+                                saveToHistory(
+                                    MediaItem(
+                                        id = pId,
+                                        title = pTitle,
+                                        posterUrl = item.posterUrl,
+                                        year = "Watched",
+                                        rating = "▶",
+                                        overview = "Telegram file: $pName",
+                                        type = "telegram_media",
+                                        streamUrl = pUrl,
+                                        originalFileName = p.fileName,
+                                        fileSize = p.fileSize
+                                    )
+                                )
+                            }
                             checkResumeAndSelectPlayer(freshUrl, displayPartTitle, item.posterUrl, partMediaId, part.fileName)
                         } else {
                             Toast.makeText(this@MainActivity, "Media link expired", Toast.LENGTH_SHORT).show()
