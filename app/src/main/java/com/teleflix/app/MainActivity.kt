@@ -3846,37 +3846,108 @@ class MainActivity : AppCompatActivity() {
         val rawList = loadRawWatchHistory().distinctBy { it.id.ifBlank { it.streamUrl } }
         if (rawList.isEmpty()) return rawList
 
-        val result = mutableListOf<MediaItem>()
-        for (single in rawList) {
-            val displayName = single.originalFileName.ifBlank { single.title }
-            val cleanTitle = displayName
-                .removePrefix("Select:")
-                .removePrefix("Select")
-                .removePrefix("📦 ")
-                .removePrefix("🗄️ ")
-                .removePrefix("📂 ")
-                .removeSuffix(" (Combined)")
-                .trim()
-            val overviewText = if (single.overview.isNotBlank() && !single.overview.contains("Playing stream")) {
-                single.overview
-            } else {
-                "Playing stream:\n► $cleanTitle"
-            }
-            result.add(
-                single.copy(
-                    title = cleanTitle,
-                    year = "Watched",
-                    rating = "▶",
-                    overview = overviewText,
-                    type = if (single.type == "history_group") "telegram_media" else single.type
+        // Map raw items to TelegramVideoMessage with index tracking to preserve exact order
+        val indexedMessages = rawList.mapIndexed { idx, item ->
+            val pId = item.id.removePrefix("single_").removePrefix("stream_").removePrefix("zip_").removePrefix("group_")
+            val pParts = pId.split("_")
+            val cId = pParts.getOrNull(0)?.toLongOrNull() ?: 0L
+            val mId = pParts.getOrNull(1)?.toLongOrNull() ?: 0L
+            val fId = extractFileIdFromUrl(item.streamUrl) ?: 0
+            val sz = if (item.fileSize > 0) item.fileSize else extractSizeFromUrl(item.streamUrl)
+            val fName = item.originalFileName.ifBlank { item.title }
+            val fakeMsgId = if (mId != 0L) mId else (idx.toLong() + 1_000_000L)
+            Pair(
+                item,
+                TelegramVideoMessage(
+                    messageId = fakeMsgId,
+                    chatId = cId,
+                    fileName = fName,
+                    fileSize = sz,
+                    duration = 0,
+                    fileId = fId,
+                    mimeType = "video/mp4",
+                    caption = ""
                 )
             )
+        }
+
+        val messages = indexedMessages.map { it.second }
+        val itemByMsgId = indexedMessages.associate { it.second.messageId to it.first }
+        val displayItems = TelegramRepository.groupAndPreserveOrder(messages)
+
+        val result = mutableListOf<MediaItem>()
+        for (disp in displayItems) {
+            when (disp) {
+                is DisplayItem.Single -> {
+                    val single = itemByMsgId[disp.message.messageId] ?: continue
+                    val displayName = single.originalFileName.ifBlank { single.title }
+                    val cleanTitle = displayName
+                        .removePrefix("Select:")
+                        .removePrefix("Select")
+                        .removePrefix("📦 ")
+                        .removePrefix("🗄️ ")
+                        .removePrefix("📂 ")
+                        .removeSuffix(" (Combined)")
+                        .trim()
+                    val overviewText = if (single.overview.isNotBlank() && !single.overview.contains("Playing stream")) {
+                        single.overview
+                    } else {
+                        "Playing stream:\n► $cleanTitle"
+                    }
+                    result.add(
+                        single.copy(
+                            title = cleanTitle,
+                            year = "Watched",
+                            rating = "▶",
+                            overview = overviewText,
+                            type = "telegram_media"
+                        )
+                    )
+                }
+                is DisplayItem.Group -> {
+                    val matchedMedia = disp.group.parts.mapNotNull { itemByMsgId[it.messageId] }
+                    val mostRecent = matchedMedia.firstOrNull() ?: continue
+                    val cleanBaseName = disp.group.baseName
+                        .removePrefix("Select:")
+                        .removePrefix("Select")
+                        .removePrefix("📦 ")
+                        .removePrefix("🗄️ ")
+                        .removePrefix("📂 ")
+                        .removeSuffix(" (Combined)")
+                        .trim()
+                    val totalSize = disp.group.parts.sumOf { it.fileSize }
+                    val totalSizeStr = formatFileSize(totalSize)
+                    val groupId = "group_${disp.group.parts.firstOrNull()?.chatId ?: 0}_$cleanBaseName"
+                    telegramGroupPartsCache[groupId] = disp.group.parts
+
+                    result.add(
+                        MediaItem(
+                            id = groupId,
+                            title = cleanBaseName,
+                            posterUrl = mostRecent.posterUrl,
+                            year = "Watched",
+                            rating = "▶",
+                            overview = "Multi-part video pack: $cleanBaseName\n(${disp.group.parts.size} parts • $totalSizeStr)",
+                            type = "history_group",
+                            streamUrl = mostRecent.streamUrl,
+                            originalFileName = mostRecent.originalFileName,
+                            groupedFiles = matchedMedia
+                        )
+                    )
+                }
+            }
         }
         return result
     }
 
     // Show a file picker dialog for grouped history entries (uses standard showGroupPartsSelectionDialog)
     private fun showHistoryGroupFilesPicker(groupItem: MediaItem) {
+        val cached = telegramGroupPartsCache[groupItem.id]
+        if (cached != null && cached.isNotEmpty()) {
+            showGroupPartsSelectionDialog(groupItem, cached, groupItem.title)
+            return
+        }
+
         val files = groupItem.groupedFiles
         if (files.isEmpty()) return
 
