@@ -4643,12 +4643,31 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("Cancel", null)
             .create()
 
+        var searchJob: kotlinx.coroutines.Job? = null
         fun filterList(filterQuery: String = "") {
+            searchJob?.cancel()
+            val trimmed = filterQuery.trim()
             val chats = activeChatsList
-            val filtered = if (filterQuery.isBlank()) chats else chats.filter {
-                it.title.contains(filterQuery, ignoreCase = true)
+            val localFiltered = if (trimmed.isBlank()) chats else chats.filter {
+                it.title.contains(trimmed, ignoreCase = true) ||
+                (it.username != null && it.username.contains(trimmed, ignoreCase = true))
             }
-            pickerAdapter.updateList(filtered)
+            pickerAdapter.updateList(localFiltered)
+
+            if (trimmed.length >= 2) {
+                searchJob = CoroutineScope(Dispatchers.IO).launch {
+                    kotlinx.coroutines.delay(300)
+                    val remoteResults = TelegramRepository.searchChatsAndChannels(trimmed)
+                    if (remoteResults.isNotEmpty()) {
+                        withContext(Dispatchers.Main) {
+                            if (alertDialog?.isShowing == true && searchInput.text?.toString()?.trim() == trimmed) {
+                                val combined = (localFiltered + remoteResults).distinctBy { it.chatId }
+                                pickerAdapter.updateList(combined)
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         alertDialog.show()
@@ -4712,7 +4731,7 @@ class MainActivity : AppCompatActivity() {
                     RecyclerView.LayoutParams.MATCH_PARENT,
                     RecyclerView.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    setMargins(0, 0, 0, UITheme.dpToPx(context, 6))
+                    setMargins(0, 0, UITheme.dpToPx(context, 6))
                 }
             }
 
@@ -4759,13 +4778,14 @@ class MainActivity : AppCompatActivity() {
                     (chat.username != null && currentMonitored.contains("@" + chat.username))
 
             holder.titleV.text = chat.title
-            holder.subV.text = when {
+            val typeStr = when {
                 chat.isBot -> "🤖 Bot"
                 chat.isChannel -> "📢 Channel"
                 chat.isGroup -> "👥 Group"
                 chat.isArchived -> "📦 Archived"
                 else -> "💬 Chat"
             }
+            holder.subV.text = if (!chat.username.isNullOrBlank()) "$typeStr • @${chat.username}" else typeStr
 
             if (chat.photoFileId != null && chat.photoFileId > 0) {
                 val thumbUrl = TelegramStreamingProxy.getThumbnailUrl(chat.photoFileId)

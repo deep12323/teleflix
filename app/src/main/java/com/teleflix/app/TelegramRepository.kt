@@ -245,7 +245,7 @@ object TelegramRepository {
             Log.w(TAG, "SearchPublicChat failed for $username: ${e.message}")
         }
 
-        // Fallback: search among all chats the user has joined (works for private/archive channels)
+        // Fallback 1: search among all chats the user has joined on server
         try {
             val chats = TelegramClient.sendRequest(TdApi.SearchChatsOnServer(username, 5)) as? TdApi.Chats
             if (chats != null && chats.chatIds.isNotEmpty()) {
@@ -254,6 +254,22 @@ object TelegramRepository {
         } catch (e: Exception) {
             Log.w(TAG, "SearchChatsOnServer failed for $username: ${e.message}")
         }
+
+        // Fallback 2: search locally known chats
+        try {
+            val chats = TelegramClient.sendRequest(TdApi.SearchChats(username, 5)) as? TdApi.Chats
+            if (chats != null && chats.chatIds.isNotEmpty()) {
+                return chats.chatIds.first()
+            }
+        } catch (_: Exception) {}
+
+        // Fallback 3: global public search
+        try {
+            val chats = TelegramClient.sendRequest(TdApi.SearchPublicChats(username)) as? TdApi.Chats
+            if (chats != null && chats.chatIds.isNotEmpty()) {
+                return chats.chatIds.first()
+            }
+        } catch (_: Exception) {}
 
         return null
     }
@@ -272,6 +288,12 @@ object TelegramRepository {
         when (val t = chat.type) {
             is TdApi.ChatTypeSupergroup -> {
                 if (t.isChannel) isChannel = true else isGroup = true
+                try {
+                    val supergroup = TelegramClient.sendRequest(TdApi.GetSupergroup(t.supergroupId)) as? TdApi.Supergroup
+                    if (supergroup != null) {
+                        chatUsername = supergroup.usernames?.activeUsernames?.firstOrNull() ?: supergroup.usernames?.editableUsername
+                    }
+                } catch (_: Exception) {}
             }
             is TdApi.ChatTypeBasicGroup -> isGroup = true
             is TdApi.ChatTypePrivate -> {
@@ -280,7 +302,7 @@ object TelegramRepository {
                     val user = TelegramClient.sendRequest(TdApi.GetUser(t.userId)) as? TdApi.User
                     if (user != null) {
                         if (user.type is TdApi.UserTypeBot) isBot = true
-                        chatUsername = user.usernames?.activeUsernames?.firstOrNull()
+                        chatUsername = user.usernames?.activeUsernames?.firstOrNull() ?: user.usernames?.editableUsername
                     }
                 } catch (_: Exception) {}
             }
@@ -395,12 +417,20 @@ object TelegramRepository {
                 val chatList = listPair.first
                 val isArchived = listPair.second
 
-                try {
-                    TelegramClient.sendRequest(TdApi.LoadChats(chatList, 100))
-                } catch (_: Exception) {}
+                // Recursively load up to 1000 chats from each chat list
+                for (batch in 0 until 10) {
+                    try {
+                        val loadRes = TelegramClient.sendRequest(TdApi.LoadChats(chatList, 100))
+                        if (loadRes is TdApi.Error) {
+                            break
+                        }
+                    } catch (_: Exception) {
+                        break
+                    }
+                }
 
                 val chatsObj = (try {
-                    TelegramClient.sendRequest(TdApi.GetChats(chatList, 500))
+                    TelegramClient.sendRequest(TdApi.GetChats(chatList, 1000))
                 } catch (_: Exception) { null }) as? TdApi.Chats
 
                 if (chatsObj != null) {
@@ -417,26 +447,89 @@ object TelegramRepository {
         val subLists = listTasks.awaitAll()
         subLists.forEach { list.addAll(it) }
 
-        try {
-            val serverChats = TelegramClient.sendRequest(TdApi.SearchChatsOnServer("", 100)) as? TdApi.Chats
-            if (serverChats != null) {
-                val unvisitedIds = serverChats.chatIds.filter { seen.add(it) }
-                val tasks = unvisitedIds.map { id ->
-                    async(Dispatchers.IO) {
-                        fetchChatDetails(id, isArchived = false)
-                    }
-                }
-                val results = tasks.awaitAll().filterNotNull()
-                list.addAll(results)
-            }
-        } catch (_: Exception) {}
-
         val resultList = list.toList()
         if (resultList.isNotEmpty()) {
             cachedJoinedChats = resultList
             saveJoinedChatsCache(resultList)
         }
         return@coroutineScope resultList
+    }
+
+    suspend fun searchChatsAndChannels(query: String): List<TelegramChatInfo> = coroutineScope {
+        val q = query.trim()
+        if (q.isEmpty()) return@coroutineScope emptyList()
+        val cleanUser = q.removePrefix("@").trim()
+
+        val foundChatIds = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
+
+        // 1. Search locally known / cached chats
+        val localJob = async(Dispatchers.IO) {
+            try {
+                val localRes = TelegramClient.sendRequest(TdApi.SearchChats(q, 50)) as? TdApi.Chats
+                localRes?.chatIds?.forEach { foundChatIds.add(it) }
+            } catch (_: Exception) {}
+        }
+
+        // 2. Search on server among joined chats
+        val serverJob = async(Dispatchers.IO) {
+            try {
+                val serverRes = TelegramClient.sendRequest(TdApi.SearchChatsOnServer(q, 50)) as? TdApi.Chats
+                serverRes?.chatIds?.forEach { foundChatIds.add(it) }
+            } catch (_: Exception) {}
+        }
+
+        // 3. Search public channels & supergroups globally
+        val publicJob = async(Dispatchers.IO) {
+            try {
+                val pubRes = TelegramClient.sendRequest(TdApi.SearchPublicChats(q)) as? TdApi.Chats
+                pubRes?.chatIds?.forEach { foundChatIds.add(it) }
+            } catch (_: Exception) {}
+        }
+
+        // 4. Exact public username lookup if applicable
+        val exactPublicJob = async(Dispatchers.IO) {
+            if (cleanUser.isNotEmpty() && !cleanUser.contains(" ")) {
+                try {
+                    val pubChat = TelegramClient.sendRequest(TdApi.SearchPublicChat(cleanUser)) as? TdApi.Chat
+                    if (pubChat != null) {
+                        foundChatIds.add(pubChat.id)
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        // 5. Numeric chat ID lookup if user typed an ID
+        val numericJob = async(Dispatchers.IO) {
+            cleanUser.toLongOrNull()?.let { numId ->
+                try {
+                    val directChat = TelegramClient.sendRequest(TdApi.GetChat(numId)) as? TdApi.Chat
+                    if (directChat != null) {
+                        foundChatIds.add(directChat.id)
+                    }
+                } catch (_: Exception) {
+                    if (!q.startsWith("-100")) {
+                        val prefixed = "-100$cleanUser".toLongOrNull()
+                        if (prefixed != null) {
+                            try {
+                                val directChat2 = TelegramClient.sendRequest(TdApi.GetChat(prefixed)) as? TdApi.Chat
+                                if (directChat2 != null) {
+                                    foundChatIds.add(directChat2.id)
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+            }
+        }
+
+        awaitAll(localJob, serverJob, publicJob, exactPublicJob, numericJob)
+
+        val detailsTasks = foundChatIds.map { id ->
+            async(Dispatchers.IO) {
+                fetchChatDetails(id, isArchived = false)
+            }
+        }
+        return@coroutineScope detailsTasks.awaitAll().filterNotNull()
     }
 
     private const val TITLE_CACHE_PREFS = "teleflix_channel_titles"

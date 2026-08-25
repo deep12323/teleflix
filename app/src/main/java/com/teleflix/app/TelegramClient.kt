@@ -252,7 +252,14 @@ object TelegramClient {
                 scope.launch {
                     val user = sendRequest(TdApi.GetMe()) as? TdApi.User
                     for (chatList in listOf(TdApi.ChatListMain(), TdApi.ChatListArchive())) {
-                        try { sendRequest(TdApi.LoadChats(chatList, 100)) } catch (_: Exception) {}
+                        for (batch in 0 until 5) {
+                            try {
+                                val res = sendRequest(TdApi.LoadChats(chatList, 100))
+                                if (res is TdApi.Error) break
+                            } catch (_: Exception) {
+                                break
+                            }
+                        }
                     }
                     val phone = user?.phoneNumber?.let { if (!it.startsWith("+")) "+$it" else it } ?: ""
                     TdlibManager.setSessionActive(context, true, phone)
