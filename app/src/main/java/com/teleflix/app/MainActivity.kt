@@ -4731,7 +4731,7 @@ class MainActivity : AppCompatActivity() {
                     RecyclerView.LayoutParams.MATCH_PARENT,
                     RecyclerView.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    setMargins(0, 0, UITheme.dpToPx(context, 6))
+                    setMargins(0, 0, 0, UITheme.dpToPx(context, 6))
                 }
             }
 
