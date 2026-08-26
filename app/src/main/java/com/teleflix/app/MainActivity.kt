@@ -157,6 +157,11 @@ class MainActivity : AppCompatActivity() {
                 intent.getBooleanExtra("playback_completed", false) ||
                 intent.getBooleanExtra("is_completed", false)
 
+            val prefsLink = getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE)
+            val prefsTitle = getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
+            val editLink = prefsLink.edit()
+            val editTitle = prefsTitle.edit()
+
             val existingDur = (if (activeMediaIdForResume.isNotBlank()) prefsLink.getLong("dur_id_$activeMediaIdForResume", 0L) else 0L)
                 .takeIf { it > 0L }
                 ?: (if (activeStreamUrlForResume.isNotBlank()) prefsLink.getLong("dur_$activeStreamUrlForResume", 0L) else 0L)
@@ -171,11 +176,6 @@ class MainActivity : AppCompatActivity() {
             } else false
 
             val isCompleted = isExplicitCompleted || isPositionCompleted
-
-            val prefsLink = getSharedPreferences("teleflix_resume_points", android.content.Context.MODE_PRIVATE)
-            val prefsTitle = getSharedPreferences("TeleflixResume", android.content.Context.MODE_PRIVATE)
-            val editLink = prefsLink.edit()
-            val editTitle = prefsTitle.edit()
 
             if (isCompleted || posLong <= 3000L) {
                 // Video finished completely or stopped right at start - clear resume points
