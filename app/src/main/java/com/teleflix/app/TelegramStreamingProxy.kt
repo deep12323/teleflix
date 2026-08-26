@@ -1448,6 +1448,8 @@ object TelegramStreamingProxy {
         latestActiveStreamReqId.remove(fileId)
         activeStreamRequests.remove(fileId)
         activeDownloadWindows.remove(fileId)
+        lastDownloadRequestOffset.remove(fileId)
+        lastDownloadRequestTime.remove(fileId)
         scope.launch {
             deleteFile(fileId)
         }

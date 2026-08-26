@@ -157,8 +157,17 @@ class MainActivity : AppCompatActivity() {
                 intent.getBooleanExtra("playback_completed", false) ||
                 intent.getBooleanExtra("is_completed", false)
 
-            val isPositionCompleted = if (durLong > 10_000L && posLong > 0L) {
-                posLong >= (durLong * 0.92).toLong() || posLong >= (durLong - 25_000L)
+            val existingDur = (if (activeMediaIdForResume.isNotBlank()) prefsLink.getLong("dur_id_$activeMediaIdForResume", 0L) else 0L)
+                .takeIf { it > 0L }
+                ?: (if (activeStreamUrlForResume.isNotBlank()) prefsLink.getLong("dur_$activeStreamUrlForResume", 0L) else 0L)
+                .takeIf { it > 0L }
+                ?: (if (activeTitleForResume.isNotBlank()) prefsTitle.getLong("dur_$activeTitleForResume", 0L) else 0L)
+                .takeIf { it > 0L }
+                ?: 0L
+            val effectiveDur = if (durLong > 0L) durLong else existingDur
+
+            val isPositionCompleted = if (effectiveDur > 0L && posLong > 0L) {
+                posLong >= (effectiveDur * 0.90).toLong() || (posLong >= effectiveDur - 15_000L && effectiveDur > 20_000L) || (posLong >= effectiveDur - 3_000L)
             } else false
 
             val isCompleted = isExplicitCompleted || isPositionCompleted
@@ -3382,8 +3391,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         // If saved position is near the end (completed), clear resume point and start from beginning (0L)
-        if (savedDurationMs > 10_000L && savedPositionMs > 3_000L) {
-            if (savedPositionMs >= (savedDurationMs * 0.92).toLong() || savedPositionMs >= savedDurationMs - 25_000L) {
+        if (savedPositionMs > 3_000L && savedDurationMs > 0L) {
+            if (savedPositionMs >= (savedDurationMs * 0.90).toLong() || (savedPositionMs >= savedDurationMs - 15_000L && savedDurationMs > 20_000L) || (savedPositionMs >= savedDurationMs - 3_000L)) {
                 savedPositionMs = 0L
                 val editLink = prefsLink.edit()
                 val editTitle = prefsTitle.edit()
@@ -3663,6 +3672,13 @@ class MainActivity : AppCompatActivity() {
                 putExtra("position_ms", resumeMs)
                 putExtra("start_position", resumeMs)
                 putExtra("from_start", false)
+            } else {
+                putExtra("position", 0)
+                putExtra("extra_position", 0L)
+                putExtra("resume_position", 0L)
+                putExtra("position_ms", 0L)
+                putExtra("start_position", 0L)
+                putExtra("from_start", true)
             }
         }
 
