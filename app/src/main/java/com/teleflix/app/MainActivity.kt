@@ -22,6 +22,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.startapp.sdk.adsbase.StartAppSDK
+import com.startapp.sdk.ads.banner.Banner
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.GridLayoutManager
@@ -265,6 +267,15 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize Start.io Ads SDK
+        try {
+            StartAppSDK.init(this, "208654984", false)
+            StartAppSDK.enableReturnAds(false)
+        } catch (e: Exception) {
+            TeleflixLogger.log("MainActivity", "StartAppSDK init error: ${e.message}")
+        }
+
         TelegramRepository.initialize(this)
         if (savedInstanceState == null) {
             TeleflixLogger.clearLogsOnExit()
@@ -864,6 +875,21 @@ class MainActivity : AppCompatActivity() {
 
         rootView.addView(recyclerView)
 
+        // Bottom Banner Ad (Start.io)
+        try {
+            val startAppBanner = Banner(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = android.view.Gravity.CENTER_HORIZONTAL
+                }
+            }
+            rootView.addView(startAppBanner)
+        } catch (e: Exception) {
+            TeleflixLogger.log("MainActivity", "StartApp Banner init error: ${e.message}")
+        }
+
         val mainContainer = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -877,7 +903,7 @@ class MainActivity : AppCompatActivity() {
             val lp = FrameLayout.LayoutParams(sz, sz).apply {
                 gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
                 val marginEnd = UITheme.dpToPx(this@MainActivity, 20)
-                val marginBottom = UITheme.dpToPx(this@MainActivity, 24)
+                val marginBottom = UITheme.dpToPx(this@MainActivity, 74)
                 setMargins(0, 0, marginEnd, marginBottom)
             }
             layoutParams = lp

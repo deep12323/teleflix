@@ -14,3 +14,7 @@
     public <init>(android.content.Context, android.util.AttributeSet, int);
 }
 -keep class com.teleflix.app.** { *; }
+
+# Keep Start.io In-App Ad SDK
+-keep class com.startapp.** { *; }
+-dontwarn com.startapp.**
