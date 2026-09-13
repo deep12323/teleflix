@@ -1,10 +1,13 @@
 package com.teleflix.app
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import com.startapp.sdk.adsbase.StartAppSDK
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -1111,6 +1114,108 @@ class SettingsActivity : AppCompatActivity() {
         clearLogsRow.addView(clearLogsBtn)
         logsBox.addView(clearLogsRow)
         logsSectionContainer.addView(logsBox)
+
+        // 7. Privacy Policy & Advertising Section (Start.io)
+        val privacySectionContainer = createCollapsibleSection("🛡️ Privacy Policy & Ads (Start.io)")
+
+        val privacyBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = UITheme.createCardShape(this@SettingsActivity, UITheme.CARD, 16, UITheme.STROKE_COLOR, 1)
+            val pad = UITheme.dpToPx(this@SettingsActivity, 16)
+            setPadding(pad, pad, pad, pad)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+
+        val privacyTitle = TextView(this).apply {
+            text = "Start.io Advertising & Data Notice"
+            UITheme.applyCardTitleStyle(this)
+            textSize = 15f
+        }
+        privacyBox.addView(privacyTitle)
+
+        val privacyDesc = TextView(this).apply {
+            text = "Teleflix integrates the Start.io ad network to display non-intrusive banner ads that support development and server resources. Start.io collects and processes technical device data in accordance with their privacy policy."
+            UITheme.applyMetadataStyle(this)
+            textSize = 13f
+            setTextColor(Color.parseColor("#9CA3AF"))
+            setPadding(0, UITheme.dpToPx(this@SettingsActivity, 6), 0, UITheme.dpToPx(this@SettingsActivity, 12))
+        }
+        privacyBox.addView(privacyDesc)
+
+        val isAccepted = prefs.getBoolean("startio_privacy_accepted", false)
+        var isConsentGranted = prefs.getBoolean("startio_consent_granted", true)
+
+        val statusConsentText = TextView(this).apply {
+            val statusLabel = if (!isAccepted) "Pending Review" else if (isConsentGranted) "Accepted (Personalized Ads Enabled)" else "Accepted (Non-Personalized Ads Only)"
+            text = "Consent Status: $statusLabel"
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(if (isAccepted) Color.parseColor(UITheme.SUCCESS) else Color.parseColor("#F59E0B"))
+            setPadding(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 14))
+        }
+        privacyBox.addView(statusConsentText)
+
+        // Actions Row
+        val privacyActionsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+
+        // View portal.start.io Policy Button
+        val openPolicyBtn = Button(this).apply {
+            text = "🌐 View Start.io Policy (portal.start.io)"
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            background = UITheme.createCardShape(this@SettingsActivity, UITheme.PRIMARY, 12)
+            isAllCaps = false
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                UITheme.dpToPx(this@SettingsActivity, 44)
+            ).apply {
+                setMargins(0, 0, 0, UITheme.dpToPx(this@SettingsActivity, 8))
+            }
+            setOnClickListener {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://portal.start.io/"))
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(this@SettingsActivity, "Could not open browser for https://portal.start.io/", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        privacyActionsRow.addView(openPolicyBtn)
+
+        // Toggle Consent Button
+        val toggleConsentBtn = Button(this).apply {
+            text = if (isConsentGranted) "Switch to Non-Personalized Ads" else "Switch to Personalized Ads"
+            textSize = 13f
+            setTextColor(Color.parseColor(UITheme.TEXT_PRIMARY))
+            background = UITheme.createCardShape(this@SettingsActivity, UITheme.SURFACE, 12, UITheme.STROKE_COLOR, 1)
+            isAllCaps = false
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                UITheme.dpToPx(this@SettingsActivity, 40)
+            )
+            setOnClickListener {
+                isConsentGranted = !isConsentGranted
+                prefs.edit()
+                    .putBoolean("startio_privacy_accepted", true)
+                    .putBoolean("startio_consent_granted", isConsentGranted)
+                    .apply()
+                try {
+                    StartAppSDK.setUserConsent(this@SettingsActivity, "pas", System.currentTimeMillis(), isConsentGranted)
+                } catch (e: Exception) {
+                    TeleflixLogger.log("SettingsActivity", "StartApp setUserConsent error: ${e.message}")
+                }
+                text = if (isConsentGranted) "Switch to Non-Personalized Ads" else "Switch to Personalized Ads"
+                statusConsentText.text = if (isConsentGranted) "Consent Status: Accepted (Personalized Ads Enabled)" else "Consent Status: Accepted (Non-Personalized Ads Only)"
+                statusConsentText.setTextColor(Color.parseColor(UITheme.SUCCESS))
+                Toast.makeText(this@SettingsActivity, if (isConsentGranted) "Personalized ads enabled" else "Non-personalized ads enabled", Toast.LENGTH_SHORT).show()
+            }
+        }
+        privacyActionsRow.addView(toggleConsentBtn)
+        privacyBox.addView(privacyActionsRow)
+        privacySectionContainer.addView(privacyBox)
 
         setContentView(scrollView)
 
