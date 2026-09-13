@@ -1,6 +1,8 @@
-<p align="center">
-  <img src="fastlane/metadata/android/en-US/images/featureGraphic.png" alt="Teleflix Banner" width="100%">
-</p>
+<div align="center">
+
+![Teleflix Banner](fastlane/metadata/android/en-US/images/featureGraphic.png)
+
+</div>
 
 # Teleflix
 
@@ -70,7 +72,7 @@ The compiled APK will be created at:
 
 ## License & Disclaimer
 
-This project is licensed under the [MIT License](file:///root/teleflix-android-app/LICENSE). See the [LICENSE](file:///root/teleflix-android-app/LICENSE) file for details.
+This project is licensed under the [MIT License](LICENSE). See the [LICENSE](LICENSE) file for details.
 
 *Disclaimer: Teleflix is for personal media access. Ensure you have the rights to stream content from channels you access.*
 
