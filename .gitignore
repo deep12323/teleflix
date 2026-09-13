@@ -11,3 +11,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Scratch and script files
+*.py
+*.sh
+*.txt

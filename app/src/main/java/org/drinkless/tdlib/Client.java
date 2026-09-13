@@ -18,7 +18,11 @@ public final class Client {
     }
 
     static {
-        // Native library loaded dynamically via load(path)
+        try {
+            System.loadLibrary("tdjni");
+        } catch (UnsatisfiedLinkError e) {
+            e.printStackTrace();
+        }
     }
 
     /**

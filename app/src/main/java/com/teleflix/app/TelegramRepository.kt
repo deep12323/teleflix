@@ -247,7 +247,7 @@ object TelegramRepository {
 
         // Fallback 1: search among all chats the user has joined on server
         try {
-            val chats = TelegramClient.sendRequest(TdApi.SearchChatsOnServer(username, 5)) as? TdApi.Chats
+            val chats = TelegramClient.sendRequest(TdApi.SearchChatsOnServer(username, null, 5)) as? TdApi.Chats
             if (chats != null && chats.chatIds.isNotEmpty()) {
                 return chats.chatIds.first()
             }
@@ -257,7 +257,7 @@ object TelegramRepository {
 
         // Fallback 2: search locally known chats
         try {
-            val chats = TelegramClient.sendRequest(TdApi.SearchChats(username, 5)) as? TdApi.Chats
+            val chats = TelegramClient.sendRequest(TdApi.SearchChats(username, null, 5)) as? TdApi.Chats
             if (chats != null && chats.chatIds.isNotEmpty()) {
                 return chats.chatIds.first()
             }
@@ -265,7 +265,7 @@ object TelegramRepository {
 
         // Fallback 3: global public search
         try {
-            val chats = TelegramClient.sendRequest(TdApi.SearchPublicChats(username)) as? TdApi.Chats
+            val chats = TelegramClient.sendRequest(TdApi.SearchPublicChats(username, null)) as? TdApi.Chats
             if (chats != null && chats.chatIds.isNotEmpty()) {
                 return chats.chatIds.first()
             }
@@ -465,7 +465,7 @@ object TelegramRepository {
         // 1. Search locally known / cached chats
         val localJob = async(Dispatchers.IO) {
             try {
-                val localRes = TelegramClient.sendRequest(TdApi.SearchChats(q, 50)) as? TdApi.Chats
+                val localRes = TelegramClient.sendRequest(TdApi.SearchChats(q, null, 50)) as? TdApi.Chats
                 localRes?.chatIds?.forEach { foundChatIds.add(it) }
             } catch (_: Exception) {}
         }
@@ -473,7 +473,7 @@ object TelegramRepository {
         // 2. Search on server among joined chats
         val serverJob = async(Dispatchers.IO) {
             try {
-                val serverRes = TelegramClient.sendRequest(TdApi.SearchChatsOnServer(q, 50)) as? TdApi.Chats
+                val serverRes = TelegramClient.sendRequest(TdApi.SearchChatsOnServer(q, null, 50)) as? TdApi.Chats
                 serverRes?.chatIds?.forEach { foundChatIds.add(it) }
             } catch (_: Exception) {}
         }
@@ -481,7 +481,7 @@ object TelegramRepository {
         // 3. Search public channels & supergroups globally
         val publicJob = async(Dispatchers.IO) {
             try {
-                val pubRes = TelegramClient.sendRequest(TdApi.SearchPublicChats(q)) as? TdApi.Chats
+                val pubRes = TelegramClient.sendRequest(TdApi.SearchPublicChats(q, null)) as? TdApi.Chats
                 pubRes?.chatIds?.forEach { foundChatIds.add(it) }
             } catch (_: Exception) {}
         }
