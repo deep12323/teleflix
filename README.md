@@ -63,10 +63,11 @@ To connect Telegram, you need to provide your own API credentials from [my.teleg
 
 ### Build Command
 ```bash
-./gradlew :app:assembleDebug
+./gradlew :app:assembleRelease
 ```
-The compiled APK will be created at:
-`app/build/outputs/apk/debug/app-debug.apk`
+The compiled APKs will be created at:
+`app/build/outputs/apk/release/app-<arch>-release.apk`
+(e.g., `app-arm64-v8a-release.apk`, `app-universal-release.apk`)
 
 ---
 
