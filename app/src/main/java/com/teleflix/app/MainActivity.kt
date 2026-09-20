@@ -23,8 +23,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.startapp.sdk.adsbase.StartAppSDK
-import com.startapp.sdk.ads.banner.Banner
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.GridLayoutManager
@@ -268,19 +266,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Initialize Start.io Ads SDK & Apply User Consent
-        val prefs = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
-        try {
-            StartAppSDK.init(this, "208654984", false)
-            StartAppSDK.enableReturnAds(false)
-            if (prefs.getBoolean("startio_privacy_accepted", false)) {
-                val consent = prefs.getBoolean("startio_consent_granted", true)
-                StartAppSDK.setUserConsent(this, "pas", System.currentTimeMillis(), consent)
-            }
-        } catch (e: Exception) {
-            TeleflixLogger.log("MainActivity", "StartAppSDK init error: ${e.message}")
-        }
 
         TelegramRepository.initialize(this)
         if (savedInstanceState == null) {
@@ -881,21 +866,6 @@ class MainActivity : AppCompatActivity() {
 
         rootView.addView(recyclerView)
 
-        // Bottom Banner Ad (Start.io)
-        try {
-            val startAppBanner = Banner(this).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    gravity = android.view.Gravity.CENTER_HORIZONTAL
-                }
-            }
-            rootView.addView(startAppBanner)
-        } catch (e: Exception) {
-            TeleflixLogger.log("MainActivity", "StartApp Banner init error: ${e.message}")
-        }
-
         val mainContainer = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -909,7 +879,7 @@ class MainActivity : AppCompatActivity() {
             val lp = FrameLayout.LayoutParams(sz, sz).apply {
                 gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
                 val marginEnd = UITheme.dpToPx(this@MainActivity, 20)
-                val marginBottom = UITheme.dpToPx(this@MainActivity, 74)
+                val marginBottom = UITheme.dpToPx(this@MainActivity, 24)
                 setMargins(0, 0, marginEnd, marginBottom)
             }
             layoutParams = lp
@@ -927,11 +897,7 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(mainContainer)
 
-        // Show Start.io Privacy Policy & Data Consent dialog at beginning of app start
-        if (!prefs.getBoolean("startio_privacy_accepted", false)) {
-            showStartIoPrivacyDialog(prefs)
-        }
-
+        val prefs = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
         val defaultMonitored = prefs.getBoolean("default_opening_monitored", false)
         if (defaultMonitored) {
             isTelegramCatalogMode = true
@@ -994,183 +960,6 @@ class MainActivity : AppCompatActivity() {
             child.setTextColor(if (isSelected) Color.WHITE else Color.parseColor(UITheme.TEXT_SECONDARY))
             child.background = UITheme.createPillDrawable(this, isSelected, UITheme.PRIMARY, UITheme.SURFACE)
         }
-    }
-
-    private fun showStartIoPrivacyDialog(prefs: android.content.SharedPreferences, onDismiss: (() -> Unit)? = null) {
-        val context = this
-        val builder = AlertDialog.Builder(context)
-        fun dp(v: Int) = UITheme.dpToPx(context, v)
-
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            background = UITheme.createCardShape(context, "#0B0E14", 20, UITheme.STROKE_COLOR, 1)
-            val p = dp(20)
-            setPadding(p, p, p, p)
-        }
-
-        // Header Row
-        val headerRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(12))
-        }
-
-        val iconText = TextView(context).apply {
-            text = "🛡️"
-            textSize = 28f
-            setPadding(0, 0, dp(12), 0)
-        }
-
-        val headerCol = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        val titleText = TextView(context).apply {
-            text = "Privacy & Advertising Notice"
-            UITheme.applySectionTitleStyle(this)
-            setTextColor(Color.WHITE)
-            textSize = 18f
-        }
-
-        val subtitleText = TextView(context).apply {
-            text = "Start.io (StartApp) Network Policy"
-            UITheme.applyMetadataStyle(this)
-            setTextColor(Color.parseColor(UITheme.TEXT_SECONDARY))
-            textSize = 12f
-            setPadding(0, dp(2), 0, 0)
-        }
-
-        headerCol.addView(titleText)
-        headerCol.addView(subtitleText)
-        headerRow.addView(iconText)
-        headerRow.addView(headerCol)
-        container.addView(headerRow)
-
-        // Scrollable Message Content in a dark card
-        val scrollContent = ScrollView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(210)
-            ).apply {
-                setMargins(0, 0, 0, dp(14))
-            }
-        }
-
-        val infoCard = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            background = UITheme.createCardShape(context, "#131926", 14, "#1E293B", 1)
-            val pC = dp(14)
-            setPadding(pC, pC, pC, pC)
-        }
-
-        val msgView = TextView(context).apply {
-            text = "Welcome to Teleflix!\n\n" +
-                    "To support continuous development and maintenance, Teleflix displays banner advertisements powered by Start.io (StartApp).\n\n" +
-                    "In order to deliver and optimize relevant ads and prevent fraud, Start.io collects and processes certain technical and device data, including:\n" +
-                    "• Device Model, OS Version & Screen Resolution\n" +
-                    "• Mobile Advertising ID (AAID)\n" +
-                    "• Network Connection Type & IP Address (coarse location)\n" +
-                    "• Ad impression, viewability, and interaction metrics\n\n" +
-                    "All data collection adheres to Start.io's Privacy Policy and applicable data protection regulations (GDPR & CCPA).\n\n" +
-                    "You can read the full Start.io Privacy Policy and manage your preferences at:\nhttps://portal.start.io/"
-            setTextColor(Color.parseColor("#D1D5DB"))
-            textSize = 13f
-            setLineSpacing(dp(3).toFloat(), 1f)
-        }
-        infoCard.addView(msgView)
-        scrollContent.addView(infoCard)
-        container.addView(scrollContent)
-
-        // External Link Button to https://portal.start.io/
-        val linkBtn = Button(context).apply {
-            text = "🌐 View Start.io Privacy Policy"
-            textSize = 13f
-            setTextColor(Color.parseColor(UITheme.PRIMARY))
-            background = UITheme.createCardShape(context, "#131926", 12, UITheme.PRIMARY, 1)
-            isAllCaps = false
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(42)
-            ).apply {
-                setMargins(0, 0, 0, dp(10))
-            }
-            setOnClickListener {
-                try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://portal.start.io/"))
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Could not open browser for https://portal.start.io/", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-        container.addView(linkBtn)
-
-        lateinit var dialog: AlertDialog
-
-        // Accept & Continue Button
-        val acceptBtn = Button(context).apply {
-            text = "Accept & Continue"
-            textSize = 14f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
-            background = UITheme.createCardShape(context, UITheme.PRIMARY, 12)
-            isAllCaps = false
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(44)
-            ).apply {
-                setMargins(0, 0, 0, dp(8))
-            }
-            setOnClickListener {
-                prefs.edit()
-                    .putBoolean("startio_privacy_accepted", true)
-                    .putBoolean("startio_consent_granted", true)
-                    .apply()
-                try {
-                    StartAppSDK.setUserConsent(context, "pas", System.currentTimeMillis(), true)
-                } catch (e: Exception) {
-                    TeleflixLogger.log("MainActivity", "StartApp setUserConsent error: ${e.message}")
-                }
-                dialog.dismiss()
-                onDismiss?.invoke()
-            }
-        }
-        container.addView(acceptBtn)
-
-        // Non-Personalized Ads Button
-        val declineBtn = Button(context).apply {
-            text = "Use Non-Personalized Ads Only"
-            textSize = 12f
-            setTextColor(Color.parseColor("#9CA3AF"))
-            background = UITheme.createCardShape(context, "#111622", 12, "#1E293B", 1)
-            isAllCaps = false
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(38)
-            )
-            setOnClickListener {
-                prefs.edit()
-                    .putBoolean("startio_privacy_accepted", true)
-                    .putBoolean("startio_consent_granted", false)
-                    .apply()
-                try {
-                    StartAppSDK.setUserConsent(context, "pas", System.currentTimeMillis(), false)
-                } catch (e: Exception) {
-                    TeleflixLogger.log("MainActivity", "StartApp setUserConsent error: ${e.message}")
-                }
-                dialog.dismiss()
-                onDismiss?.invoke()
-            }
-        }
-        container.addView(declineBtn)
-
-        dialog = builder.setView(container).create().apply {
-            setCancelable(false)
-            setCanceledOnTouchOutside(false)
-            window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-        }
-        dialog.show()
     }
 
     private fun showGenreSelectionDialog() {

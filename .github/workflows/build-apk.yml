@@ -81,8 +81,8 @@ jobs:
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0-build.${{ github.run_number }}
-          name: "Teleflix v1.0.0 (Build #${{ github.run_number }})"
+          tag_name: v1.0.1-build.${{ github.run_number }}
+          name: "Teleflix v1.0.1 (Build #${{ github.run_number }})"
           body: |
             ## 📱 Teleflix - Production Release (Multi-Architecture)
 
