@@ -181,13 +181,7 @@ object TelegramSearchMatcher {
                     score -= 10
                 }
             } else {
-                // Check if it's a full season pack for the requested season
-                val fullSeasonRegex = Regex("(?i)(?:s0*$season|season\\s*0*$season)[._\\s-]*(?:complete|full|pack|all)")
-                if (fullSeasonRegex.containsMatchIn(combined)) {
-                    score += 10
-                } else {
-                    score -= 10
-                }
+                score -= 10
             }
         } else if (season == null) {
             if (EPISODE_PATTERN.matcher(combined).find() || EPISODE_PATTERN.matcher(normalizedCombined).find()) {
@@ -196,6 +190,18 @@ object TelegramSearchMatcher {
         }
 
         return Math.max(0, Math.min(100, score))
+    }
+
+    /**
+     * Ported from Telegram-stremio utils.normalize_release_name
+     * Normalizes release filename for deduplication.
+     */
+    fun normalizeReleaseName(name: String): String {
+        if (name.isBlank()) return ""
+        var s = name.lowercase().replace(Regex("""\.[a-z0-9]{2,5}$"""), "")
+        s = s.replace(Regex("""\[.*?\]|\(.*?\)|@\S+[\s:\-_|]*|\{.*?\}"""), " ")
+        s = s.replace(Regex("""[^a-z0-9]"""), "")
+        return s.trim()
     }
 
     /**

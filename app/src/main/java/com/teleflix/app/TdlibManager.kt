@@ -25,7 +25,10 @@ data class StreamSource(
     val isZip: Boolean = false,
     val chatId: Long = 0L,
     val matchScore: Int = 0,
-    val qualityTier: Int = 0
+    val qualityTier: Int = 0,
+    val sizeBytes: Long = 0L,
+    val rawName: String = "",
+    val cleanName: String = ""
 )
 
 object TdlibManager {
@@ -169,7 +172,7 @@ object TdlibManager {
 
         val items = TelegramRepository.groupAndPreserveOrder(rawResults)
         val validSources = mutableListOf<StreamSource>()
-        val fallbackSources = mutableListOf<StreamSource>()
+        val effYear = if (season != null && episode != null) null else year
 
         for (item in items) {
             when (item) {
@@ -182,10 +185,14 @@ object TdlibManager {
                         fileName = group.baseName,
                         caption = caption,
                         title = title,
-                        year = year,
+                        year = effYear,
                         season = season,
                         episode = episode
                     )
+
+                    if (score < TelegramSearchMatcher.SCORE_THRESHOLD) {
+                        continue
+                    }
 
                     val isZipGroup = group.baseName.lowercase().endsWith(".zip") || group.parts.any { TelegramRepository.isZipArchiveFilename(it.fileName, it.mimeType) }
                     val parsedQuality = TelegramSearchMatcher.parseQuality(group.baseName)
@@ -215,7 +222,10 @@ object TdlibManager {
                             isSplit = false,
                             chatId = firstPart.chatId,
                             matchScore = score,
-                            qualityTier = qTier
+                            qualityTier = qTier,
+                            sizeBytes = totalSize,
+                            rawName = group.baseName,
+                            cleanName = TelegramSearchMatcher.normalizeReleaseName(group.baseName)
                         )
                     } else {
                         val groupId = "group_${firstPart.chatId}_${group.baseName}"
@@ -238,15 +248,14 @@ object TdlibManager {
                             isSplit = true,
                             chatId = firstPart.chatId,
                             matchScore = score,
-                            qualityTier = qTier
+                            qualityTier = qTier,
+                            sizeBytes = totalSize,
+                            rawName = group.baseName,
+                            cleanName = TelegramSearchMatcher.normalizeReleaseName(group.baseName)
                         )
                     }
 
-                    if (score >= TelegramSearchMatcher.SCORE_THRESHOLD) {
-                        validSources.add(streamSource)
-                    } else if (score > 0) {
-                        fallbackSources.add(streamSource)
-                    }
+                    validSources.add(streamSource)
                 }
                 is DisplayItem.Single -> {
                     val msg = item.message
@@ -255,10 +264,14 @@ object TdlibManager {
                         fileName = msg.fileName,
                         caption = caption,
                         title = title,
-                        year = year,
+                        year = effYear,
                         season = season,
                         episode = episode
                     )
+
+                    if (score < TelegramSearchMatcher.SCORE_THRESHOLD) {
+                        continue
+                    }
 
                     val ext = msg.fileName.substringAfterLast('.', "").lowercase()
                     val isZip = TelegramRepository.isZipArchiveFilename(msg.fileName)
@@ -282,31 +295,69 @@ object TdlibManager {
                         isZip = isZip,
                         chatId = msg.chatId,
                         matchScore = score,
-                        qualityTier = qTier
+                        qualityTier = qTier,
+                        sizeBytes = msg.fileSize,
+                        rawName = msg.fileName,
+                        cleanName = TelegramSearchMatcher.normalizeReleaseName(msg.fileName)
                     )
 
-                    if (score >= TelegramSearchMatcher.SCORE_THRESHOLD) {
-                        validSources.add(streamSource)
-                    } else if (score > 0) {
-                        fallbackSources.add(streamSource)
-                    }
+                    validSources.add(streamSource)
                 }
             }
         }
 
-        val targetSources = if (validSources.isNotEmpty()) validSources else fallbackSources
-
-        // Sort by match score (descending), quality tier (descending), and non-cam
-        targetSources.sortWith(
-            compareByDescending<StreamSource> { it.matchScore }
+        // Sort EXACTLY like Telegram-stremio (addon.py line 1364):
+        // valid_streams.sort(key=lambda x: (x.get("_size", 0), x.get("_quality", 0), x.get("_score", 0)), reverse=True)
+        validSources.sortWith(
+            compareByDescending<StreamSource> { it.sizeBytes }
                 .thenByDescending { it.qualityTier }
-                .thenByDescending { !isLowQuality(it.fileName) }
+                .thenByDescending { it.matchScore }
         )
 
-        if (targetSources.isNotEmpty()) {
-            streamResolutionCache[cacheKey] = Pair(System.currentTimeMillis(), targetSources)
+        // Deduplicate EXACTLY like Telegram-stremio (addon.py lines 1366-1408):
+        val seenNamesAndSizes = mutableSetOf<Pair<String, Long>>()
+        val seenSizes = mutableSetOf<Long>()
+        val seenTitles = mutableSetOf<Pair<String, String>>()
+
+        val finalStreams = mutableListOf<StreamSource>()
+        for (s in validSources) {
+            // 2. Deduplicate by filename and exact file size
+            if (s.rawName.isNotBlank() && seenNamesAndSizes.contains(Pair(s.rawName, s.sizeBytes))) {
+                continue
+            }
+            if (s.cleanName.isNotBlank() && seenNamesAndSizes.contains(Pair(s.cleanName, s.sizeBytes))) {
+                continue
+            }
+
+            // 3. Deduplicate by file size for large media files (> 10MB) matching the same IMDb title
+            if (s.sizeBytes > 10 * 1024 * 1024 && seenSizes.contains(s.sizeBytes)) {
+                continue
+            }
+
+            // 4. Deduplicate identical stream display name and title
+            val streamKey = Pair(s.fileName, s.size)
+            if (seenTitles.contains(streamKey)) {
+                continue
+            }
+
+            if (s.rawName.isNotBlank()) {
+                seenNamesAndSizes.add(Pair(s.rawName, s.sizeBytes))
+            }
+            if (s.cleanName.isNotBlank()) {
+                seenNamesAndSizes.add(Pair(s.cleanName, s.sizeBytes))
+            }
+            if (s.sizeBytes > 10 * 1024 * 1024) {
+                seenSizes.add(s.sizeBytes)
+            }
+            seenTitles.add(streamKey)
+
+            finalStreams.add(s)
         }
-        return targetSources
+
+        if (finalStreams.isNotEmpty()) {
+            streamResolutionCache[cacheKey] = Pair(System.currentTimeMillis(), finalStreams)
+        }
+        return finalStreams
     }
 
     private fun extractQualityTag(name: String): String {
