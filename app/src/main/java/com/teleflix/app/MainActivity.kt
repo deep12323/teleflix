@@ -779,7 +779,10 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 "series" -> fetchSeriesEpisodes(item)
-                else -> showStreamOptions(item.title, null, null, item.posterUrl)
+                else -> {
+                    val yearInt = item.year.filter { it.isDigit() }.take(4).toIntOrNull()
+                    showStreamOptions(item.title, null, null, item.posterUrl, year = yearInt)
+                }
             }
         }, { item ->
             handleItemLongPress(item)
@@ -2715,8 +2718,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun fetchSeriesEpisodes(item: MediaItem, isDownloadMode: Boolean = false) {
         val cachedSeasons = cinemetaSeriesCache[item.id]
+        val yearInt = item.year.filter { it.isDigit() }.take(4).toIntOrNull()
         if (cachedSeasons != null && cachedSeasons.isNotEmpty()) {
-            showSeasonPicker(item.title, cachedSeasons, item.posterUrl, isDownloadMode = isDownloadMode)
+            showSeasonPicker(item.title, cachedSeasons, item.posterUrl, isDownloadMode = isDownloadMode, year = yearInt)
             return
         }
 
@@ -2764,7 +2768,7 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this@MainActivity, "No episodes found", Toast.LENGTH_SHORT).show()
                         return@withContext
                     }
-                    showSeasonPicker(item.title, seasons, item.posterUrl, isDownloadMode = isDownloadMode)
+                    showSeasonPicker(item.title, seasons, item.posterUrl, isDownloadMode = isDownloadMode, year = yearInt)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -2775,7 +2779,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showSeasonPicker(seriesTitle: String, seasons: Map<Int, List<EpisodeItem>>, posterUrl: String = "", isDownloadMode: Boolean = false) {
+    private fun showSeasonPicker(seriesTitle: String, seasons: Map<Int, List<EpisodeItem>>, posterUrl: String = "", isDownloadMode: Boolean = false, year: Int? = null) {
         val seasonList = seasons.keys.toList()
 
         val scrollView = ScrollView(this).apply {
@@ -2823,7 +2827,7 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener {
                     dialog?.dismiss()
                     val episodes = seasons[seasonNum] ?: return@setOnClickListener
-                    showEpisodePicker(seriesTitle, seasonNum, episodes, posterUrl, isDownloadMode = isDownloadMode)
+                    showEpisodePicker(seriesTitle, seasonNum, episodes, posterUrl, isDownloadMode = isDownloadMode, year = year)
                 }
             }
 
@@ -2855,7 +2859,7 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun showEpisodePicker(seriesTitle: String, season: Int, episodes: List<EpisodeItem>, posterUrl: String = "", isDownloadMode: Boolean = false) {
+    private fun showEpisodePicker(seriesTitle: String, season: Int, episodes: List<EpisodeItem>, posterUrl: String = "", isDownloadMode: Boolean = false, year: Int? = null) {
         val scrollView = ScrollView(this).apply {
             setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
         }
@@ -2899,7 +2903,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 setOnClickListener {
                     dialog?.dismiss()
-                    showStreamOptions(seriesTitle, season, ep.episode, posterUrl, isDownloadMode = isDownloadMode)
+                    showStreamOptions(seriesTitle, season, ep.episode, posterUrl, isDownloadMode = isDownloadMode, year = year)
                 }
             }
 
@@ -2945,7 +2949,7 @@ class MainActivity : AppCompatActivity() {
 
     // ── Stream Selection ────────────────────────────────────────
 
-    private fun showStreamOptions(title: String, season: Int? = null, episode: Int? = null, posterUrl: String = "", isDownloadMode: Boolean = false) {
+    private fun showStreamOptions(title: String, season: Int? = null, episode: Int? = null, posterUrl: String = "", isDownloadMode: Boolean = false, year: Int? = null) {
         val displayTitle = if (season != null && episode != null) {
             "$title S${String.format("%02d", season)}E${String.format("%02d", episode)}"
         } else {
@@ -3001,7 +3005,7 @@ class MainActivity : AppCompatActivity() {
 
         searchJob = lifecycleScope.launch(Dispatchers.IO) {
             val streams = try {
-                TdlibManager.resolveStreams(title, season, episode)
+                TdlibManager.resolveStreams(title, season, episode, year)
             } catch (e: Exception) {
                 emptyList()
             }
@@ -3246,6 +3250,25 @@ class MainActivity : AppCompatActivity() {
                             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
                         }
                         badgesRow.addView(sizeBadge)
+                    }
+
+                    if (stream.matchScore > 0) {
+                        val scoreBadge = TextView(this@MainActivity).apply {
+                            text = "⭐ ${stream.matchScore}%"
+                            UITheme.applyCaptionStyle(this)
+                            textSize = 10f
+                            setSingleLine(true)
+                            setTypeface(null, android.graphics.Typeface.BOLD)
+                            background = UITheme.createCardShape(this@MainActivity, "#1E1B4B", 8, "#6366F1", 1)
+                            setTextColor(Color.parseColor("#A5B4FC"))
+                            setPadding(dp(8), dp(3), dp(8), dp(3))
+                            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                            if (stream.size.isNotBlank()) {
+                                lp.setMargins(dp(6), 0, 0, 0)
+                            }
+                            layoutParams = lp
+                        }
+                        badgesRow.addView(scoreBadge)
                     }
 
                     card.addView(badgesRow)
@@ -5327,7 +5350,8 @@ class MainActivity : AppCompatActivity() {
         if (item.type == "series" || item.type == "tv") {
             fetchSeriesEpisodes(item, isDownloadMode = true)
         } else {
-            showStreamOptions(item.title, null, null, item.posterUrl, isDownloadMode = true)
+            val yearInt = item.year.filter { it.isDigit() }.take(4).toIntOrNull()
+            showStreamOptions(item.title, null, null, item.posterUrl, isDownloadMode = true, year = yearInt)
         }
     }
 

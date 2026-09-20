@@ -23,7 +23,9 @@ data class StreamSource(
     val url: String,
     val isSplit: Boolean = false,
     val isZip: Boolean = false,
-    val chatId: Long = 0L
+    val chatId: Long = 0L,
+    val matchScore: Int = 0,
+    val qualityTier: Int = 0
 )
 
 object TdlibManager {
@@ -116,8 +118,15 @@ object TdlibManager {
     }
 
     // Resolves video streams across ALL joined Telegram channels, groups, and chats exactly like the Cloudstream extension
-    suspend fun resolveStreams(title: String, season: Int? = null, episode: Int? = null, forceRefresh: Boolean = false): List<StreamSource> {
-        val cacheKey = "$title-$season-$episode"
+    // Resolves video streams across ALL joined Telegram channels, groups, and chats using TelegramSearchMatcher logic
+    suspend fun resolveStreams(
+        title: String,
+        season: Int? = null,
+        episode: Int? = null,
+        year: Int? = null,
+        forceRefresh: Boolean = false
+    ): List<StreamSource> {
+        val cacheKey = "$title-$year-$season-$episode"
         val now = System.currentTimeMillis()
         if (!forceRefresh && streamResolutionCache.containsKey(cacheKey)) {
             val entry = streamResolutionCache[cacheKey]
@@ -129,41 +138,10 @@ object TdlibManager {
             }
         }
 
-        val rawTitle = title.trim()
-        val cleanTitle = rawTitle.replace(Regex("[^a-zA-Z0-9 ]"), " ").replace(Regex(" +"), " ").trim()
-        val compactTitle = cleanTitle.replace(" ", "")
-
-        val queries = LinkedHashSet<String>()
-        if (season != null && episode != null) {
-            val sStr = String.format("%02d", season)
-            val eStr = String.format("%02d", episode)
-
-            // 1. Clean title with standard S01E01 (Highest match rate on Telegram!)
-            queries.add("$cleanTitle S${sStr}E${eStr}")
-            if (rawTitle != cleanTitle) {
-                queries.add("$rawTitle S${sStr}E${eStr}")
-            }
-
-            // 2. Season packs
-            queries.add("$cleanTitle S${sStr}")
-            queries.add("$cleanTitle Season $season")
-
-            // 3. Compact title
-            if (compactTitle != cleanTitle && compactTitle.length >= 3) {
-                queries.add("$compactTitle S${sStr}E${eStr}")
-            }
-
-            // 4. Alternative episode numbering
-            queries.add("$cleanTitle ${season}x${eStr}")
-            queries.add("$cleanTitle S${season}E${episode}")
+        val queries = if (season != null && episode != null) {
+            TelegramSearchMatcher.buildSeriesQueries(title, season, episode)
         } else {
-            queries.add(cleanTitle)
-            if (cleanTitle != rawTitle) {
-                queries.add(rawTitle)
-            }
-            if (compactTitle != cleanTitle && compactTitle.length >= 3) {
-                queries.add(compactTitle)
-            }
+            TelegramSearchMatcher.buildMovieQueries(title, year)
         }
 
         val queryResults = coroutineScope {
@@ -189,31 +167,31 @@ object TdlibManager {
             }
         }
 
-        val filteredResults = if (season != null && episode != null) {
-            rawResults.filter { msg ->
-                isMatchingEpisode(msg.fileName, msg.caption, season, episode)
-            }
-        } else {
-            rawResults
-        }
+        val items = TelegramRepository.groupAndPreserveOrder(rawResults)
+        val validSources = mutableListOf<StreamSource>()
+        val fallbackSources = mutableListOf<StreamSource>()
 
-        val items = TelegramRepository.groupAndPreserveOrder(filteredResults).sortedByDescending { item ->
-            when (item) {
-                is DisplayItem.Group -> item.group.totalSize
-                is DisplayItem.Single -> item.message.fileSize
-            }
-        }
-
-        val resultSources = mutableListOf<StreamSource>()
         for (item in items) {
             when (item) {
                 is DisplayItem.Group -> {
                     val group = item.group
                     val totalSize = group.parts.sumOf { it.fileSize }
                     val firstPart = group.parts.first()
-                    val isZipGroup = group.baseName.lowercase().endsWith(".zip") || group.parts.any { TelegramRepository.isZipArchiveFilename(it.fileName, it.mimeType) }
+                    val caption = firstPart.caption ?: ""
+                    val score = TelegramSearchMatcher.score(
+                        fileName = group.baseName,
+                        caption = caption,
+                        title = title,
+                        year = year,
+                        season = season,
+                        episode = episode
+                    )
 
-                    if (isZipGroup) {
+                    val isZipGroup = group.baseName.lowercase().endsWith(".zip") || group.parts.any { TelegramRepository.isZipArchiveFilename(it.fileName, it.mimeType) }
+                    val parsedQuality = TelegramSearchMatcher.parseQuality(group.baseName)
+                    val qTier = TelegramSearchMatcher.qualityTier(parsedQuality)
+
+                    val streamSource = if (isZipGroup) {
                         val freshIds = group.parts.map { it.fileId }
                         val partSizes = group.parts.map { it.fileSize }
                         val groupChats = group.parts.map { it.chatId }
@@ -225,19 +203,19 @@ object TdlibManager {
                         TelegramRepository.groupPartsCache[zipId] = group.parts
                         TelegramRepository.groupCache[groupId] = Pair(groupChats.zip(groupMsgs), partSizes)
                         TelegramRepository.groupCache[zipId] = Pair(groupChats.zip(groupMsgs), partSizes)
-                        val qualityTag = extractQualityTag(group.baseName)
-                        resultSources.add(
-                            StreamSource(
-                                id = groupId,
-                                quality = qualityTag,
-                                fileName = "🗄️ ${group.baseName}",
-                                size = formatBytes(totalSize),
-                                channel = "Telegram Stream",
-                                url = zipUrl,
-                                isZip = true,
-                                isSplit = false,
-                                chatId = firstPart.chatId
-                            )
+                        val qualityTag = extractQualityTag(group.baseName).ifBlank { if (parsedQuality != "Unknown") parsedQuality else "ZIP" }
+                        StreamSource(
+                            id = groupId,
+                            quality = qualityTag,
+                            fileName = "🗄️ ${group.baseName}",
+                            size = formatBytes(totalSize),
+                            channel = "Telegram Stream",
+                            url = zipUrl,
+                            isZip = true,
+                            isSplit = false,
+                            chatId = firstPart.chatId,
+                            matchScore = score,
+                            qualityTier = qTier
                         )
                     } else {
                         val groupId = "group_${firstPart.chatId}_${group.baseName}"
@@ -247,25 +225,41 @@ object TdlibManager {
                         val groupChats = group.parts.map { it.chatId }
                         val groupMsgs = group.parts.map { it.messageId }
                         TelegramRepository.groupCache[groupId] = Pair(groupChats.zip(groupMsgs), partSizes)
-                        val qualityTag = extractQualityTag(group.baseName).ifBlank { "SPLIT PACK" }
+                        val qualityTag = extractQualityTag(group.baseName).ifBlank { if (parsedQuality != "Unknown") parsedQuality else "SPLIT PACK" }
                         val mergedStreamUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes, groupChats, groupMsgs)
-                        resultSources.add(
-                            StreamSource(
-                                id = groupId,
-                                quality = "$qualityTag (${group.parts.size} Parts)",
-                                fileName = "📦 ${group.baseName}",
-                                size = formatBytes(totalSize),
-                                channel = "Telegram Multi-Part",
-                                url = mergedStreamUrl,
-                                isZip = false,
-                                isSplit = true,
-                                chatId = firstPart.chatId
-                            )
+                        StreamSource(
+                            id = groupId,
+                            quality = "$qualityTag (${group.parts.size} Parts)",
+                            fileName = "📦 ${group.baseName}",
+                            size = formatBytes(totalSize),
+                            channel = "Telegram Multi-Part",
+                            url = mergedStreamUrl,
+                            isZip = false,
+                            isSplit = true,
+                            chatId = firstPart.chatId,
+                            matchScore = score,
+                            qualityTier = qTier
                         )
+                    }
+
+                    if (score >= TelegramSearchMatcher.SCORE_THRESHOLD) {
+                        validSources.add(streamSource)
+                    } else if (score > 0) {
+                        fallbackSources.add(streamSource)
                     }
                 }
                 is DisplayItem.Single -> {
                     val msg = item.message
+                    val caption = msg.caption ?: ""
+                    val score = TelegramSearchMatcher.score(
+                        fileName = msg.fileName,
+                        caption = caption,
+                        title = title,
+                        year = year,
+                        season = season,
+                        episode = episode
+                    )
+
                     val ext = msg.fileName.substringAfterLast('.', "").lowercase()
                     val isZip = TelegramRepository.isZipArchiveFilename(msg.fileName)
                     val sizeStr = formatBytes(msg.fileSize)
@@ -274,30 +268,45 @@ object TdlibManager {
                     } else {
                         TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize)
                     }
-                    val qualityTag = extractQualityTag(msg.fileName)
+                    val parsedQuality = TelegramSearchMatcher.parseQuality(msg.fileName)
+                    val qTier = TelegramSearchMatcher.qualityTier(parsedQuality)
+                    val qualityTag = extractQualityTag(msg.fileName).ifBlank { if (parsedQuality != "Unknown") parsedQuality else ext.uppercase().ifBlank { "VIDEO" } }
                     val prefix = if (isZip) "🗄️ " else "📺 "
-                    resultSources.add(
-                        StreamSource(
-                            id = if (isZip) "zip_${msg.chatId}_${msg.messageId}" else "${msg.chatId}_${msg.messageId}",
-                            quality = if (qualityTag.isNotBlank()) qualityTag else ext.uppercase().ifBlank { "VIDEO" },
-                            fileName = prefix + msg.fileName.ifBlank { "telegram_video.$ext" },
-                            size = sizeStr,
-                            channel = "Telegram Stream",
-                            url = streamUrl,
-                            isZip = isZip,
-                            chatId = msg.chatId
-                        )
+                    val streamSource = StreamSource(
+                        id = if (isZip) "zip_${msg.chatId}_${msg.messageId}" else "${msg.chatId}_${msg.messageId}",
+                        quality = qualityTag,
+                        fileName = prefix + msg.fileName.ifBlank { "telegram_video.$ext" },
+                        size = sizeStr,
+                        channel = "Telegram Stream",
+                        url = streamUrl,
+                        isZip = isZip,
+                        chatId = msg.chatId,
+                        matchScore = score,
+                        qualityTier = qTier
                     )
+
+                    if (score >= TelegramSearchMatcher.SCORE_THRESHOLD) {
+                        validSources.add(streamSource)
+                    } else if (score > 0) {
+                        fallbackSources.add(streamSource)
+                    }
                 }
             }
         }
 
-        val (highQuality, lowQuality) = resultSources.partition { !isLowQuality(it.fileName) }
-        val finalSources = highQuality + lowQuality
-        if (finalSources.isNotEmpty()) {
-            streamResolutionCache[cacheKey] = Pair(System.currentTimeMillis(), finalSources)
+        val targetSources = if (validSources.isNotEmpty()) validSources else fallbackSources
+
+        // Sort by match score (descending), quality tier (descending), and non-cam
+        targetSources.sortWith(
+            compareByDescending<StreamSource> { it.matchScore }
+                .thenByDescending { it.qualityTier }
+                .thenByDescending { !isLowQuality(it.fileName) }
+        )
+
+        if (targetSources.isNotEmpty()) {
+            streamResolutionCache[cacheKey] = Pair(System.currentTimeMillis(), targetSources)
         }
-        return finalSources
+        return targetSources
     }
 
     private fun extractQualityTag(name: String): String {
