@@ -117,7 +117,7 @@ object TelegramClient {
             p.systemLanguageCode = "en"
             p.deviceModel = Build.MODEL ?: "Android Device"
             p.systemVersion = "Android ${Build.VERSION.RELEASE}"
-            p.applicationVersion = "1.0.0"
+            p.applicationVersion = "1.0.1"
         }, { result ->
             if (result is TdApi.Error) {
                 Log.e(TAG, "SetTdlibParameters failed: ${result.code} ${result.message}")

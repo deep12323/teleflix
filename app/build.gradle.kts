@@ -11,8 +11,8 @@ android {
         applicationId = "com.teleflix.app"
         minSdk = 21
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -80,7 +80,4 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
     implementation("com.github.bumptech.glide:glide:4.16.0")
-
-    // Start.io In-App Ad SDK
-    implementation("com.startapp:inapp-sdk:5.1.0")
 }
