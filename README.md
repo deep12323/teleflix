@@ -1,8 +1,6 @@
-<div align="center">
-
-![Teleflix Banner](fastlane/metadata/android/en-US/images/featureGraphic.png)
-
-</div>
+<p align="center">
+  <img src="fastlane/metadata/android/en-US/images/featureGraphic.png" alt="Teleflix Banner" width="100%">
+</p>
 
 # Teleflix
 
