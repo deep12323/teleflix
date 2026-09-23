@@ -32,7 +32,9 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Multi-Architecture Release APKs
-        run: ./gradlew :app:assembleRelease --no-daemon
+        run: |
+          sed -i '/android.aapt2FromMavenOverride/d' gradle.properties || true
+          ./gradlew :app:assembleRelease --no-daemon
 
       - name: Generate SHA256 Checksums
         run: |
