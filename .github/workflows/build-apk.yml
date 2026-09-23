@@ -31,14 +31,31 @@ jobs:
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
+      - name: Extract App Version
+        id: app_version
+        run: |
+          VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+          echo "Extracted App Version: ${VERSION}"
+
       - name: Build Multi-Architecture Release APKs
         run: |
           sed -i '/android.aapt2FromMavenOverride/d' gradle.properties || true
           ./gradlew :app:assembleRelease --no-daemon
 
-      - name: Generate SHA256 Checksums
+      - name: Rename and Package APKs
         run: |
           cd app/build/outputs/apk/release/
+          VERSION="${{ steps.app_version.outputs.version }}"
+          for f in app-*-release.apk; do
+            [ -f "$f" ] || continue
+            arch=$(echo "$f" | sed -e 's/app-//' -e 's/-release.apk//')
+            mv "$f" "Teleflix-v${VERSION}-${arch}.apk"
+          done
+          if [ -f "Teleflix-v${VERSION}-universal.apk" ]; then
+            cp "Teleflix-v${VERSION}-universal.apk" "Teleflix-v${VERSION}.apk"
+          fi
           sha256sum *.apk > sha256_checksums.txt
           cat sha256_checksums.txt
 
@@ -60,16 +77,17 @@ jobs:
           cd app/build/outputs/apk/release/
           CHECKSUM_TABLE="| Architecture | APK File | Size | SHA-256 Checksum |"$'\n'"| :--- | :--- | :--- | :--- |"
           for f in *.apk; do
+            [ -f "$f" ] || continue
             sum=$(sha256sum "$f" | awk '{print $1}')
             size=$(ls -lh "$f" | awk '{print $5}')
-            arch=$(echo "$f" | sed -e 's/app-//' -e 's/-debug.apk//' -e 's/-release.apk//')
-            case "$arch" in
-              "arm64-v8a") desc="**ARM64** (Modern Phones & Tablets)";;
-              "armeabi-v7a") desc="**ARMv7** (Older 32-bit Phones & TVs)";;
-              "x86_64") desc="**x86_64** (64-bit Emulators & PCs)";;
-              "x86") desc="**x86** (32-bit Emulators)";;
-              "universal") desc="**Universal** (All-in-one bundle)";;
-              *) desc="$arch";;
+            case "$f" in
+              *"arm64-v8a"*) desc="**ARM64** (Modern Phones & Tablets)";;
+              *"armeabi-v7a"*) desc="**ARMv7** (Older 32-bit Phones & TVs)";;
+              *"x86_64"*) desc="**x86_64** (64-bit Emulators & PCs)";;
+              *"x86"*) desc="**x86** (32-bit Emulators)";;
+              *"universal"*) desc="**Universal** (All-in-one bundle)";;
+              "Teleflix-v${{ steps.app_version.outputs.version }}.apk") desc="**Recommended** (Universal Package)";;
+              *) desc="Teleflix APK";;
             esac
             CHECKSUM_TABLE="$CHECKSUM_TABLE"$'\n'"| $desc | \`$f\` | $size | \`$sum\` |"
           done
@@ -83,10 +101,10 @@ jobs:
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.1-build.${{ github.run_number }}
-          name: "Teleflix v1.0.1 (Build #${{ github.run_number }})"
+          tag_name: ${{ steps.app_version.outputs.tag }}
+          name: "Teleflix v${{ steps.app_version.outputs.version }}"
           body: |
-            ## 📱 Teleflix - Production Release (Multi-Architecture)
+            ## 📱 Teleflix v${{ steps.app_version.outputs.version }} - Production Release (Multi-Architecture)
 
             **Commit:** `${{ steps.slug.outputs.sha }}`
             **Branch:** `master`
@@ -95,13 +113,14 @@ jobs:
             ${{ steps.notes.outputs.checksum_table }}
 
             ### 💡 Which APK should I install?
-            - **`app-arm64-v8a-release.apk`**: Recommended for almost all modern Android phones & tablets (~15 MB).
-            - **`app-armeabi-v7a-release.apk`**: For older 32-bit devices and Android TV boxes (~14 MB).
-            - **`app-universal-release.apk`**: Compatible with any device (~44 MB).
-            - **`app-x86_64-release.apk` / `app-x86-release.apk`**: For Android emulators & Chromebooks (~15 MB).
+            - **`Teleflix-v${{ steps.app_version.outputs.version }}.apk`**: Recommended universal bundle compatible with any Android device (~41 MB).
+            - **`Teleflix-v${{ steps.app_version.outputs.version }}-arm64-v8a.apk`**: Recommended for almost all modern Android phones & tablets (~15 MB).
+            - **`Teleflix-v${{ steps.app_version.outputs.version }}-armeabi-v7a.apk`**: For older 32-bit devices and Android TV boxes (~13 MB).
+            - **`Teleflix-v${{ steps.app_version.outputs.version }}-x86_64.apk` / `Teleflix-v${{ steps.app_version.outputs.version }}-x86.apk`**: For Android emulators & Chromebooks (~14 MB).
 
             ### Key Features
-            - **Multi-Architecture Support:** Lightweight per-ABI APKs saving up to 75% download size
+            - **Streaming Proxy Optimization:** Resolved seek stall, TDLib offset thrashing, and mutual track cancellation
+            - **Multi-Architecture Support:** Lightweight per-ABI APKs saving up to 70% download size
             - **Dual-Mode Catalogs:** Switch seamlessly between Cinemeta movies/series & Monitored Telegram Channels
             - **Live Video Thumbnails & Posters:** Widescreen 16:9 thumbnails for video items & real Telegram chat titles
             - **Real-Time Split & ZIP Archive Streaming:** Automatic grouping of split archives (`.001/.002`, `.part1`, `.zip`) with on-the-fly streaming directly from Telegram cloud
@@ -112,3 +131,5 @@ jobs:
             app/build/outputs/apk/release/sha256_checksums.txt
           draft: false
           prerelease: false
+          make_latest: true
+
