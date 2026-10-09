@@ -58,38 +58,64 @@ object TelegramStreamingProxy {
             activeSeekStreams[fileId] = list
         }
 
-        // 1. Remove dead/completed jobs
-        list.removeAll { !it.job.isActive }
-
-        // 2. Duplicate retry check: If an existing job is at essentially the exact same offset (<64KB), replace it
-        val duplicateMatch = list.find { Math.abs(it.offset - offset) < 65_536L }
-        if (duplicateMatch != null) {
-            list.remove(duplicateMatch)
-            if (duplicateMatch.job != job && duplicateMatch.job.isActive) {
-                TeleflixLogger.log(TAG, "Cancelling duplicate seek job (reqId=${duplicateMatch.reqId}, offset=${duplicateMatch.offset}) for new reqId=$reqId, offset=$offset")
-                duplicateMatch.job.cancel()
+        synchronized(list) {
+            // 1. Remove dead/completed jobs atomically without in-place indexed mutation
+            val deadJobs = list.filter { !it.job.isActive }
+            if (deadJobs.isNotEmpty()) {
+                list.removeAll(deadJobs)
             }
-        }
 
-        // 3. Capacity check: Max 3 concurrent seek streams per file (allows video + audio + subtitle tracks)
-        while (list.size >= 3) {
-            val oldest = list.minByOrNull { it.startTimeMs } ?: break
-            list.remove(oldest)
-            if (oldest.job != job && oldest.job.isActive) {
-                TeleflixLogger.log(TAG, "Evicting oldest seek job (reqId=${oldest.reqId}, offset=${oldest.offset}) due to capacity cap (>=3) for new reqId=$reqId, offset=$offset")
-                oldest.job.cancel()
+            // 2. Duplicate retry check: If an existing job is at essentially the exact same offset (<64KB), replace it
+            val duplicateMatch = list.find { Math.abs(it.offset - offset) < 65_536L }
+            if (duplicateMatch != null) {
+                list.remove(duplicateMatch)
+                if (duplicateMatch.job != job && duplicateMatch.job.isActive) {
+                    TeleflixLogger.log(TAG, "Cancelling duplicate seek job (reqId=${duplicateMatch.reqId}, offset=${duplicateMatch.offset}) for new reqId=$reqId, offset=$offset")
+                    duplicateMatch.job.cancel()
+                }
             }
-        }
 
-        // 4. Add the new entry
-        list.add(ActiveStreamEntry(reqId, offset, job))
+            // 3. Cancel obsolete distant seek jobs (> 5 MB away) to prevent TDLib download thrashing/starvation
+            val distantJobs = list.filter { Math.abs(it.offset - offset) > 5_242_880L }
+            if (distantJobs.isNotEmpty()) {
+                list.removeAll(distantJobs)
+                distantJobs.forEach { distant ->
+                    if (distant.job != job && distant.job.isActive) {
+                        TeleflixLogger.log(TAG, "Cancelling distant obsolete seek job (reqId=${distant.reqId}, offset=${distant.offset}) for new reqId=$reqId, offset=$offset")
+                        distant.job.cancel()
+                    }
+                }
+            }
+
+            // 4. Capacity check: Max 2 concurrent seek streams per file (allows video + audio track interleaving)
+            while (list.size >= 2) {
+                val oldest = list.minByOrNull { it.startTimeMs } ?: break
+                list.remove(oldest)
+                if (oldest.job != job && oldest.job.isActive) {
+                    TeleflixLogger.log(TAG, "Evicting oldest seek job (reqId=${oldest.reqId}, offset=${oldest.offset}) due to capacity cap (>=2) for new reqId=$reqId, offset=$offset")
+                    oldest.job.cancel()
+                }
+            }
+
+            // 5. Add the new entry
+            list.add(ActiveStreamEntry(reqId, offset, job))
+        }
     }
 
     private fun unregisterSeekStream(fileId: Int, reqId: String) {
-        activeSeekStreams[fileId]?.removeAll { it.reqId == reqId }
+        fun cleanup(id: Int) {
+            val list = activeSeekStreams[id] ?: return
+            synchronized(list) {
+                val toRemove = list.filter { it.reqId == reqId }
+                if (toRemove.isNotEmpty()) {
+                    list.removeAll(toRemove)
+                }
+            }
+        }
+        cleanup(fileId)
         val resolvedId = resolveFileId(fileId)
         if (resolvedId != fileId) {
-            activeSeekStreams[resolvedId]?.removeAll { it.reqId == reqId }
+            cleanup(resolvedId)
         }
     }
     private val thumbnailMemoryCache = object : android.util.LruCache<Int, ByteArray>(30 * 1024 * 1024) {
@@ -1979,8 +2005,8 @@ object TelegramStreamingProxy {
                 // Check if download is active
                 val isDownloading = file?.local?.isDownloadingActive == true
 
-                // Pre-warm / refresh message if TDLib is not actively downloading
-                if ((attempts == 0 || !isDownloading) && fileMsgRef != null) {
+                // Pre-warm / refresh message if TDLib is not actively downloading and stalled
+                if (!isDownloading && attempts >= 40 && fileMsgRef != null) {
                     val refreshed = refreshFileId(activeFileId)
                     if (refreshed != null && refreshed != 0) {
                         activeFileId = refreshed
@@ -2012,7 +2038,7 @@ object TelegramStreamingProxy {
                         lastFileDownloadTime.remove(fileId)
                     }
 
-                    val forceRequest = (attempts == 0 || isStalled || !isDownloading)
+                    val forceRequest = isStalled || (!isDownloading && attempts == 0)
                     val lane = metrics?.requestType ?: "default"
                     triggerTdlibDownload(activeFileId, alignedOffset, safeLimit, force = forceRequest, lane = lane)
 

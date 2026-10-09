@@ -3649,7 +3649,15 @@ class MainActivity : AppCompatActivity() {
     private fun openStreamInPlayer(playerType: String, streamUrl: String, title: String, resumeMs: Long, mediaId: String = "") {
         activeMediaIdForResume = mediaId
         activeStreamUrlForResume = streamUrl
-        activeTitleForResume = title
+        activeTitleForResume = if (title.isNotBlank()) {
+            title
+        } else if (streamUrl.contains("/file/")) {
+            val segment = streamUrl.substringAfter("/file/").substringBefore("?")
+            val encName = segment.substringAfter("/", "").takeIf { it.isNotBlank() }
+            if (encName != null) {
+                runCatching { java.net.URLDecoder.decode(encName, "UTF-8") }.getOrNull() ?: encName
+            } else ""
+        } else ""
 
         // Immediately pre-warm TDLib download for offset 0 so first chunk is available in 0ms to external players
         val fileId = streamUrl.substringAfter("/file/", "").substringBefore("/").substringBefore("?").toIntOrNull()
