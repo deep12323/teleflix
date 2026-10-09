@@ -11,10 +11,14 @@ android {
         applicationId = "com.teleflix.app"
         minSdk = 21
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "1.0.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Strip unused non-English locales from third-party libraries (saves APK size)
+        resourceConfigurations += listOf("en")
+        vectorDrawables.useSupportLibrary = true
     }
 
     signingConfigs {
@@ -33,9 +37,28 @@ android {
         release {
             signingConfig = signingConfigs.getByName("teleflix")
             isMinifyEnabled = true
+            isShrinkResources = true
+            isCrunchPngs = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
+            )
+        }
+    }
+
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/license.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt",
+                "META-INF/notice.txt",
+                "META-INF/ASL2.0",
+                "META-INF/*.kotlin_module",
+                "META-INF/*.version"
             )
         }
     }
@@ -78,6 +101,5 @@ dependencies {
 
     // Networking & Image Loading
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
     implementation("com.github.bumptech.glide:glide:4.16.0")
 }
