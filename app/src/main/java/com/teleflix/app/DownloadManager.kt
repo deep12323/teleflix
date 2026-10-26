@@ -511,6 +511,7 @@ object DownloadManager {
             if (downloadLoopJob?.isActive == true) return
             val appContext = context.applicationContext
             downloadLoopJob = CoroutineScope(Dispatchers.IO).launch {
+                TelegramClient.setNetworkSuspended(false)
                 while (isActive && hasActiveDownloads()) {
                     val activeItems = synchronized(downloadsMap) {
                         downloadsMap.values.filter { it.status == DownloadStatus.DOWNLOADING }
@@ -528,8 +529,9 @@ object DownloadManager {
                             TeleflixLogger.log(TAG, "Error in download loop for item ${item.id}: ${e.message}", isError = true)
                         }
                     }
-                    delay(150)
+                    delay(800)
                 }
+                TelegramService.checkAutoStop(appContext)
             }
         }
     }

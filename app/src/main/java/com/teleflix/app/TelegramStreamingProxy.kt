@@ -30,6 +30,30 @@ object TelegramStreamingProxy {
     private var port: Int = 0
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
+    @Volatile private var lastStreamActivityTimeMs = 0L
+
+    fun hasActiveStreamingSessions(): Boolean = activeStreamRequests.values.any { it.isNotEmpty() }
+
+    fun isStreamingRecentlyActive(gracePeriodMs: Long = 25_000L): Boolean =
+        (System.currentTimeMillis() - lastStreamActivityTimeMs) < gracePeriodMs || hasActiveStreamingSessions()
+
+    fun notifyStreamingStarted() {
+        lastStreamActivityTimeMs = System.currentTimeMillis()
+        TelegramClient.setNetworkSuspended(false)
+        val ctx = runCatching { TelegramRepository.getContext() }.getOrNull()
+        if (ctx != null) {
+            TelegramService.startForStreaming(ctx)
+        }
+    }
+
+    fun notifyStreamingEnded() {
+        lastStreamActivityTimeMs = System.currentTimeMillis()
+        val ctx = runCatching { TelegramRepository.getContext() }.getOrNull()
+        if (ctx != null) {
+            TelegramService.checkAutoStop(ctx)
+        }
+    }
+
     private val activeStreamRequests = java.util.concurrent.ConcurrentHashMap<Int, MutableSet<String>>()
     private val activeSeekProbes = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     private val latestSeekReqId = java.util.concurrent.ConcurrentHashMap<Int, String>()
@@ -412,6 +436,7 @@ object TelegramStreamingProxy {
             var zipInnerName: String? = null
 
             if (path.startsWith("/file/")) {
+                notifyStreamingStarted()
                 val segment = path.substringAfter("/file/").substringBefore("?")
                 fileId = segment.substringBefore("/").toIntOrNull()
                 val encodedName = segment.substringAfter("/", "").takeIf { it.isNotBlank() }
@@ -487,6 +512,7 @@ object TelegramStreamingProxy {
                 }
                 isThumbnail = true
             } else if (path.startsWith("/merged/")) {
+                notifyStreamingStarted()
                 val segment = path.substringAfter("/merged/").substringBefore("?")
                 val slashParts = segment.split("/", limit = 2)
                 mergedFileIds = slashParts[0].split(",").mapNotNull { it.toIntOrNull() }
@@ -499,6 +525,7 @@ object TelegramStreamingProxy {
                 urlSize = mergedSizes?.sum() ?: 0L
                 fileId = mergedFileIds?.firstOrNull()
             } else if (path.startsWith("/playlist/")) {
+                notifyStreamingStarted()
                 val segment = path.substringAfter("/playlist/").substringBefore("?")
                 val slashParts = segment.split("/", limit = 2)
                 val fIds = slashParts[0].split(",").mapNotNull { it.toIntOrNull() }
@@ -549,6 +576,7 @@ object TelegramStreamingProxy {
                 output.flush()
                 return
             } else if (path.startsWith("/zip/")) {
+                notifyStreamingStarted()
                 val segment = path.substringAfter("/zip/").substringBefore("?")
                 val slashParts = segment.split("/", limit = 2)
                 fileId = slashParts[0].toIntOrNull()
@@ -890,6 +918,9 @@ object TelegramStreamingProxy {
                             runCatching {
                                 TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
                             }
+                            if (!hasActiveStreamingSessions()) {
+                                notifyStreamingEnded()
+                            }
                         }
                     }
                 }
@@ -1145,6 +1176,9 @@ object TelegramStreamingProxy {
                 if (activeFileJobs[key] == currentJob) {
                     activeFileJobs.remove(key)
                 }
+            }
+            if (!hasActiveStreamingSessions()) {
+                notifyStreamingEnded()
             }
         }
     }
@@ -1567,6 +1601,9 @@ object TelegramStreamingProxy {
                 if (activeFileJobs[key] == currentJob) {
                     activeFileJobs.remove(key)
                 }
+            }
+            if (!hasActiveStreamingSessions()) {
+                notifyStreamingEnded()
             }
         }
     }
@@ -2020,7 +2057,7 @@ object TelegramStreamingProxy {
                     activeDownloadWindows[activeFileId] = Pair(alignedOffset, winEnd)
                 }
                 
-                delay(50L)
+                delay(if (attempts < 4) 40L else 120L)
                 attempts++
             }
             null

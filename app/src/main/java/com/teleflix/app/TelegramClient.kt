@@ -137,14 +137,39 @@ object TelegramClient {
         })
     }
 
+    @Volatile
+    private var isNetworkSuspended = false
+
+    fun isSuspended(): Boolean = isNetworkSuspended
+
+    fun setNetworkSuspended(suspended: Boolean) {
+        if (client == null) return
+        if (isNetworkSuspended == suspended) return
+        isNetworkSuspended = suspended
+        if (suspended) {
+            Log.d(TAG, "Suspending TDLib network & marking offline for battery saving")
+            client?.send(TdApi.SetOption("online", TdApi.OptionValueBoolean(false)), null)
+            client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeNone()), null)
+        } else {
+            Log.d(TAG, "Resuming TDLib network & marking online")
+            client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeOther()), null)
+            client?.send(TdApi.SetOption("online", TdApi.OptionValueBoolean(true)), null)
+        }
+    }
+
     fun updateCacheLimit() {
         client?.send(TdApi.SetOption("storage_max_size", TdApi.OptionValueInteger(2000000000000L)), null)
         client?.send(TdApi.SetOption("storage_max_files", TdApi.OptionValueInteger(2000000L)), null)
         client?.send(TdApi.SetOption("download_files_in_background", TdApi.OptionValueBoolean(true)), null)
-        client?.send(TdApi.SetOption("online", TdApi.OptionValueBoolean(true)), null)
+        if (!isNetworkSuspended) {
+            client?.send(TdApi.SetOption("online", TdApi.OptionValueBoolean(true)), null)
+            client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeOther()), null)
+        } else {
+            client?.send(TdApi.SetOption("online", TdApi.OptionValueBoolean(false)), null)
+            client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeNone()), null)
+        }
         client?.send(TdApi.SetOption("max_download_file_size", TdApi.OptionValueInteger(50000000000L)), null)
         client?.send(TdApi.SetOption("prefer_ipv6", TdApi.OptionValueBoolean(false)), null)
-        client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeOther()), null)
     }
 
     fun deleteFile(fileId: Int) {
@@ -305,17 +330,22 @@ object TelegramClient {
     suspend fun sendRequest(
         function: TdApi.Function<out TdApi.Object>,
         timeoutMs: Long = 15_000L
-    ): TdApi.Object? = withTimeoutOrNull(timeoutMs) {
-        suspendCancellableCoroutine { cont ->
-            val c = client
-            if (c == null) {
-                cont.resume(null)
-                return@suspendCancellableCoroutine
-            }
-            c.send(function) { result ->
-                if (cont.isActive) {
-                    if (result is TdApi.Error) cont.resumeWithException(TelegramApiException(result.message))
-                    else cont.resume(result)
+    ): TdApi.Object? {
+        if (isNetworkSuspended) {
+            setNetworkSuspended(false)
+        }
+        return withTimeoutOrNull(timeoutMs) {
+            suspendCancellableCoroutine { cont ->
+                val c = client
+                if (c == null) {
+                    cont.resume(null)
+                    return@suspendCancellableCoroutine
+                }
+                c.send(function) { result ->
+                    if (cont.isActive) {
+                        if (result is TdApi.Error) cont.resumeWithException(TelegramApiException(result.message))
+                        else cont.resume(result)
+                    }
                 }
             }
         }
