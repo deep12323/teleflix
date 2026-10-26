@@ -147,12 +147,10 @@ object TelegramClient {
         if (isNetworkSuspended == suspended) return
         isNetworkSuspended = suspended
         if (suspended) {
-            Log.d(TAG, "Suspending TDLib network & marking offline for battery saving")
+            Log.d(TAG, "Setting TDLib offline for battery saving (keeping MTProto connection alive)")
             client?.send(TdApi.SetOption("online", TdApi.OptionValueBoolean(false)), null)
-            client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeNone()), null)
         } else {
-            Log.d(TAG, "Resuming TDLib network & marking online")
-            client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeOther()), null)
+            Log.d(TAG, "Resuming TDLib online status")
             client?.send(TdApi.SetOption("online", TdApi.OptionValueBoolean(true)), null)
         }
     }
@@ -161,13 +159,8 @@ object TelegramClient {
         client?.send(TdApi.SetOption("storage_max_size", TdApi.OptionValueInteger(2000000000000L)), null)
         client?.send(TdApi.SetOption("storage_max_files", TdApi.OptionValueInteger(2000000L)), null)
         client?.send(TdApi.SetOption("download_files_in_background", TdApi.OptionValueBoolean(true)), null)
-        if (!isNetworkSuspended) {
-            client?.send(TdApi.SetOption("online", TdApi.OptionValueBoolean(true)), null)
-            client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeOther()), null)
-        } else {
-            client?.send(TdApi.SetOption("online", TdApi.OptionValueBoolean(false)), null)
-            client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeNone()), null)
-        }
+        client?.send(TdApi.SetOption("online", TdApi.OptionValueBoolean(!isNetworkSuspended)), null)
+        client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeOther()), null)
         client?.send(TdApi.SetOption("max_download_file_size", TdApi.OptionValueInteger(50000000000L)), null)
         client?.send(TdApi.SetOption("prefer_ipv6", TdApi.OptionValueBoolean(false)), null)
     }

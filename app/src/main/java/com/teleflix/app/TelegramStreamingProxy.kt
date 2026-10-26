@@ -2033,10 +2033,11 @@ object TelegramStreamingProxy {
                     val targetPrefetch = if (metrics?.requestType == "header_probe") 2L else prefetchSizeMb
                     val safeLimit = calculateSafeTdlibLimit(alignedOffset, totalSize, targetPrefetch, limit)
 
-                    // A real stall is when ReadFilePart gets no data for >20 seconds (attempts >= 400 with 50ms polling = ~20s)
-                    val isStalled = attempts >= 400 && attempts % 400 == 0
+                    // A real stall is when ReadFilePart gets no data for >18-20 seconds
+                    val elapsedMs = System.currentTimeMillis() - chunkStartMs
+                    val isStalled = (attempts >= 400 && attempts % 400 == 0) || (elapsedMs >= 18_000L && attempts % 40 == 0)
                     if (isStalled) {
-                        TeleflixLogger.log(TAG, "downloadChunk stall check for fileId=$activeFileId offset=$offset at attempt $attempts. Refreshing file reference & forcing re-download...")
+                        TeleflixLogger.log(TAG, "downloadChunk stall check for fileId=$activeFileId offset=$offset at attempt $attempts (${elapsedMs}ms). Refreshing file reference & forcing re-download...")
                         val refreshed = refreshFileId(activeFileId, force = true)
                         if (refreshed != null && refreshed != 0) {
                             activeFileId = refreshed
@@ -2057,7 +2058,7 @@ object TelegramStreamingProxy {
                     activeDownloadWindows[activeFileId] = Pair(alignedOffset, winEnd)
                 }
                 
-                delay(if (attempts < 4) 40L else 120L)
+                delay(50L)
                 attempts++
             }
             null
