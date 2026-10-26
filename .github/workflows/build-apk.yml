@@ -119,8 +119,11 @@ jobs:
             - **`Teleflix-v${{ steps.app_version.outputs.version }}-x86_64.apk` / `Teleflix-v${{ steps.app_version.outputs.version }}-x86.apk`**: For Android emulators & Chromebooks (~14 MB).
 
             ### Key Features
+            - **Intelligent Battery & Deep Sleep Optimization:** Replaced 24/7 background foreground service with Smart On-Demand streaming elevation (elevates only when external player streaming or downloading is active, and automatically enters low-power sleep when idle)
+            - **TDLib Radio Modem Sleep & Network Suspension:** Suspends TDLib network (`NetworkTypeNone`, `online=false`) during background idle, stopping baseband radio keepalive pings and allowing the Android device CPU to enter deep Doze mode
+            - **Reduced Polling & JNI Overhead:** Throttled download manager polling loop and implemented adaptive backoff in streaming proxy to permanently eliminate CPU busy-wait loops
+            - **Ultra-Small Multi-Architecture Release APKs:** ProGuard/R8 code minification, aggressive resource shrinking, and per-ABI splits delivering ultra-compact APKs (~11-12 MB) saving up to 70% download size
             - **Streaming Proxy Optimization:** Resolved seek stall, TDLib offset thrashing, and mutual track cancellation
-            - **Multi-Architecture Support:** Lightweight per-ABI APKs saving up to 70% download size
             - **Dual-Mode Catalogs:** Switch seamlessly between Cinemeta movies/series & Monitored Telegram Channels
             - **Live Video Thumbnails & Posters:** Widescreen 16:9 thumbnails for video items & real Telegram chat titles
             - **Real-Time Split & ZIP Archive Streaming:** Automatic grouping of split archives (`.001/.002`, `.part1`, `.zip`) with on-the-fly streaming directly from Telegram cloud

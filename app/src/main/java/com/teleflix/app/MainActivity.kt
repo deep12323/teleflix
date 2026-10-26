@@ -937,10 +937,9 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         TelegramRepository.initialize(this)
+        TelegramService.onAppForegrounded(this)
         if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
-        } else {
-            try { TelegramService.start(this) } catch (_: Exception) {}
         }
         updateStatusButton()
     }
@@ -4882,6 +4881,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        TelegramService.onAppBackgrounded(this)
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -5775,7 +5775,7 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 101 && grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            try { TelegramService.start(this) } catch (_: Exception) {}
+            TelegramService.onAppForegrounded(this)
         }
     }
 }
