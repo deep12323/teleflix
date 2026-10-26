@@ -45,7 +45,7 @@ class TelegramService : Service() {
         fun onAppBackgrounded(context: Context) {
             isAppInForeground = false
             Log.d(TAG, "onAppBackgrounded: scheduling auto-stop check")
-            scheduleAutoStopCheck(context, delayMs = 15_000L)
+            scheduleAutoStopCheck(context, delayMs = 30_000L)
         }
 
         fun startForStreaming(context: Context) {
@@ -71,7 +71,7 @@ class TelegramService : Service() {
         }
 
         fun checkAutoStop(context: Context) {
-            scheduleAutoStopCheck(context, delayMs = 20_000L)
+            scheduleAutoStopCheck(context, delayMs = 30_000L)
         }
 
         private fun scheduleAutoStopCheck(context: Context, delayMs: Long) {
