@@ -119,7 +119,11 @@ jobs:
             - **`Teleflix-v${{ steps.app_version.outputs.version }}-x86_64.apk` / `Teleflix-v${{ steps.app_version.outputs.version }}-x86.apk`**: For Android emulators & Chromebooks (~14 MB).
 
             ### Key Features
-            - **Seamless High-Speed Streaming & Seek Fix:** Restored standard 50ms chunk polling with elapsed-time stall recovery (`18s`) in `TelegramStreamingProxy`, permanently resolving the 30-second chunk timeout during rapid seeking
+            - **Intelligent Seek Isolation & Deadlock Prevention:** Intelligently classifies player demuxer `Range: bytes=0-` requests as non-disruptive `header_probe` during active seek operations, permanently eliminating TDLib download cursor thrashing between seek offset and offset 0
+            - **Dedicated Seek Protection Window:** Safeguards the active seek stream during its initial buffering window (4s), preventing secondary streams and header probes from preempting TDLib data transfer
+            - **Automatic Distant Seek Job Pruning:** Automatically evicts and cancels obsolete scrub jobs (>3MB away) when the user scrubs across the timeline, stopping background polling loops from interrupting MTProto block fetches
+            - **Fast Adaptive Seek Stall Recovery:** Throttled seek stall timeout to 8s (down from 18s/30s) with active DC re-querying, ensuring instant frame delivery even under slow network conditions
+            - **Seamless High-Speed Streaming & Seek Fix:** Restored standard 50ms chunk polling with elapsed-time stall recovery in `TelegramStreamingProxy`, resolving chunk timeouts during rapid seeking
             - **Persistent MTProto DC Connection:** Maintained active Telegram Data Center connectivity without tearing down sockets (`NetworkTypeOther`), eliminating connection handshake latency while toggling online status on idle to save battery
             - **Smart On-Demand Background Streaming:** Service elevates strictly while active streaming to external players (VLC, MX Player, MPV) or downloading, cleanly demoting to low-power sleep when idle
             - **Ultra-Small Multi-Architecture Release APKs:** ProGuard/R8 code minification, aggressive resource shrinking, and per-ABI splits delivering ultra-compact APKs (~11-12 MB) saving up to 70% download size
