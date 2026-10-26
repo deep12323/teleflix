@@ -700,14 +700,14 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         val bgTitle = TextView(this).apply {
-            text = "Smart Background Streaming"
+            text = "Run in Background"
             UITheme.applyCardTitleStyle(this)
             textSize = 15f
         }
         bgInfo.addView(bgTitle)
 
         val bgSub = TextView(this).apply {
-            text = "Keeps streaming active for external players & auto-sleeps when idle to save battery"
+            text = "Keep service active for faster streaming & notifications"
             UITheme.applyMetadataStyle(this)
         }
         bgInfo.addView(bgSub)
@@ -718,11 +718,15 @@ class SettingsActivity : AppCompatActivity() {
             setOnCheckedChangeListener { _, isChecked ->
                 prefs.edit().putBoolean("pref_run_in_background", isChecked).apply()
                 if (isChecked) {
-                    TelegramService.onAppForegrounded(this@SettingsActivity)
-                    Toast.makeText(this@SettingsActivity, "Smart background streaming enabled", Toast.LENGTH_SHORT).show()
+                    if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+                    } else {
+                        TelegramService.start(this@SettingsActivity)
+                    }
+                    Toast.makeText(this@SettingsActivity, "Background service enabled", Toast.LENGTH_SHORT).show()
                 } else {
                     TelegramService.stop(this@SettingsActivity)
-                    Toast.makeText(this@SettingsActivity, "Background streaming disabled", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@SettingsActivity, "Background service disabled", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -1123,14 +1127,12 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        TelegramService.onAppForegrounded(this)
         TelegramClient.initialize(this)
         observeAuthState()
     }
 
     override fun onStop() {
         super.onStop()
-        TelegramService.onAppBackgrounded(this)
         authJob?.cancel()
         currentDialog?.dismiss()
     }
@@ -1557,7 +1559,7 @@ class SettingsActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 101 && grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            TelegramService.onAppForegrounded(this)
+            try { TelegramService.start(this) } catch (_: Exception) {}
         }
     }
 

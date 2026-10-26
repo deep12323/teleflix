@@ -30,30 +30,6 @@ object TelegramStreamingProxy {
     private var port: Int = 0
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
-    @Volatile private var lastStreamActivityTimeMs = 0L
-
-    fun hasActiveStreamingSessions(): Boolean = activeStreamRequests.values.any { it.isNotEmpty() }
-
-    fun isStreamingRecentlyActive(gracePeriodMs: Long = 25_000L): Boolean =
-        (System.currentTimeMillis() - lastStreamActivityTimeMs) < gracePeriodMs || hasActiveStreamingSessions()
-
-    fun notifyStreamingStarted() {
-        lastStreamActivityTimeMs = System.currentTimeMillis()
-        TelegramClient.setNetworkSuspended(false)
-        val ctx = runCatching { TelegramRepository.getContext() }.getOrNull()
-        if (ctx != null) {
-            TelegramService.startForStreaming(ctx)
-        }
-    }
-
-    fun notifyStreamingEnded() {
-        lastStreamActivityTimeMs = System.currentTimeMillis()
-        val ctx = runCatching { TelegramRepository.getContext() }.getOrNull()
-        if (ctx != null) {
-            TelegramService.checkAutoStop(ctx)
-        }
-    }
-
     private val activeStreamRequests = java.util.concurrent.ConcurrentHashMap<Int, MutableSet<String>>()
     private val activeSeekProbes = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     private val latestSeekReqId = java.util.concurrent.ConcurrentHashMap<Int, String>()
@@ -65,7 +41,6 @@ object TelegramStreamingProxy {
     private val lastDownloadRequestTime = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val lastFileDownloadOffset = java.util.concurrent.ConcurrentHashMap<Int, Long>()
     private val lastFileDownloadTime = java.util.concurrent.ConcurrentHashMap<Int, Long>()
-    private val lastFileDownloadLane = java.util.concurrent.ConcurrentHashMap<Int, String>()
 
     data class ActiveStreamEntry(
         val reqId: String,
@@ -96,30 +71,17 @@ object TelegramStreamingProxy {
             }
         }
 
-        // 3. Obsolete distant seek check: If the user scrubbed to a new position (> 3MB away),
-        // cancel older seek jobs immediately so they don't keep polling or interrupting TDLib
-        val distantJobs = list.filter { Math.abs(it.offset - offset) > 3_145_728L }
-        if (distantJobs.isNotEmpty()) {
-            list.removeAll(distantJobs)
-            distantJobs.forEach { distant ->
-                if (distant.job != job && distant.job.isActive) {
-                    TeleflixLogger.log(TAG, "Cancelling distant obsolete seek job (reqId=${distant.reqId}, offset=${distant.offset}) for new reqId=$reqId, offset=$offset")
-                    distant.job.cancel()
-                }
-            }
-        }
-
-        // 4. Capacity check: Max 2 concurrent seek streams per file (allows video + audio track interleaving)
-        while (list.size >= 2) {
+        // 3. Capacity check: Max 3 concurrent seek streams per file (allows video + audio + subtitle tracks)
+        while (list.size >= 3) {
             val oldest = list.minByOrNull { it.startTimeMs } ?: break
             list.remove(oldest)
             if (oldest.job != job && oldest.job.isActive) {
-                TeleflixLogger.log(TAG, "Evicting oldest seek job (reqId=${oldest.reqId}, offset=${oldest.offset}) due to capacity cap (>=2) for new reqId=$reqId, offset=$offset")
+                TeleflixLogger.log(TAG, "Evicting oldest seek job (reqId=${oldest.reqId}, offset=${oldest.offset}) due to capacity cap (>=3) for new reqId=$reqId, offset=$offset")
                 oldest.job.cancel()
             }
         }
 
-        // 5. Add the new entry
+        // 4. Add the new entry
         list.add(ActiveStreamEntry(reqId, offset, job))
     }
 
@@ -284,11 +246,10 @@ object TelegramStreamingProxy {
         var chunksRetried: Int = 0,
         var chunksTimedOut: Int = 0,
         var totalQueueWaitMs: Long = 0L,
-        var exitReason: String = "completed",
-        val forcedType: String? = null
+        var exitReason: String = "completed"
     ) {
         val requestType: String
-            get() = forcedType ?: when {
+            get() = when {
                 totalSize > 0 && startOffset >= maxOf(0L, totalSize - 1_000_000L) -> "seek_probe"
                 totalSize > 5_000_000L && startOffset in 1..2_000_000L -> "header_probe"
                 startOffset > 2_000_000L -> "seek_stream"
@@ -314,17 +275,9 @@ object TelegramStreamingProxy {
         val now = System.currentTimeMillis()
         val fileLastOffset = lastFileDownloadOffset[fileId]
         val fileLastTime = lastFileDownloadTime[fileId] ?: 0L
-        val fileLastLane = lastFileDownloadLane[fileId]
-
-        // Seek Protection Window: If TDLib was instructed to download for an active seek_stream <4000ms ago,
-        // do not let secondary/competing streams (header probes, offset 0) yank TDLib away from the seek position
-        if (lane != "seek_stream" && fileLastLane == "seek_stream" && (now - fileLastTime) < 4000L && fileLastOffset != offset) {
-            TeleflixLogger.log(TAG, "Protecting active seek_stream at offset $fileLastOffset from $lane jump to $offset (age=${now - fileLastTime}ms)")
-            return
-        }
 
         // Dwell time protection: If TDLib was instructed to download a different offset for this file <1500ms ago,
-        // do not let secondary/competing streams yank TDLib away unless this is a forced seek request
+        // do not let secondary/competing streams yank TDLib away unless this is a forced/priority seek request
         if (!force && fileLastOffset != null && fileLastOffset != offset && (now - fileLastTime) < 1500L) {
             return
         }
@@ -343,7 +296,6 @@ object TelegramStreamingProxy {
         lastDownloadRequestTime[trackKey] = now
         lastFileDownloadOffset[fileId] = offset
         lastFileDownloadTime[fileId] = now
-        lastFileDownloadLane[fileId] = lane
 
         withContext(NonCancellable) {
             try {
@@ -401,7 +353,6 @@ object TelegramStreamingProxy {
         lastDownloadRequestTime.clear()
         lastFileDownloadOffset.clear()
         lastFileDownloadTime.clear()
-        lastFileDownloadLane.clear()
         lastStreamedFileId?.let { scope.launch { deleteFile(it) } }
         lastStreamedFileId = null
         try {
@@ -461,7 +412,6 @@ object TelegramStreamingProxy {
             var zipInnerName: String? = null
 
             if (path.startsWith("/file/")) {
-                notifyStreamingStarted()
                 val segment = path.substringAfter("/file/").substringBefore("?")
                 fileId = segment.substringBefore("/").toIntOrNull()
                 val encodedName = segment.substringAfter("/", "").takeIf { it.isNotBlank() }
@@ -537,7 +487,6 @@ object TelegramStreamingProxy {
                 }
                 isThumbnail = true
             } else if (path.startsWith("/merged/")) {
-                notifyStreamingStarted()
                 val segment = path.substringAfter("/merged/").substringBefore("?")
                 val slashParts = segment.split("/", limit = 2)
                 mergedFileIds = slashParts[0].split(",").mapNotNull { it.toIntOrNull() }
@@ -550,7 +499,6 @@ object TelegramStreamingProxy {
                 urlSize = mergedSizes?.sum() ?: 0L
                 fileId = mergedFileIds?.firstOrNull()
             } else if (path.startsWith("/playlist/")) {
-                notifyStreamingStarted()
                 val segment = path.substringAfter("/playlist/").substringBefore("?")
                 val slashParts = segment.split("/", limit = 2)
                 val fIds = slashParts[0].split(",").mapNotNull { it.toIntOrNull() }
@@ -601,7 +549,6 @@ object TelegramStreamingProxy {
                 output.flush()
                 return
             } else if (path.startsWith("/zip/")) {
-                notifyStreamingStarted()
                 val segment = path.substringAfter("/zip/").substringBefore("?")
                 val slashParts = segment.split("/", limit = 2)
                 fileId = slashParts[0].toIntOrNull()
@@ -778,20 +725,11 @@ object TelegramStreamingProxy {
 
             end = minOf(end, totalSize - 1L)
 
-            val hasActiveSeek = activeSeekStreams[fileId]?.any { it.job.isActive } == true ||
-                                activeSeekStreams[targetFileId]?.any { it.job.isActive } == true
-
-            // If an active seek stream is already running for this file, an incoming request for bytes=0-
-            // is a secondary header/metadata probe by the player demuxer. Treat it as a header_probe so
-            // it reads container headers (<= 2 chunks) without overriding or stalling the seek stream.
-            val forcedType = if (start == 0L && hasActiveSeek) "header_probe" else null
-
             val m = StreamMetrics(
                 fileId = fileId,
                 rangeHeader = rangeHeader,
                 startOffset = start,
-                totalSize = totalSize,
-                forcedType = forcedType
+                totalSize = totalSize
             )
             metrics = m
             activeStreamRequests.getOrPut(fileId) { java.util.concurrent.ConcurrentHashMap.newKeySet<String>() }.add(m.reqId)
@@ -891,8 +829,7 @@ object TelegramStreamingProxy {
 
                 if (activeDownloadEnd < 0L || offset >= activeDownloadEnd - maxOf(CHUNK_SIZE.toLong(), safeLimit / 4)) {
                     val isFirstTrigger = activeDownloadEnd < 0L
-                    val shouldForce = (isFirstTrigger && m.requestType == "seek_stream")
-                    triggerTdlibDownload(fileId, alignedOffset, safeLimit, force = shouldForce, lane = m.requestType)
+                    triggerTdlibDownload(fileId, alignedOffset, safeLimit, force = isFirstTrigger, lane = m.requestType)
                     activeDownloadEnd = if (safeLimit == 0L) totalSize else alignedOffset + safeLimit
                     activeDownloadWindows[fileId] = Pair(alignedOffset, activeDownloadEnd)
                 }
@@ -952,9 +889,6 @@ object TelegramStreamingProxy {
                             TeleflixLogger.log(TAG, "No active streams remaining for fileId=$fileId after 5s grace period, cancelling TDLib background download")
                             runCatching {
                                 TelegramClient.sendRequest(TdApi.CancelDownloadFile(fileId, false))
-                            }
-                            if (!hasActiveStreamingSessions()) {
-                                notifyStreamingEnded()
                             }
                         }
                     }
@@ -1103,15 +1037,11 @@ object TelegramStreamingProxy {
         }
         end = minOf(end, effectiveSize - 1L)
 
-        val hasActiveSeek = fileIds.any { fId -> activeSeekStreams[fId]?.any { it.job.isActive } == true }
-        val forcedType = if (start == 0L && hasActiveSeek) "header_probe" else null
-
         val m = StreamMetrics(
             fileId = primaryFileId,
             rangeHeader = rangeHeader,
             startOffset = start,
-            totalSize = effectiveSize,
-            forcedType = forcedType
+            totalSize = effectiveSize
         )
         val currentJob = kotlin.coroutines.coroutineContext[Job]
         val currentJobRegisteredKeys = mutableListOf<String>()
@@ -1215,9 +1145,6 @@ object TelegramStreamingProxy {
                 if (activeFileJobs[key] == currentJob) {
                     activeFileJobs.remove(key)
                 }
-            }
-            if (!hasActiveStreamingSessions()) {
-                notifyStreamingEnded()
             }
         }
     }
@@ -1641,9 +1568,6 @@ object TelegramStreamingProxy {
                     activeFileJobs.remove(key)
                 }
             }
-            if (!hasActiveStreamingSessions()) {
-                notifyStreamingEnded()
-            }
         }
     }
 
@@ -1670,12 +1594,10 @@ object TelegramStreamingProxy {
         lastDownloadRequestTime.keys.filter { it.startsWith("${fileId}_") }.forEach { lastDownloadRequestTime.remove(it) }
         lastFileDownloadOffset.remove(fileId)
         lastFileDownloadTime.remove(fileId)
-        lastFileDownloadLane.remove(fileId)
         val resolvedFileId = resolveFileId(fileId)
         if (resolvedFileId != fileId) {
             lastFileDownloadOffset.remove(resolvedFileId)
             lastFileDownloadTime.remove(resolvedFileId)
-            lastFileDownloadLane.remove(resolvedFileId)
         }
         scope.launch {
             deleteFile(fileId)
@@ -1982,7 +1904,6 @@ object TelegramStreamingProxy {
                         }
                     }
                 }
-                var lastReadExceptionMsg: String? = null
                 val readRes = try {
                     val lockStart = System.currentTimeMillis()
                     getFileMutex(activeFileId).withLock {
@@ -1993,7 +1914,6 @@ object TelegramStreamingProxy {
                         )
                     }
                 } catch (e: Exception) {
-                    lastReadExceptionMsg = e.message
                     null
                 }
                 
@@ -2005,8 +1925,6 @@ object TelegramStreamingProxy {
                         TeleflixLogger.log(TAG, "[TDLib] chunk #$count fileId=$activeFileId offset=$offset size=${readRes.data.size} tdlibMs=$tdlibMs status=ok")
                     }
                     return@withTimeoutOrNull readRes.data
-                } else if (attempts > 0 && attempts % 100 == 0 && lastReadExceptionMsg != null) {
-                    TeleflixLogger.log(TAG, "[TDLib ReadFilePart Poll] fileId=$activeFileId offset=$offset attempt=$attempts: $lastReadExceptionMsg")
                 } else if (readRes is TdApi.Error && (attempts == 0 || attempts % 100 == 0)) {
                     TeleflixLogger.log(TAG, "[TDLib ReadFilePart Error] fileId=$activeFileId offset=$offset: code=${readRes.code} msg=${readRes.message}", isError = true)
                 }
@@ -2078,12 +1996,10 @@ object TelegramStreamingProxy {
                     val targetPrefetch = if (metrics?.requestType == "header_probe") 2L else prefetchSizeMb
                     val safeLimit = calculateSafeTdlibLimit(alignedOffset, totalSize, targetPrefetch, limit)
 
-                    // A real stall is when ReadFilePart gets no data for >8s (seek) or >18s (normal)
-                    val elapsedMs = System.currentTimeMillis() - chunkStartMs
-                    val stallThresholdMs = if (metrics?.requestType == "seek_stream") 8_000L else 18_000L
-                    val isStalled = (attempts >= 400 && attempts % 400 == 0) || (elapsedMs >= stallThresholdMs && attempts % 40 == 0)
+                    // A real stall is when ReadFilePart gets no data for >20 seconds (attempts >= 400 with 50ms polling = ~20s)
+                    val isStalled = attempts >= 400 && attempts % 400 == 0
                     if (isStalled) {
-                        TeleflixLogger.log(TAG, "downloadChunk stall check for fileId=$activeFileId offset=$offset at attempt $attempts (${elapsedMs}ms, lane=${metrics?.requestType}). Refreshing file reference & forcing re-download...")
+                        TeleflixLogger.log(TAG, "downloadChunk stall check for fileId=$activeFileId offset=$offset at attempt $attempts. Refreshing file reference & forcing re-download...")
                         val refreshed = refreshFileId(activeFileId, force = true)
                         if (refreshed != null && refreshed != 0) {
                             activeFileId = refreshed
@@ -2094,11 +2010,9 @@ object TelegramStreamingProxy {
                         lastFileDownloadOffset.remove(fileId)
                         lastFileDownloadTime.remove(activeFileId)
                         lastFileDownloadTime.remove(fileId)
-                        lastFileDownloadLane.remove(activeFileId)
-                        lastFileDownloadLane.remove(fileId)
                     }
 
-                    val forceRequest = (attempts == 0 && metrics?.requestType == "seek_stream") || isStalled || !isDownloading
+                    val forceRequest = (attempts == 0 || isStalled || !isDownloading)
                     val lane = metrics?.requestType ?: "default"
                     triggerTdlibDownload(activeFileId, alignedOffset, safeLimit, force = forceRequest, lane = lane)
 
