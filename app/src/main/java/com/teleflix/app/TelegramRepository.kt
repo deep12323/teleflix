@@ -68,6 +68,20 @@ object TelegramRepository {
         channelMediaCache.clear()
     }
 
+    fun invalidateChannelCache(channelUsernameOrId: String, chatId: Long? = null) {
+        val clean = channelUsernameOrId.trim()
+        val username = clean.removePrefix("@")
+        channelMediaCache.keys.removeAll { key ->
+            key.startsWith("$clean-") || 
+            key.startsWith("$username-") || 
+            (chatId != null && key.startsWith("$chatId-"))
+        }
+        if (chatId != null) {
+            cachedForumTopics.remove(chatId)
+        }
+        clean.toLongOrNull()?.let { cachedForumTopics.remove(it) }
+    }
+
     private var appContext: Context? = null
 
     val authState: StateFlow<TelegramAuthState> = TelegramClient.authState
@@ -1274,7 +1288,37 @@ object TelegramRepository {
         val seen = java.util.Collections.synchronizedSet(mutableSetOf<Pair<String, Long>>())
         val chatId = getChatId(channelUsernameOrId) ?: return@coroutineScope Pair(emptyList(), 0L)
 
+        // Ensure TDLib actively tracks and syncs this chat
+        try {
+            TelegramClient.sendRequest(TdApi.OpenChat(chatId))
+        } catch (_: Exception) {}
+
         val topicFilter = if (topicId > 0) TdApi.MessageTopicForum(topicId) else null
+
+        // If forceRefresh or initial fetch (fromMessageId == 0L), actively pull newest server messages
+        if (fromMessageId == 0L && forceRefresh) {
+            try {
+                val syncResult = TelegramClient.sendRequest(TdApi.GetChatHistory().also { req ->
+                    req.chatId = chatId
+                    req.fromMessageId = 0L
+                    req.offset = 0
+                    req.limit = 50
+                    req.onlyLocal = false
+                })
+                val msgs = (syncResult as? TdApi.Messages)
+                if (msgs != null) {
+                    for (msg in msgs.messages) {
+                        if (topicId > 0) {
+                            val msgTopic = (msg.topicId as? TdApi.MessageTopicForum)?.forumTopicId ?: 0
+                            if (msgTopic != topicId) continue
+                        }
+                        extractMediaMessage(msg, seen, results)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Chat history sync before search for $channelUsernameOrId: ${e.message}")
+            }
+        }
 
         val filters = mutableListOf<TdApi.SearchMessagesFilter>(
             TdApi.SearchMessagesFilterDocument(),
@@ -1320,6 +1364,9 @@ object TelegramRepository {
         }
 
         val sorted = results.sortedByDescending { it.messageId }
+        if (minNextMessageId == 0L && sorted.isNotEmpty()) {
+            minNextMessageId = sorted.last().messageId
+        }
         val res = Pair(sorted, minNextMessageId)
         if (sorted.isNotEmpty()) {
             channelMediaCache[cacheKey] = res
