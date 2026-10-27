@@ -80,6 +80,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var fabSelectChats: ImageButton
     private lateinit var searchContainer: LinearLayout
     private lateinit var categoryHeaderLayout: LinearLayout
+    private lateinit var channelRefreshButton: TextView
     private lateinit var channelMenuButton: TextView
     private var isTelegramCatalogMode = false
     private var currentOpenChannelId: String? = null
@@ -388,6 +389,36 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         categoryHeaderLayout.addView(categoryLabel)
+
+        channelRefreshButton = TextView(this).apply {
+            text = "🔄"
+            textSize = 15f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = UITheme.createCardShape(this@MainActivity, UITheme.SURFACE, 10, UITheme.STROKE_COLOR, 1)
+            val pV = UITheme.dpToPx(this@MainActivity, 2)
+            val pH = UITheme.dpToPx(this@MainActivity, 8)
+            setPadding(pH, pV, pH, pV)
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 6), 0)
+            }
+            layoutParams = lp
+            visibility = android.view.View.GONE
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                val banner = categoryLabel.text.toString()
+                val title = if (banner.contains("Browsing: ")) banner.substringAfter("Browsing: ")
+                            else if (banner.contains("Topic: ")) banner.substringAfter("Topic: ")
+                            else currentOpenChannelId ?: "Channel"
+                if (currentOpenTopicId > 0 && currentOpenChannelId != null) {
+                    loadTelegramTopicMedia("topic_0_${currentOpenTopicId}_${currentOpenChannelId}", title)
+                } else if (currentOpenChannelId != null) {
+                    loadTelegramChannelMedia(currentOpenChannelId!!, title)
+                }
+            }
+        }
+        categoryHeaderLayout.addView(channelRefreshButton)
 
         channelMenuButton = TextView(this).apply {
             text = "⋮"
@@ -1150,6 +1181,7 @@ class MainActivity : AppCompatActivity() {
         isInSearchMode = false
         currentOpenChannelId = null
         if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+        if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.GONE
         if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
         currentSkip = 0
         hasMoreItems = true
@@ -1376,15 +1408,18 @@ class MainActivity : AppCompatActivity() {
             searchInput.hint = "Default Telegram search (all chats & channels)..."
             if (currentOpenChannelId != null) {
                 if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
+                if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.VISIBLE
                 if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.VISIBLE
             } else {
                 if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+                if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.GONE
                 if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
                 loadTelegramChannelsCatalog()
             }
         } else {
             currentOpenChannelId = null
             if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+            if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.GONE
             if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
             tabScroll.visibility = android.view.View.VISIBLE
             modeToggleButton.text = "🎬 Cinemeta"
@@ -1399,14 +1434,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadTelegramChannelsCatalog() {
+        val prevChannel = currentOpenChannelId
         isInSearchMode = false
         isBrowsingFromBeginning = false
         currentOpenChannelId = null
         hasMoreItems = false
         isLoadingMore = false
         if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+        if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.GONE
         if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
         updateCategoryBanner("Monitored Telegram Channels")
+
+        if (prevChannel != null) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val cid = TelegramRepository.getChatId(prevChannel)
+                    if (cid != null) {
+                        TelegramClient.sendRequest(TdApi.CloseChat(cid))
+                    }
+                } catch (_: Exception) {}
+            }
+        }
 
         val channels = try {
             TelegramRepository.getCustomChannels(this@MainActivity)
@@ -1545,6 +1593,7 @@ class MainActivity : AppCompatActivity() {
         hasMoreItems = true
         isLoadingMore = true
         if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
+        if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.VISIBLE
         if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.VISIBLE
         mediaList.clear()
         mediaAdapter?.notifyDataSetChanged()
@@ -1556,8 +1605,18 @@ class MainActivity : AppCompatActivity() {
 
         CoroutineScope(Dispatchers.IO).launch {
             val chatId = TelegramRepository.getChatId(channelUsername)
+
+            // Always invalidate cache when opening channel so user gets newest & latest content
+            TelegramRepository.invalidateChannelCache(channelUsername, chatId)
+
+            if (chatId != null) {
+                try {
+                    TelegramClient.sendRequest(TdApi.OpenChat(chatId))
+                } catch (_: Exception) {}
+            }
+
             val topics = if (chatId != null) {
-                try { TelegramRepository.getForumTopics(chatId) } catch (_: Exception) { emptyList() }
+                try { TelegramRepository.getForumTopics(chatId, forceRefresh = true) } catch (_: Exception) { emptyList() }
             } else emptyList()
 
             if (topics.isNotEmpty()) {
@@ -1592,10 +1651,12 @@ class MainActivity : AppCompatActivity() {
                 return@launch
             }
 
-            loadingText.text = "Loading media files from $title..."
+            withContext(Dispatchers.Main) {
+                loadingText.text = "Loading newest media files from $title..."
+            }
 
             val (mediaMessages, nextFromId) = try {
-                TelegramRepository.fetchChannelMedia(channelUsername, fromMessageId = 0L, limit = 100, includeAudio = true)
+                TelegramRepository.fetchChannelMedia(channelUsername, fromMessageId = 0L, limit = 100, includeAudio = true, forceRefresh = true)
             } catch (e: Exception) {
                 Pair(emptyList<TelegramVideoMessage>(), 0L)
             }
@@ -1634,6 +1695,7 @@ class MainActivity : AppCompatActivity() {
         hasMoreItems = true
         isLoadingMore = true
         if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
+        if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.VISIBLE
         if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.VISIBLE
         mediaList.clear()
         mediaAdapter?.notifyDataSetChanged()
@@ -1648,8 +1710,19 @@ class MainActivity : AppCompatActivity() {
         }
 
         CoroutineScope(Dispatchers.IO).launch {
+            val chatId = TelegramRepository.getChatId(channelUsername)
+
+            // Always invalidate cache when opening topic so user gets newest & latest content
+            TelegramRepository.invalidateChannelCache(channelUsername, chatId)
+
+            if (chatId != null) {
+                try {
+                    TelegramClient.sendRequest(TdApi.OpenChat(chatId))
+                } catch (_: Exception) {}
+            }
+
             val (mediaMessages, nextFromId) = try {
-                TelegramRepository.fetchChannelMedia(channelUsername, fromMessageId = 0L, topicId = topicId, limit = 100, includeAudio = true)
+                TelegramRepository.fetchChannelMedia(channelUsername, fromMessageId = 0L, topicId = topicId, limit = 100, includeAudio = true, forceRefresh = true)
             } catch (e: Exception) {
                 Pair(emptyList<TelegramVideoMessage>(), 0L)
             }
@@ -1934,6 +2007,22 @@ class MainActivity : AppCompatActivity() {
             return container
         }
 
+        // Option 0: Refresh Channel (Green Refresh)
+        val refreshCard = createOptionCard(
+            "🔄",
+            "#143324",
+            "#34C759",
+            "Refresh Channel",
+            "Fetch newest & latest video and audio files"
+        ) {
+            if (currentOpenTopicId > 0) {
+                loadTelegramTopicMedia("topic_0_${currentOpenTopicId}_$channelId", titleClean)
+            } else {
+                loadTelegramChannelMedia(channelId, titleClean)
+            }
+        }
+        optionsView.addView(refreshCard)
+
         // Option 1: Go to the Beginning (Red Flag / Bookmark)
         val beginningCard = createOptionCard(
             "🔖",
@@ -2013,6 +2102,7 @@ class MainActivity : AppCompatActivity() {
         hasMoreItems = true
         isLoadingMore = true
         if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
+        if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.VISIBLE
         if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.VISIBLE
         mediaList.clear()
         mediaAdapter?.notifyDataSetChanged()
