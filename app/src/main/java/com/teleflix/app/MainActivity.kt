@@ -3,9 +3,14 @@ package com.teleflix.app
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -18,7 +23,6 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -51,11 +55,14 @@ data class MediaItem(
     val year: String,
     val rating: String,
     val overview: String,
-    val type: String = "movie",  // "movie" or "series" or "telegram_media" or "history_group"
+    val type: String = "movie",  // "movie" or "series" or "telegram_media" or "history_group" or "hero_billboard" or "horizontal_row"
     val streamUrl: String = "",
     val originalFileName: String = "",
     val fileSize: Long = 0L,
-    val groupedFiles: List<MediaItem> = emptyList()
+    val groupedFiles: List<MediaItem> = emptyList(),
+    val horizontalItems: List<MediaItem> = emptyList(),
+    val isTop10Row: Boolean = false,
+    val catalogTarget: String = ""
 )
 
 data class EpisodeItem(
@@ -63,7 +70,8 @@ data class EpisodeItem(
     val episode: Int,
     val title: String,
     val overview: String,
-    val released: String
+    val released: String,
+    val thumbnail: String = ""
 )
 
 class MainActivity : AppCompatActivity() {
@@ -247,22 +255,21 @@ class MainActivity : AppCompatActivity() {
     private val cinemetaCatalogCache = java.util.concurrent.ConcurrentHashMap<String, List<MediaItem>>()
     private val cinemetaSeriesCache = java.util.concurrent.ConcurrentHashMap<String, Map<Int, List<EpisodeItem>>>()
 
-    private var selectedCategory = "movie/top"
-    private var selectedLabel = "Top Movies"
+    private var selectedCategory = "home/netflix"
+    private var selectedLabel = "🏠 Home"
     private var currentSkip = 0
     private var isLoadingMore = false
     private var hasMoreItems = true
     private var isInSearchMode = false
 
     private val categories = listOf(
-        "Top Movies" to "movie/top",
-        "Top Series" to "series/top",
+        "🏠 Home" to "home/netflix",
+        "🎬 Movies" to "movies/netflix",
+        "📺 TV Shows" to "series/netflix",
+        "📚 My List" to "library/list",
         "🕒 History" to "history/list",
-        "New Movies" to "movie/year",
-        "New Series" to "series/year",
-        "IMDB Top" to "movie/imdbRating",
-        "📚 Library" to "library/list",
-        "🎭 Genres" to "genres/picker"
+        "🎭 Genres" to "genres/picker",
+        "📁 Channels" to "channels/list"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -307,6 +314,7 @@ class MainActivity : AppCompatActivity() {
         val titleView = TextView(this).apply {
             text = "TELEFLIX"
             UITheme.applyLargeTitleStyle(this)
+            letterSpacing = 0.12f
             setTextColor(Color.parseColor(UITheme.PRIMARY)) // Netflix Red
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
@@ -327,11 +335,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         modeToggleButton = TextView(this).apply {
-            text = "🎬 Cinemeta"
+            text = "💬 Channels"
             textSize = 13f
             setTypeface(null, android.graphics.Typeface.NORMAL)
-            background = UITheme.createCardShape(this@MainActivity, UITheme.SECONDARY, 14, UITheme.ACCENT_BLUE, 1)
-            setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
+            background = UITheme.createCardShape(this@MainActivity, UITheme.SECONDARY, 14, UITheme.SUCCESS, 1)
+            setTextColor(Color.parseColor(UITheme.SUCCESS))
             val pV = UITheme.dpToPx(this@MainActivity, 8)
             val pH = UITheme.dpToPx(this@MainActivity, 14)
             setPadding(pH, pV, pH, pV)
@@ -465,7 +473,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         searchInput = EditText(this).apply {
-            hint = "Search Movies & Series..."
+            hint = "Search Movies, TV Series, Channels..."
             setHintTextColor(Color.parseColor(UITheme.TEXT_SECONDARY))
             setTextColor(Color.WHITE)
             background = null
@@ -474,25 +482,14 @@ class MainActivity : AppCompatActivity() {
             setPadding(pH, pV, pH, pV)
             textSize = 13.5f
             maxLines = 1
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
-            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
-            setOnEditorActionListener { _, actionId, event ->
-                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH ||
-                    (event != null && event.keyCode == android.view.KeyEvent.KEYCODE_ENTER && event.action == android.view.KeyEvent.ACTION_DOWN)) {
-                    val q = text.toString()
-                    if (q.isNotBlank()) {
-                        val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
-                        imm?.hideSoftInputFromWindow(windowToken, 0)
-                        if (isTelegramCatalogMode) {
-                            performTelegramSearch(q)
-                        } else {
-                            performSearch(q)
-                        }
-                    }
-                    true
-                } else {
-                    false
+            isFocusable = false
+            isClickable = true
+            setOnClickListener {
+                val intent = Intent(this@MainActivity, SearchActivity::class.java)
+                if (text.isNotBlank()) {
+                    intent.putExtra("query", text.toString())
                 }
+                startActivity(intent)
             }
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
@@ -508,14 +505,12 @@ class MainActivity : AppCompatActivity() {
             background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.PRIMARY, 10)
             setTextColor(Color.WHITE)
             setOnClickListener {
+                val intent = Intent(this@MainActivity, SearchActivity::class.java)
                 val q = searchInput.text.toString()
                 if (q.isNotBlank()) {
-                    if (isTelegramCatalogMode) {
-                        performTelegramSearch(q)
-                    } else {
-                        performSearch(q)
-                    }
+                    intent.putExtra("query", q)
                 }
+                startActivity(intent)
             }
         }
 
@@ -552,6 +547,21 @@ class MainActivity : AppCompatActivity() {
                 ).apply { setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 6), 0) }
                 layoutParams = lp
                 setOnClickListener {
+                    if (catalogId == "home/netflix") {
+                        loadNetflixHome("home")
+                        updateTabSelection(catalogId)
+                        return@setOnClickListener
+                    }
+                    if (catalogId == "movies/netflix") {
+                        loadNetflixHome("movies")
+                        updateTabSelection(catalogId)
+                        return@setOnClickListener
+                    }
+                    if (catalogId == "series/netflix") {
+                        loadNetflixHome("series")
+                        updateTabSelection(catalogId)
+                        return@setOnClickListener
+                    }
                     if (catalogId == "genres/picker") {
                         showGenreSelectionDialog()
                         return@setOnClickListener
@@ -559,6 +569,24 @@ class MainActivity : AppCompatActivity() {
                     if (catalogId == "library/list") {
                         loadLibraryCatalog()
                         return@setOnClickListener
+                    }
+                    if (catalogId == "channels/list") {
+                        isTelegramCatalogMode = true
+                        modeToggleButton.text = "🎬 ARVIO Stream"
+                        modeToggleButton.setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
+                        modeToggleButton.background = UITheme.createCardShape(this@MainActivity, UITheme.SECONDARY, 14, UITheme.ACCENT_BLUE, 1)
+                        updateCategoryBanner("Monitored Telegram Channels")
+                        searchInput.hint = "Search chats & channels..."
+                        loadTelegramChannelsCatalog()
+                        updateTabSelection(catalogId)
+                        return@setOnClickListener
+                    }
+                    if (isTelegramCatalogMode) {
+                        isTelegramCatalogMode = false
+                        modeToggleButton.text = "💬 Channels"
+                        modeToggleButton.setTextColor(Color.parseColor(UITheme.SUCCESS))
+                        modeToggleButton.background = UITheme.createCardShape(this@MainActivity, UITheme.SECONDARY, 14, UITheme.SUCCESS, 1)
+                        searchInput.hint = "Search Movies & Series..."
                     }
                     selectedCategory = catalogId
                     selectedLabel = label
@@ -650,7 +678,7 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                         } else {
-                            val cleanId = item.id.removePrefix("single_").removePrefix("stream_").removePrefix("zip_")
+                            val cleanId = item.id.removePrefix("single_").removePrefix("stream_").removePrefix("automovie_").removePrefix("zip_")
                             val parts = cleanId.split("_")
                             val chatId = parts.getOrNull(0)?.toLongOrNull()
                             val messageId = parts.getOrNull(1)?.toLongOrNull()
@@ -760,7 +788,7 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                         } else {
-                            val cleanId = item.id.removePrefix("single_").removePrefix("stream_")
+                            val cleanId = item.id.removePrefix("single_").removePrefix("stream_").removePrefix("automovie_")
                             val parts = cleanId.split("_")
                             val chatId = parts.getOrNull(0)?.toLongOrNull()
                             val messageId = parts.getOrNull(1)?.toLongOrNull()
@@ -809,10 +837,42 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
-                "series" -> fetchSeriesEpisodes(item)
+                "series" -> {
+                    val intent = Intent(this@MainActivity, MediaDetailsActivity::class.java).apply {
+                        putExtra("id", item.id)
+                        putExtra("title", item.title)
+                        putExtra("posterUrl", item.posterUrl)
+                        putExtra("year", item.year)
+                        putExtra("rating", item.rating)
+                        putExtra("overview", item.overview)
+                        putExtra("type", "series")
+                    }
+                    startActivity(intent)
+                }
+                "hero_billboard" -> {
+                    val intent = Intent(this@MainActivity, MediaDetailsActivity::class.java).apply {
+                        putExtra("id", item.id)
+                        putExtra("title", item.title)
+                        putExtra("posterUrl", item.posterUrl)
+                        putExtra("year", item.year)
+                        putExtra("rating", item.rating)
+                        putExtra("overview", item.overview)
+                        putExtra("type", if (selectedCategory.startsWith("series")) "series" else "movie")
+                    }
+                    startActivity(intent)
+                }
+                "auto_series" -> showAutoSeriesSeasons(item)
                 else -> {
-                    val yearInt = item.year.filter { it.isDigit() }.take(4).toIntOrNull()
-                    showStreamOptions(item.title, null, null, item.posterUrl, year = yearInt)
+                    val intent = Intent(this@MainActivity, MediaDetailsActivity::class.java).apply {
+                        putExtra("id", item.id)
+                        putExtra("title", item.title)
+                        putExtra("posterUrl", item.posterUrl)
+                        putExtra("year", item.year)
+                        putExtra("rating", item.rating)
+                        putExtra("overview", item.overview)
+                        putExtra("type", item.type)
+                    }
+                    startActivity(intent)
                 }
             }
         }, { item ->
@@ -823,18 +883,29 @@ class MainActivity : AppCompatActivity() {
             }
         }, { item ->
             handleDownloadItem(item)
+        }, { categoryTitle, catalogTarget ->
+            if (catalogTarget.isNotBlank()) {
+                selectedCategory = catalogTarget
+                selectedLabel = categoryTitle
+                updateCategoryBanner("$categoryTitle  •  [ ⬅ Back to Home ]", isClickable = true) {
+                    loadNetflixHome("home")
+                }
+                loadInitialCinemeta(catalogTarget, categoryTitle)
+            }
         })
 
         val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        val initialSpan = if (isLandscape) 4 else 2
+        val initialSpan = if (isLandscape) 12 else 6
         val gridLayoutManager = GridLayoutManager(this, initialSpan).apply {
             spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
                 override fun getSpanSize(position: Int): Int {
                     val item = mediaList.getOrNull(position)
                     val currentSpan = spanCount
+                    val isLandscapeMode = currentSpan > 6
                     return when (item?.type) {
-                        "channel" -> currentSpan
-                        else -> 1
+                        "channel", "hero_billboard", "horizontal_row" -> currentSpan
+                        "telegram_media", "history_group", "topic" -> if (isLandscapeMode) 4 else 3
+                        else -> 2 // 3-column Netflix compact poster grid in portrait (6 / 2 = 3), 6-column in landscape (12 / 2 = 6)
                     }
                 }
             }
@@ -866,35 +937,6 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
-            }
-        })
-
-        val gestureDetector = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
-            private val SWIPE_THRESHOLD = 100
-            private val SWIPE_VELOCITY_THRESHOLD = 100
-
-            override fun onFling(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, velocityX: Float, velocityY: Float): Boolean {
-                if (e1 == null) return false
-                val diffY = e2.y - e1.y
-                val diffX = e2.x - e1.x
-                if (Math.abs(diffX) > Math.abs(diffY)) {
-                    if (Math.abs(diffX) > SWIPE_THRESHOLD && Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
-                        if (diffX > 0) {
-                            handleTabSwipe(1)
-                        } else {
-                            handleTabSwipe(-1)
-                        }
-                        return true
-                    }
-                }
-                return false
-            }
-        })
-
-        recyclerView.addOnItemTouchListener(object : androidx.recyclerview.widget.RecyclerView.SimpleOnItemTouchListener() {
-            override fun onInterceptTouchEvent(rv: androidx.recyclerview.widget.RecyclerView, e: android.view.MotionEvent): Boolean {
-                gestureDetector.onTouchEvent(e)
-                return false
             }
         })
 
@@ -935,15 +977,25 @@ class MainActivity : AppCompatActivity() {
         val defaultMonitored = prefs.getBoolean("default_opening_monitored", false)
         if (defaultMonitored) {
             isTelegramCatalogMode = true
-            tabScroll.visibility = android.view.View.GONE
-            modeToggleButton.text = "💬 Telegram Channels"
-            modeToggleButton.setTextColor(Color.parseColor(UITheme.SUCCESS))
-            modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.SUCCESS, 1)
+            tabScroll.visibility = android.view.View.VISIBLE
+            modeToggleButton.text = "🎬 ARVIO Stream"
+            modeToggleButton.setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
+            modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.ACCENT_BLUE, 1)
             updateCategoryBanner("Monitored Telegram Channels")
-            searchInput.hint = "Default Telegram search (all chats & channels)..."
+            searchInput.hint = "Search chats & channels..."
             loadTelegramChannelsCatalog()
         } else {
-            loadInitialCinemeta("movie/top", "Top Movies")
+            isTelegramCatalogMode = false
+            tabScroll.visibility = android.view.View.VISIBLE
+            modeToggleButton.text = "💬 Channels"
+            modeToggleButton.setTextColor(Color.parseColor(UITheme.SUCCESS))
+            modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.SUCCESS, 1)
+            searchInput.hint = "Search Movies & Series..."
+            selectedCategory = "home/netflix"
+            selectedLabel = "🏠 Home"
+            updateCategoryBanner(selectedLabel)
+            loadNetflixHome("home")
+            updateTabSelection(selectedCategory)
         }
     }
 
@@ -957,11 +1009,12 @@ class MainActivity : AppCompatActivity() {
             categoryLabel.setOnClickListener(null)
         }
         val isBackAction = text.contains("⬅ Back")
-        val isClearAction = text.contains("Clear History") || text.contains("Clear Library")
+        val isClearAction = text.contains("Clear History") || text.contains("Clear Library") || text.contains("Clear List")
         val isSearchAction = text.startsWith("Search:") || text.startsWith("Telegram Default Search:")
+        val isGenreAction = text.contains("Top ") && (text.contains("Movies") || text.contains("Series"))
         val isTelegramMode = isTelegramCatalogMode || (::channelMenuButton.isInitialized && channelMenuButton.visibility == android.view.View.VISIBLE)
         if (::categoryHeaderLayout.isInitialized) {
-            categoryHeaderLayout.visibility = if (isBackAction || isClearAction || isSearchAction || isTelegramMode) android.view.View.VISIBLE else android.view.View.GONE
+            categoryHeaderLayout.visibility = if (isBackAction || isClearAction || isSearchAction || isGenreAction || isTelegramMode) android.view.View.VISIBLE else android.view.View.GONE
         }
     }
 
@@ -996,150 +1049,292 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ── Netflix-Style Categories & Genres Dashboard ────────────
+    private var isGenreMoviesMode = true
+
     private fun showGenreSelectionDialog() {
+        showNetflixGenreDashboard()
+    }
+
+    private fun showNetflixGenreDashboard() {
         val genres = listOf(
-            "Action", "Adventure", "Animation", "Biography", "Comedy",
-            "Crime", "Documentary", "Drama", "Family", "Fantasy",
-            "History", "Horror", "Mystery", "Romance", "Sci-Fi",
-            "Sport", "Thriller", "War", "Western"
-        )
-        val genreIcons = arrayOf(
-            "💥 Action", "🗺️ Adventure", "🦄 Animation", "📖 Biography", "😂 Comedy",
-            "🕵️ Crime", "🎥 Documentary", "🎭 Drama", "👨‍👩‍👧 Family", "✨ Fantasy",
-            "📜 History", "👻 Horror", "🔍 Mystery", "❤️ Romance", "🛸 Sci-Fi",
-            "⚽ Sport", "🔪 Thriller", "⚔️ War", "🤠 Western"
+            "Action" to ("💥" to Pair("#DC2626", "#EA580C")),
+            "Adventure" to ("🗺️" to Pair("#047857", "#059669")),
+            "Animation" to ("🦄" to Pair("#4F46E5", "#7C3AED")),
+            "Comedy" to ("😂" to Pair("#D97706", "#CA8A04")),
+            "Crime" to ("🕵️" to Pair("#1E293B", "#334155")),
+            "Documentary" to ("🎥" to Pair("#0F766E", "#0D9488")),
+            "Drama" to ("🎭" to Pair("#1D4ED8", "#2563EB")),
+            "Family" to ("👨‍👩‍👧" to Pair("#EA580C", "#F59E0B")),
+            "Fantasy" to ("✨" to Pair("#701A75", "#A21CAF")),
+            "History" to ("📜" to Pair("#78350F", "#92400E")),
+            "Horror" to ("👻" to Pair("#581C87", "#18181B")),
+            "Mystery" to ("🔍" to Pair("#312E81", "#1E1B4B")),
+            "Romance" to ("❤️" to Pair("#BE185D", "#E11D48")),
+            "Sci-Fi" to ("🛸" to Pair("#4338CA", "#6366F1")),
+            "Sport" to ("⚽" to Pair("#15803D", "#16A34A")),
+            "Thriller" to ("🔪" to Pair("#881337", "#4C0519")),
+            "War" to ("⚔️" to Pair("#3F3F46", "#27272A")),
+            "Western" to ("🤠" to Pair("#713F12", "#854D0E"))
         )
 
-        val scrollView = ScrollView(this).apply {
-            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
-        }
+        var dialog: AlertDialog? = null
 
-        val container = LinearLayout(this).apply {
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#121212"))
             val pad = UITheme.dpToPx(this@MainActivity, 16)
             setPadding(pad, pad, pad, pad)
         }
 
-        val title = TextView(this).apply {
-            text = "🎭 Select Movie / Series Genre"
-            UITheme.applySectionTitleStyle(this)
-            setTextColor(Color.WHITE)
-            setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 14))
+        // Top Header Row (Title & Close Button)
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val pB = UITheme.dpToPx(this@MainActivity, 10)
+            setPadding(0, 0, 0, pB)
         }
-        container.addView(title)
 
-        var dialog: AlertDialog? = null
+        val titleContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
 
-        for (i in genreIcons.indices) {
-            val genreCard = TextView(this).apply {
-                text = genreIcons[i]
-                UITheme.applyCardTitleStyle(this)
-                background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 14, UITheme.STROKE_COLOR)
-                val pV = UITheme.dpToPx(this@MainActivity, 12)
-                val pH = UITheme.dpToPx(this@MainActivity, 16)
-                setPadding(pH, pV, pH, pV)
-                isClickable = true
-                isFocusable = true
+        val title = TextView(this).apply {
+            text = "Explore Genres"
+            textSize = 20f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+        }
+        titleContainer.addView(title)
+
+        val subtitle = TextView(this).apply {
+            text = "Browse titles by your favorite category"
+            textSize = 12f
+            setTextColor(Color.parseColor("#9CA3AF"))
+        }
+        titleContainer.addView(subtitle)
+        headerRow.addView(titleContainer)
+
+        val closeBtn = TextView(this).apply {
+            text = "✕"
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            val s = UITheme.dpToPx(this@MainActivity, 36)
+            layoutParams = LinearLayout.LayoutParams(s, s)
+            background = UITheme.createCardShape(this@MainActivity, "#26FFFFFF", 18, "#20FFFFFF", 1)
+            setOnClickListener { dialog?.dismiss() }
+        }
+        headerRow.addView(closeBtn)
+        root.addView(headerRow)
+
+        // Format Toggle Selector: [ 🎬 Movies ]   [ 📺 TV Shows ]
+        val toggleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            val pV = UITheme.dpToPx(this@MainActivity, 6)
+            setPadding(0, pV, 0, pV * 2)
+        }
+
+        var updateToggleUI: (() -> Unit)? = null
+
+        val moviesPill = TextView(this).apply {
+            text = "🎬 Movies"
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            val pH = UITheme.dpToPx(this@MainActivity, 20)
+            val pV = UITheme.dpToPx(this@MainActivity, 8)
+            setPadding(pH, pV, pH, pV)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 6), 0)
+            }
+            setOnClickListener {
+                isGenreMoviesMode = true
+                updateToggleUI?.invoke()
+            }
+        }
+        toggleRow.addView(moviesPill)
+
+        val seriesPill = TextView(this).apply {
+            text = "📺 TV Shows"
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            val pH = UITheme.dpToPx(this@MainActivity, 20)
+            val pV = UITheme.dpToPx(this@MainActivity, 8)
+            setPadding(pH, pV, pH, pV)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(UITheme.dpToPx(this@MainActivity, 6), 0, 0, 0)
+            }
+            setOnClickListener {
+                isGenreMoviesMode = false
+                updateToggleUI?.invoke()
+            }
+        }
+        toggleRow.addView(seriesPill)
+
+        updateToggleUI = {
+            if (isGenreMoviesMode) {
+                moviesPill.setTextColor(Color.WHITE)
+                moviesPill.background = UITheme.createCardShape(this@MainActivity, "#E50914", 16, "#FFFFFF", 0)
+                seriesPill.setTextColor(Color.parseColor("#9CA3AF"))
+                seriesPill.background = UITheme.createCardShape(this@MainActivity, "#1E222D", 16, "#33FFFFFF", 1)
+            } else {
+                seriesPill.setTextColor(Color.WHITE)
+                seriesPill.background = UITheme.createCardShape(this@MainActivity, "#E50914", 16, "#FFFFFF", 0)
+                moviesPill.setTextColor(Color.parseColor("#9CA3AF"))
+                moviesPill.background = UITheme.createCardShape(this@MainActivity, "#1E222D", 16, "#33FFFFFF", 1)
+            }
+        }
+        updateToggleUI.invoke()
+        root.addView(toggleRow)
+
+        // 2-Column Responsive Grid of Gradient Genre Cards
+        val scrollView = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                UITheme.dpToPx(this@MainActivity, 460)
+            )
+            isVerticalScrollBarEnabled = false
+        }
+
+        val gridContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        val cardHeight = UITheme.dpToPx(this@MainActivity, 74)
+        val gap = UITheme.dpToPx(this@MainActivity, 8)
+
+        for (i in genres.indices step 2) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
-                }
-                setOnClickListener {
-                    dialog?.dismiss()
-                    val genre = genres[i]
-                    showFormatSelectionDialog(genre)
-                }
+                ).apply { setMargins(0, 0, 0, gap) }
             }
-            container.addView(genreCard)
+
+            // Left Card
+            val (name1, pair1) = genres[i]
+            val (emoji1, colors1) = pair1
+            val card1 = createGenreCard(name1, emoji1, colors1.first, colors1.second, cardHeight) {
+                dialog?.dismiss()
+                onGenreSelected(name1)
+            }
+            val lp1 = LinearLayout.LayoutParams(0, cardHeight, 1f).apply {
+                setMargins(0, 0, gap / 2, 0)
+            }
+            card1.layoutParams = lp1
+            row.addView(card1)
+
+            // Right Card
+            if (i + 1 < genres.size) {
+                val (name2, pair2) = genres[i + 1]
+                val (emoji2, colors2) = pair2
+                val card2 = createGenreCard(name2, emoji2, colors2.first, colors2.second, cardHeight) {
+                    dialog?.dismiss()
+                    onGenreSelected(name2)
+                }
+                val lp2 = LinearLayout.LayoutParams(0, cardHeight, 1f).apply {
+                    setMargins(gap / 2, 0, 0, 0)
+                }
+                card2.layoutParams = lp2
+                row.addView(card2)
+            } else {
+                val emptySpace = View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, cardHeight, 1f)
+                }
+                row.addView(emptySpace)
+            }
+
+            gridContainer.addView(row)
         }
 
-        scrollView.addView(container)
+        scrollView.addView(gridContainer)
+        root.addView(scrollView)
 
         dialog = AlertDialog.Builder(this)
-            .setView(scrollView)
-            .setNegativeButton("Cancel", null)
+            .setView(root)
             .create()
+
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.show()
     }
 
-    private fun showFormatSelectionDialog(genre: String) {
-        val optionsView = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = UITheme.createCardShape(this@MainActivity, UITheme.CARD, 18, UITheme.STROKE_COLOR, 1)
-            val pad = UITheme.dpToPx(this@MainActivity, 20)
-            setPadding(pad, pad, pad, pad)
+    private fun createGenreCard(
+        name: String,
+        emoji: String,
+        colorStart: String,
+        colorEnd: String,
+        height: Int,
+        onClick: () -> Unit
+    ): View {
+        val gradient = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(Color.parseColor(colorStart), Color.parseColor(colorEnd))
+        ).apply {
+            cornerRadius = UITheme.dpToPx(this@MainActivity, 14).toFloat()
         }
 
-        val title = TextView(this).apply {
-            text = "Select Category for $genre"
-            UITheme.applySectionTitleStyle(this)
-            setTextColor(Color.WHITE)
-            setPadding(0, 0, 0, UITheme.dpToPx(this@MainActivity, 16))
-        }
-        optionsView.addView(title)
-
-        var fmtDialog: AlertDialog? = null
-
-        val movieCard = TextView(this).apply {
-            text = "🎬 Top $genre Movies"
-            UITheme.applyCardTitleStyle(this)
-            background = UITheme.createRippleCardShape(this@MainActivity, UITheme.SURFACE, 14, UITheme.PRIMARY)
-            val pV = UITheme.dpToPx(this@MainActivity, 14)
-            val pH = UITheme.dpToPx(this@MainActivity, 16)
-            setPadding(pH, pV, pH, pV)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = gradient
+            val pH = UITheme.dpToPx(this@MainActivity, 12)
+            setPadding(pH, 0, pH, 0)
             isClickable = true
             isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 10)) }
-            setOnClickListener {
-                fmtDialog?.dismiss()
-                val catalogId = "movie/top/genre=$genre"
-                val label = "🎬 Top $genre Movies"
-                selectedCategory = catalogId
-                selectedLabel = label
-                updateCategoryBanner(label)
-                updateTabSelection(catalogId)
-                loadInitialCinemeta(catalogId, label)
-            }
-        }
-        optionsView.addView(movieCard)
 
-        val seriesCard = TextView(this).apply {
-            text = "📺 Top $genre Series"
-            UITheme.applyCardTitleStyle(this)
-            background = UITheme.createRippleCardShape(this@MainActivity, UITheme.SURFACE, 14, UITheme.ACCENT_BLUE)
-            val pV = UITheme.dpToPx(this@MainActivity, 14)
-            val pH = UITheme.dpToPx(this@MainActivity, 16)
-            setPadding(pH, pV, pH, pV)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                fmtDialog?.dismiss()
-                val catalogId = "series/top/genre=$genre"
-                val label = "📺 Top $genre Series"
-                selectedCategory = catalogId
-                selectedLabel = label
-                updateCategoryBanner(label)
-                updateTabSelection(catalogId)
-                loadInitialCinemeta(catalogId, label)
+            val emojiView = TextView(this@MainActivity).apply {
+                text = emoji
+                textSize = 22f
+                val pR = UITheme.dpToPx(this@MainActivity, 10)
+                setPadding(0, 0, pR, 0)
             }
-        }
-        optionsView.addView(seriesCard)
+            addView(emojiView)
 
-        fmtDialog = AlertDialog.Builder(this)
-            .setView(optionsView)
-            .setNegativeButton("Back") { _, _ -> showGenreSelectionDialog() }
-            .create()
-        fmtDialog.show()
+            val textContainer = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val titleView = TextView(this@MainActivity).apply {
+                text = name
+                textSize = 14f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+            }
+            textContainer.addView(titleView)
+
+            val subView = TextView(this@MainActivity).apply {
+                text = "Explore ›"
+                textSize = 11f
+                setTextColor(Color.parseColor("#E5E7EB"))
+            }
+            textContainer.addView(subView)
+
+            addView(textContainer)
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun onGenreSelected(genre: String) {
+        val targetCatalog = if (isGenreMoviesMode) "movie/top/genre=$genre" else "series/top/genre=$genre"
+        val label = if (isGenreMoviesMode) "🎬 Top $genre Movies" else "📺 Top $genre Series"
+        selectedCategory = targetCatalog
+        selectedLabel = label
+        updateCategoryBanner("$label  •  [ 🎭 Genres ]  •  [ 🏠 Home ]", isClickable = true) {
+            showNetflixGenreDashboard()
+        }
+        updateTabSelection("genres/picker")
+        loadInitialCinemeta(targetCatalog, label)
     }
 
     // ── Catalog Loading & Endless Pagination ────────────────────
 
-    private fun loadLibraryCatalog(label: String = "📚 Library") {
+    private fun loadLibraryCatalog(label: String = "📚 My List") {
         isInSearchMode = false
         hasMoreItems = false
         isLoadingMore = false
@@ -1154,26 +1349,412 @@ class MainActivity : AppCompatActivity() {
         mediaAdapter?.notifyDataSetChanged()
 
         if (libraryItems.isEmpty()) {
-            loadingText.text = "Your Library is empty. Bookmark movies, series, or Telegram media using the 🔖⭐ icon on any poster to save them here!"
+            loadingText.text = "Your List is empty. Tap the 🔖 star icon on any movie or TV series poster to add it to My List!"
             loadingText.visibility = android.view.View.VISIBLE
         } else {
             loadingText.visibility = android.view.View.GONE
-            updateCategoryBanner("$label  •  [ 🗑️ Clear Library ]", isClickable = true) {
+            updateCategoryBanner("$label (${libraryItems.size} titles)  •  [ 🗑️ Clear List ]  •  [ ⬅ Back ]", isClickable = true) {
+                val opts = arrayOf("🗑️ Clear My List", "🏠 Back to Home")
                 AlertDialog.Builder(this)
-                    .setTitle("Clear Library?")
-                    .setMessage("Are you sure you want to remove all bookmarked items from your Library?")
-                    .setPositiveButton("🗑️ Clear All") { _, _ ->
-                        LibraryManager.clearLibrary(this)
-                        mediaList.clear()
-                        mediaAdapter?.notifyDataSetChanged()
-                        updateCategoryBanner(label)
-                        loadingText.text = "Your Library is empty."
-                        loadingText.visibility = android.view.View.VISIBLE
-                        Toast.makeText(this, "Library cleared", Toast.LENGTH_SHORT).show()
+                    .setTitle("📚 My List Options")
+                    .setItems(opts) { _, which ->
+                        if (which == 0) {
+                            LibraryManager.clearLibrary(this)
+                            mediaList.clear()
+                            mediaAdapter?.notifyDataSetChanged()
+                            updateCategoryBanner(label)
+                            loadingText.text = "Your List is empty."
+                            loadingText.visibility = android.view.View.VISIBLE
+                            Toast.makeText(this, "My List cleared", Toast.LENGTH_SHORT).show()
+                        } else {
+                            loadNetflixHome("home")
+                        }
                     }
                     .setNegativeButton("Cancel", null)
                     .show()
             }
+        }
+    }
+
+    private fun loadAutoLibrary(filter: String = "auto/all", label: String = "All Media", forceScan: Boolean = false) {
+        isInSearchMode = false
+        currentOpenChannelId = null
+        if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+        if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.GONE
+        if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
+        hasMoreItems = false
+        isLoadingMore = false
+
+        if (filter == "library/list") {
+            loadLibraryCatalog(label)
+            return
+        }
+
+        if (filter == "history/list") {
+            hasMoreItems = false
+            isLoadingMore = false
+            mediaList.clear()
+            val history = loadWatchHistory()
+            mediaList.addAll(history)
+            mediaAdapter?.notifyDataSetChanged()
+            if (history.isEmpty()) {
+                updateCategoryBanner(label)
+                loadingText.text = "Watch history is empty. Movies and series you open will be automatically saved here!"
+                loadingText.visibility = android.view.View.VISIBLE
+            } else {
+                loadingText.visibility = android.view.View.GONE
+                updateCategoryBanner("$label  •  [ 🗑️ Clear History ]", isClickable = true) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Clear Watch History?")
+                        .setMessage("Are you sure you want to permanently delete your entire Watch History and saved playback positions?")
+                        .setPositiveButton("Clear All") { _, _ ->
+                            clearWatchHistory()
+                            mediaList.clear()
+                            mediaAdapter?.notifyDataSetChanged()
+                            loadingText.text = "Watch history cleared."
+                            loadingText.visibility = android.view.View.VISIBLE
+                            updateCategoryBanner(label)
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            }
+            return
+        }
+
+        val cached = AutoLibraryManager.getCachedLibrary(this)
+        if (cached.isNotEmpty() && !forceScan) {
+            val filtered = when (filter) {
+                "auto/movies" -> cached.filter { it.type != "auto_series" }
+                "auto/series" -> cached.filter { it.type == "auto_series" }
+                else -> cached
+            }
+            mediaList.clear()
+            mediaList.addAll(filtered)
+            mediaAdapter?.notifyDataSetChanged()
+            loadingText.visibility = android.view.View.GONE
+            updateCategoryBanner("$label (${filtered.size} items)")
+            return
+        }
+
+        // Cache empty or manual scan requested
+        scanAllChannelsLibrary(filter)
+    }
+
+    private fun scanAllChannelsLibrary(filter: String = "auto/all") {
+        mediaList.clear()
+        mediaAdapter?.notifyDataSetChanged()
+        loadingText.visibility = android.view.View.VISIBLE
+        loadingText.text = "Initializing auto-scanner across all joined channels..."
+
+        lifecycleScope.launch(Dispatchers.Main) {
+            val library = AutoLibraryManager.scanAndBuildLibrary(this@MainActivity) { progress ->
+                lifecycleScope.launch(Dispatchers.Main) {
+                    loadingText.text = progress
+                }
+            }
+
+            loadingText.visibility = android.view.View.GONE
+            if (library.isEmpty()) {
+                loadingText.visibility = android.view.View.VISIBLE
+                loadingText.text = "No video files (>= 50MB) detected in your joined channels."
+            } else {
+                val filtered = when (filter) {
+                    "auto/movies" -> library.filter { it.type != "auto_series" }
+                    "auto/series" -> library.filter { it.type == "auto_series" }
+                    else -> library
+                }
+                mediaList.clear()
+                mediaList.addAll(filtered)
+                mediaAdapter?.notifyDataSetChanged()
+                updateCategoryBanner("$selectedLabel (${filtered.size} items)")
+                Toast.makeText(this@MainActivity, "Auto-detected ${library.size} movies & TV series!", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun loadNetflixHome(mode: String = "home") {
+        isInSearchMode = false
+        currentOpenChannelId = null
+        if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+        if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.GONE
+        if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
+        currentSkip = 0
+        hasMoreItems = false
+        isLoadingMore = false
+
+        selectedCategory = when (mode) {
+            "movies" -> "movies/netflix"
+            "series" -> "series/netflix"
+            else -> "home/netflix"
+        }
+        selectedLabel = when (mode) {
+            "movies" -> "🎬 Movies"
+            "series" -> "📺 TV Shows"
+            else -> "🏠 Home"
+        }
+        updateTabSelection(selectedCategory)
+        updateCategoryBanner(selectedLabel)
+
+        val cachedHome = cinemetaCatalogCache["netflix_home_$mode"]
+        if (!cachedHome.isNullOrEmpty()) {
+            mediaList.clear()
+            mediaList.addAll(cachedHome)
+            mediaAdapter?.notifyDataSetChanged()
+            loadingText.visibility = android.view.View.GONE
+            return
+        }
+
+        loadingText.text = "Loading Netflix Experience from Cinemeta..."
+        loadingText.visibility = android.view.View.VISIBLE
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val rows = mutableListOf<MediaItem>()
+
+                // Concurrently fetch catalog rows from Cinemeta
+                val topMoviesDeferred = async { fetchCinemetaRow("movie/top") }
+                val topSeriesDeferred = async { fetchCinemetaRow("series/top") }
+                val actionDeferred = async { fetchCinemetaRow("movie/top/genre=Action") }
+                val comedyDeferred = async { fetchCinemetaRow("movie/top/genre=Comedy") }
+                val scifiDeferred = async { fetchCinemetaRow("movie/top/genre=Sci-Fi") }
+                val thrillerDeferred = async { fetchCinemetaRow("movie/top/genre=Thriller") }
+                val newMoviesDeferred = async { fetchCinemetaRow("movie/year") }
+                val imdbTopDeferred = async { fetchCinemetaRow("movie/imdbRating") }
+                val dramaSeriesDeferred = async { fetchCinemetaRow("series/top/genre=Drama") }
+                val animationDeferred = async { fetchCinemetaRow("series/top/genre=Animation") }
+
+                val topMovies = topMoviesDeferred.await()
+                val topSeries = topSeriesDeferred.await()
+
+                // Hero Featured Billboard (Top #1 Title)
+                val featured = if (mode == "series") topSeries.firstOrNull() else topMovies.firstOrNull()
+                if (featured != null) {
+                    rows.add(featured.copy(type = "hero_billboard"))
+                }
+
+                if (mode == "home" || mode == "movies") {
+                    if (topMovies.isNotEmpty()) {
+                        rows.add(
+                            MediaItem(
+                                id = "row_top_movies",
+                                title = "🔥 Top 10 Movies Today",
+                                posterUrl = "",
+                                year = "",
+                                rating = "",
+                                overview = "",
+                                type = "horizontal_row",
+                                isTop10Row = true,
+                                catalogTarget = "movie/top",
+                                horizontalItems = topMovies.take(10)
+                            )
+                        )
+                    }
+                }
+
+                if (mode == "home" || mode == "series") {
+                    if (topSeries.isNotEmpty()) {
+                        rows.add(
+                            MediaItem(
+                                id = "row_top_series",
+                                title = "📺 Top 10 TV Shows Today",
+                                posterUrl = "",
+                                year = "",
+                                rating = "",
+                                overview = "",
+                                type = "horizontal_row",
+                                isTop10Row = true,
+                                catalogTarget = "series/top",
+                                horizontalItems = topSeries.take(10)
+                            )
+                        )
+                    }
+                }
+
+                val actionMovies = actionDeferred.await()
+                if (actionMovies.isNotEmpty()) {
+                    rows.add(
+                        MediaItem(
+                            id = "row_action",
+                            title = "💥 Action & Adventure",
+                            posterUrl = "",
+                            year = "",
+                            rating = "",
+                            overview = "",
+                            type = "horizontal_row",
+                            catalogTarget = "movie/top/genre=Action",
+                            horizontalItems = actionMovies
+                        )
+                    )
+                }
+
+                val newMovies = newMoviesDeferred.await()
+                if (newMovies.isNotEmpty()) {
+                    rows.add(
+                        MediaItem(
+                            id = "row_new_movies",
+                            title = "🍿 New Releases",
+                            posterUrl = "",
+                            year = "",
+                            rating = "",
+                            overview = "",
+                            type = "horizontal_row",
+                            catalogTarget = "movie/year",
+                            horizontalItems = newMovies
+                        )
+                    )
+                }
+
+                val comedyMovies = comedyDeferred.await()
+                if (comedyMovies.isNotEmpty()) {
+                    rows.add(
+                        MediaItem(
+                            id = "row_comedy",
+                            title = "😂 Laugh-Out-Loud Comedies",
+                            posterUrl = "",
+                            year = "",
+                            rating = "",
+                            overview = "",
+                            type = "horizontal_row",
+                            catalogTarget = "movie/top/genre=Comedy",
+                            horizontalItems = comedyMovies
+                        )
+                    )
+                }
+
+                val scifiMovies = scifiDeferred.await()
+                if (scifiMovies.isNotEmpty()) {
+                    rows.add(
+                        MediaItem(
+                            id = "row_scifi",
+                            title = "🔮 Sci-Fi & Fantasy",
+                            posterUrl = "",
+                            year = "",
+                            rating = "",
+                            overview = "",
+                            type = "horizontal_row",
+                            catalogTarget = "movie/top/genre=Sci-Fi",
+                            horizontalItems = scifiMovies
+                        )
+                    )
+                }
+
+                val thrillerMovies = thrillerDeferred.await()
+                if (thrillerMovies.isNotEmpty()) {
+                    rows.add(
+                        MediaItem(
+                            id = "row_thriller",
+                            title = "😱 Edge-of-Your-Seat Thrillers",
+                            posterUrl = "",
+                            year = "",
+                            rating = "",
+                            overview = "",
+                            type = "horizontal_row",
+                            catalogTarget = "movie/top/genre=Thriller",
+                            horizontalItems = thrillerMovies
+                        )
+                    )
+                }
+
+                val imdbTop = imdbTopDeferred.await()
+                if (imdbTop.isNotEmpty()) {
+                    rows.add(
+                        MediaItem(
+                            id = "row_imdb_top",
+                            title = "⭐ Critically Acclaimed (Top IMDb)",
+                            posterUrl = "",
+                            year = "",
+                            rating = "",
+                            overview = "",
+                            type = "horizontal_row",
+                            catalogTarget = "movie/imdbRating",
+                            horizontalItems = imdbTop
+                        )
+                    )
+                }
+
+                val dramaSeries = dramaSeriesDeferred.await()
+                if (dramaSeries.isNotEmpty()) {
+                    rows.add(
+                        MediaItem(
+                            id = "row_drama_series",
+                            title = "🎭 Bingeworthy TV Dramas",
+                            posterUrl = "",
+                            year = "",
+                            rating = "",
+                            overview = "",
+                            type = "horizontal_row",
+                            catalogTarget = "series/top/genre=Drama",
+                            horizontalItems = dramaSeries
+                        )
+                    )
+                }
+
+                val animation = animationDeferred.await()
+                if (animation.isNotEmpty()) {
+                    rows.add(
+                        MediaItem(
+                            id = "row_animation",
+                            title = "👶 Anime & Animation",
+                            posterUrl = "",
+                            year = "",
+                            rating = "",
+                            overview = "",
+                            type = "horizontal_row",
+                            catalogTarget = "series/top/genre=Animation",
+                            horizontalItems = animation
+                        )
+                    )
+                }
+
+                if (rows.isNotEmpty()) {
+                    cinemetaCatalogCache["netflix_home_$mode"] = rows
+                }
+
+                withContext(Dispatchers.Main) {
+                    mediaList.clear()
+                    mediaList.addAll(rows)
+                    mediaAdapter?.notifyDataSetChanged()
+                    loadingText.visibility = android.view.View.GONE
+                    recyclerView.scrollToPosition(0)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    loadingText.text = "Failed to load rows. Showing fallback."
+                    loadFallbackCatalog()
+                }
+            }
+        }
+    }
+
+    private suspend fun fetchCinemetaRow(catalogId: String): List<MediaItem> = withContext(Dispatchers.IO) {
+        if (cinemetaCatalogCache.containsKey(catalogId)) {
+            val cached = cinemetaCatalogCache[catalogId]
+            if (!cached.isNullOrEmpty()) return@withContext cached
+        }
+        try {
+            val urlString = if (catalogId.contains("genre=")) {
+                "https://v3-cinemeta.strem.io/catalog/$catalogId&skip=0.json"
+            } else {
+                "https://v3-cinemeta.strem.io/catalog/$catalogId.json"
+            }
+            val url = URL(urlString)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            connection.connectTimeout = 8000
+            connection.readTimeout = 8000
+            val text = connection.inputStream.bufferedReader().readText()
+            val json = JSONObject(text)
+            val metas = json.optJSONArray("metas") ?: JSONArray()
+            val type = if (catalogId.startsWith("series")) "series" else "movie"
+            val results = parseMetas(metas, type)
+            if (results.isNotEmpty()) {
+                cinemetaCatalogCache[catalogId] = results
+            }
+            results
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 
@@ -1186,6 +1767,21 @@ class MainActivity : AppCompatActivity() {
         currentSkip = 0
         hasMoreItems = true
         isLoadingMore = true
+
+        if (catalogId == "home/netflix") {
+            loadNetflixHome("home")
+            return
+        }
+
+        if (catalogId == "movies/netflix") {
+            loadNetflixHome("movies")
+            return
+        }
+
+        if (catalogId == "series/netflix") {
+            loadNetflixHome("series")
+            return
+        }
 
         if (catalogId == "library/list") {
             loadLibraryCatalog(label)
@@ -1263,13 +1859,19 @@ class MainActivity : AppCompatActivity() {
                 val metas = json.optJSONArray("metas") ?: JSONArray()
 
                 val results = parseMetas(metas, type)
-                if (results.isNotEmpty()) {
-                    cinemetaCatalogCache[catalogId] = results
+                val finalItems = if (results.isNotEmpty() && !catalogId.contains("genre=") && !catalogId.contains("search=") && catalogId != "history/list" && catalogId != "library/list") {
+                    val featured = results.first().copy(type = "hero_billboard")
+                    listOf(featured) + results.drop(1)
+                } else {
+                    results
+                }
+                if (finalItems.isNotEmpty()) {
+                    cinemetaCatalogCache[catalogId] = finalItems
                 }
 
                 withContext(Dispatchers.Main) {
                     mediaList.clear()
-                    mediaList.addAll(results)
+                    mediaList.addAll(finalItems)
                     hasMoreItems = results.size >= 10
                     mediaAdapter?.notifyDataSetChanged()
                     loadingText.visibility = android.view.View.GONE
@@ -1286,7 +1888,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadMoreCinemeta() {
-        if (isLoadingMore || !hasMoreItems || isInSearchMode) return
+        if (isLoadingMore || !hasMoreItems || isInSearchMode || selectedCategory.endsWith("/netflix")) return
 
         isLoadingMore = true
         currentSkip += if (selectedCategory.contains("genre=")) 50 else 100
@@ -1339,43 +1941,188 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun performSearch(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return
         isInSearchMode = true
-        updateCategoryBanner("Search: \"$query\"")
-        loadingText.text = "Searching Cinemeta..."
+        updateCategoryBanner("Search: \"$trimmed\"  •  [ ⬅ Back to Home ]", isClickable = true) {
+            isInSearchMode = false
+            searchInput.setText("")
+            loadNetflixHome("home")
+        }
+
+        loadingText.text = "Searching online metadata & channels for \"$trimmed\"..."
         loadingText.visibility = android.view.View.VISIBLE
 
         CoroutineScope(Dispatchers.IO).launch {
-            val allResults = coroutineScope {
-                listOf("movie", "series").map { type ->
-                    async(Dispatchers.IO) {
-                        try {
-                            val url = URL("https://v3-cinemeta.strem.io/catalog/$type/top/search=${java.net.URLEncoder.encode(query, "UTF-8")}.json")
-                            val connection = url.openConnection() as HttpURLConnection
-                            connection.requestMethod = "GET"
-                            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                            connection.connectTimeout = 5000
-                            connection.readTimeout = 5000
-                            val text = connection.inputStream.bufferedReader().readText()
-                            val json = JSONObject(text)
-                            val metas = json.optJSONArray("metas") ?: JSONArray()
-                            parseMetas(metas, type)
-                        } catch (_: Exception) {
-                            emptyList()
+            val encodedQuery = java.net.URLEncoder.encode(trimmed, "UTF-8")
+
+            // Concurrently query movies and series from Cinemeta
+            val moviesDeferred = async(Dispatchers.IO) {
+                fetchCinemetaSearchRow("movie", encodedQuery)
+            }
+            val seriesDeferred = async(Dispatchers.IO) {
+                fetchCinemetaSearchRow("series", encodedQuery)
+            }
+
+            // Concurrently query Telegram channels using native search
+            val telegramDeferred = async(Dispatchers.IO) {
+                val results = mutableListOf<MediaItem>()
+                try {
+                    val messages = TelegramRepository.searchVideoMessages(trimmed, limit = 50, includeAudio = true)
+                    val grouped = TelegramRepository.groupAndPreserveOrder(messages)
+                    for (item in grouped) {
+                        when (item) {
+                            is DisplayItem.Single -> {
+                                val msg = item.message
+                                val streamUrl = TelegramRepository.getStreamUrl(msg.fileId, msg.fileName, msg.fileSize, msg.chatId, msg.messageId)
+                                val audioTag = TdlibManager.extractAudioTags(msg.fileName, msg.caption ?: "")
+                                val parsedQ = TelegramSearchMatcher.parseQuality(msg.fileName)
+                                val qTag = if (parsedQ != "Unknown") parsedQ else "HD"
+                                val sizeStr = TdlibManager.formatBytes(msg.fileSize)
+                                val thumbUrl = TelegramRepository.getThumbnailUrl(msg.chatId, msg.messageId, msg.thumbnailFileId)
+                                results.add(
+                                    MediaItem(
+                                        id = "${msg.chatId}_${msg.messageId}",
+                                        title = msg.fileName.ifBlank { "Telegram Media" },
+                                        posterUrl = thumbUrl,
+                                        year = if (audioTag.isNotBlank()) audioTag else qTag,
+                                        rating = sizeStr,
+                                        overview = msg.caption?.takeIf { it.isNotBlank() } ?: "From Telegram Channel",
+                                        type = "telegram_media",
+                                        streamUrl = streamUrl,
+                                        originalFileName = msg.fileName
+                                    )
+                                )
+                            }
+                            is DisplayItem.Group -> {
+                                val group = item.group
+                                val first = group.parts.firstOrNull() ?: continue
+                                val freshIds = group.parts.map { it.fileId }
+                                val partSizes = group.parts.map { it.fileSize }
+                                val groupChats = group.parts.map { it.chatId }
+                                val groupMsgs = group.parts.map { it.messageId }
+                                val mergedUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes, groupChats, groupMsgs)
+                                val totalSize = partSizes.sum()
+                                val audioTag = TdlibManager.extractAudioTags(group.baseName)
+                                results.add(
+                                    MediaItem(
+                                        id = "group_${first.chatId}_${group.baseName}",
+                                        title = group.baseName,
+                                        posterUrl = "",
+                                        year = if (audioTag.isNotBlank()) audioTag else "Split Video",
+                                        rating = TdlibManager.formatBytes(totalSize),
+                                        overview = "Split into ${group.parts.size} parts",
+                                        type = "telegram_media",
+                                        streamUrl = mergedUrl,
+                                        originalFileName = group.baseName
+                                    )
+                                )
+                            }
                         }
                     }
-                }.awaitAll().flatten()
+                } catch (e: Exception) {
+                    android.util.Log.e("MainActivity", "Search telegram error: ${e.message}")
+                }
+                results
+            }
+
+            // Also search local channel library cache
+            val cachedLib = AutoLibraryManager.getCachedLibrary(this@MainActivity)
+            val matchedLib = cachedLib.filter { 
+                it.title.contains(trimmed, ignoreCase = true) || 
+                it.originalFileName.contains(trimmed, ignoreCase = true) ||
+                it.overview.contains(trimmed, ignoreCase = true)
+            }
+
+            val movies = moviesDeferred.await()
+            val series = seriesDeferred.await()
+            val telegramItems = telegramDeferred.await()
+
+            val combinedChannels = (telegramItems + matchedLib).distinctBy {
+                if (it.id.isNotBlank()) it.id else it.streamUrl
+            }
+
+            val rows = mutableListOf<MediaItem>()
+
+            // 1. Matched Telegram Channel Files (if any)
+            if (combinedChannels.isNotEmpty()) {
+                rows.add(
+                    MediaItem(
+                        id = "search_row_channels",
+                        title = "📁 Telegram Channels (${combinedChannels.size})",
+                        posterUrl = "",
+                        year = "",
+                        rating = "",
+                        overview = "",
+                        type = "horizontal_row",
+                        catalogTarget = "",
+                        horizontalItems = combinedChannels
+                    )
+                )
+            }
+
+            // 2. Movies Matching Query (Horizontal Scrolling Shelf)
+            if (movies.isNotEmpty()) {
+                rows.add(
+                    MediaItem(
+                        id = "search_row_movies",
+                        title = "🎬 Movies (${movies.size})",
+                        posterUrl = "",
+                        year = "",
+                        rating = "",
+                        overview = "",
+                        type = "horizontal_row",
+                        catalogTarget = "movie/top/search=$encodedQuery",
+                        horizontalItems = movies
+                    )
+                )
+            }
+
+            // 3. TV Series Matching Query (Horizontal Scrolling Shelf)
+            if (series.isNotEmpty()) {
+                rows.add(
+                    MediaItem(
+                        id = "search_row_series",
+                        title = "📺 TV Shows (${series.size})",
+                        posterUrl = "",
+                        year = "",
+                        rating = "",
+                        overview = "",
+                        type = "horizontal_row",
+                        catalogTarget = "series/top/search=$encodedQuery",
+                        horizontalItems = series
+                    )
+                )
             }
 
             withContext(Dispatchers.Main) {
                 mediaList.clear()
-                if (allResults.isNotEmpty()) {
-                    mediaList.addAll(allResults)
+                if (rows.isNotEmpty()) {
+                    mediaList.addAll(rows)
                     loadingText.visibility = android.view.View.GONE
                 } else {
-                    loadingText.text = "No results found for \"$query\""
+                    loadingText.text = "No results found for \"$trimmed\""
+                    loadingText.visibility = android.view.View.VISIBLE
                 }
                 mediaAdapter?.notifyDataSetChanged()
             }
+        }
+    }
+
+    private fun fetchCinemetaSearchRow(type: String, encodedQuery: String): List<MediaItem> {
+        return try {
+            val url = URL("https://v3-cinemeta.strem.io/catalog/$type/top/search=$encodedQuery.json")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            connection.connectTimeout = 6000
+            connection.readTimeout = 6000
+            val text = connection.inputStream.bufferedReader().readText()
+            val json = JSONObject(text)
+            val metas = json.optJSONArray("metas") ?: JSONArray()
+            parseMetas(metas, type)
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 
@@ -1400,12 +2147,12 @@ class MainActivity : AppCompatActivity() {
     private fun toggleCatalogMode() {
         isTelegramCatalogMode = !isTelegramCatalogMode
         if (isTelegramCatalogMode) {
-            tabScroll.visibility = android.view.View.GONE
-            modeToggleButton.text = "💬 Telegram Channels"
-            modeToggleButton.setTextColor(Color.parseColor(UITheme.SUCCESS))
-            modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.SUCCESS, 1)
+            tabScroll.visibility = android.view.View.VISIBLE
+            modeToggleButton.text = "🎬 ARVIO Stream"
+            modeToggleButton.setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
+            modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.ACCENT_BLUE, 1)
             updateCategoryBanner("Monitored Telegram Channels")
-            searchInput.hint = "Default Telegram search (all chats & channels)..."
+            searchInput.hint = "Search chats & channels..."
             if (currentOpenChannelId != null) {
                 if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
                 if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.VISIBLE
@@ -1422,14 +2169,15 @@ class MainActivity : AppCompatActivity() {
             if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.GONE
             if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
             tabScroll.visibility = android.view.View.VISIBLE
-            modeToggleButton.text = "🎬 Cinemeta"
-            modeToggleButton.setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
-            modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.ACCENT_BLUE, 1)
+            modeToggleButton.text = "💬 Channels"
+            modeToggleButton.setTextColor(Color.parseColor(UITheme.SUCCESS))
+            modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.SUCCESS, 1)
             searchInput.hint = "Search Movies & Series..."
-            selectedCategory = "movie/top"
-            selectedLabel = "Top Movies"
+            selectedCategory = "home/netflix"
+            selectedLabel = "🏠 Home"
             updateCategoryBanner(selectedLabel)
-            loadInitialCinemeta(selectedCategory, selectedLabel)
+            loadNetflixHome("home")
+            updateTabSelection(selectedCategory)
         }
     }
 
@@ -2869,6 +3617,226 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showAutoSeriesSeasons(item: MediaItem, isDownloadMode: Boolean = false) {
+        val seasons = AutoLibraryManager.seriesEpisodesMap[item.id]
+        if (seasons == null || seasons.isEmpty()) {
+            Toast.makeText(this, "No episodes detected for ${item.title}", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val seasonList = seasons.keys.sorted()
+        val scrollView = ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val headerTitle = TextView(this).apply {
+            text = item.title
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.parseColor(UITheme.PRIMARY))
+        }
+        container.addView(headerTitle)
+
+        val headerSub = TextView(this).apply {
+            text = if (isDownloadMode) "Select Season to Download" else "${seasonList.size} Season(s) • Select Season"
+            UITheme.applyMetadataStyle(this)
+            setPadding(0, UITheme.dpToPx(this@MainActivity, 2), 0, UITheme.dpToPx(this@MainActivity, 14))
+        }
+        container.addView(headerSub)
+
+        var dialog: AlertDialog? = null
+
+        for (seasonNum in seasonList) {
+            val episodes = seasons[seasonNum] ?: emptyList()
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 14, UITheme.STROKE_COLOR)
+                val pV = UITheme.dpToPx(this@MainActivity, 14)
+                val pH = UITheme.dpToPx(this@MainActivity, 16)
+                setPadding(pH, pV, pH, pV)
+                isClickable = true
+                isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
+                }
+                setOnClickListener {
+                    dialog?.dismiss()
+                    showAutoSeriesEpisodes(item, seasonNum, episodes, isDownloadMode)
+                }
+            }
+
+            val titleView = TextView(this).apply {
+                text = "Season $seasonNum"
+                UITheme.applyCardTitleStyle(this)
+                textSize = 15f
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            card.addView(titleView)
+
+            val badgeView = TextView(this).apply {
+                text = "${episodes.size} Episodes"
+                UITheme.applyCaptionStyle(this)
+                background = UITheme.createBadgeDrawable(this@MainActivity, UITheme.SECONDARY, 8)
+                setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
+            }
+            card.addView(badgeView)
+
+            container.addView(card)
+        }
+
+        scrollView.addView(container)
+
+        dialog = AlertDialog.Builder(this)
+            .setView(scrollView)
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.show()
+    }
+
+    private fun showAutoSeriesEpisodes(seriesItem: MediaItem, seasonNum: Int, episodes: List<EpisodeItem>, isDownloadMode: Boolean = false) {
+        val scrollView = ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = UITheme.dpToPx(this@MainActivity, 16)
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val headerTitle = TextView(this).apply {
+            text = "${seriesItem.title} — Season $seasonNum"
+            UITheme.applySectionTitleStyle(this)
+            setTextColor(Color.WHITE)
+        }
+        container.addView(headerTitle)
+
+        val headerSub = TextView(this).apply {
+            text = "${episodes.size} Episodes Detected • 100% Playable"
+            UITheme.applyMetadataStyle(this)
+            setPadding(0, UITheme.dpToPx(this@MainActivity, 2), 0, UITheme.dpToPx(this@MainActivity, 14))
+        }
+        container.addView(headerSub)
+
+        var dialog: AlertDialog? = null
+
+        for (ep in episodes) {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = UITheme.createRippleCardShape(this@MainActivity, UITheme.CARD, 12, UITheme.STROKE_COLOR)
+                val pV = UITheme.dpToPx(this@MainActivity, 12)
+                val pH = UITheme.dpToPx(this@MainActivity, 14)
+                setPadding(pH, pV, pH, pV)
+                isClickable = true
+                isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, UITheme.dpToPx(this@MainActivity, 8))
+                }
+                setOnClickListener {
+                    dialog?.dismiss()
+                    val epKey = "${seriesItem.id}_s${seasonNum}_e${ep.episode}"
+                    val playable = AutoLibraryManager.episodePlayablesMap[epKey]
+                    if (playable != null) {
+                        if (isDownloadMode) {
+                            handleDownloadAutoEpisode(playable, seriesItem.title)
+                        } else {
+                            playAutoEpisode(playable, seriesItem)
+                        }
+                    } else {
+                        Toast.makeText(this@MainActivity, "Stream not found", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+
+            val epTextCol = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val epTitle = TextView(this).apply {
+                text = ep.title
+                UITheme.applyCardTitleStyle(this)
+                textSize = 14f
+            }
+            epTextCol.addView(epTitle)
+
+            val epSub = TextView(this).apply {
+                text = ep.overview
+                UITheme.applyMetadataStyle(this)
+                textSize = 11f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            epTextCol.addView(epSub)
+            card.addView(epTextCol)
+
+            val playIcon = TextView(this).apply {
+                text = if (isDownloadMode) "📥" else "▶"
+                textSize = 14f
+                setTextColor(Color.parseColor(UITheme.PRIMARY))
+                setPadding(UITheme.dpToPx(this@MainActivity, 8), 0, 0, 0)
+            }
+            card.addView(playIcon)
+
+            container.addView(card)
+        }
+
+        scrollView.addView(container)
+
+        dialog = AlertDialog.Builder(this)
+            .setView(scrollView)
+            .setNegativeButton("Back", null)
+            .create()
+        dialog.show()
+    }
+
+    private fun playAutoEpisode(ep: AutoEpisode, seriesItem: MediaItem) {
+        Toast.makeText(this, "Loading ${ep.title}...", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch(Dispatchers.Main) {
+            val freshUrl = withContext(Dispatchers.IO) {
+                TelegramRepository.getFreshMediaUrl(ep.chatId, ep.messageId)
+            }
+            val playTitle = "${seriesItem.title} - S${ep.season}E${ep.episode}"
+            val fileName = ep.fileName.ifBlank { playTitle }
+            if (freshUrl != null && freshUrl.isNotBlank()) {
+                checkResumeAndSelectPlayer(freshUrl, playTitle, seriesItem.posterUrl, "${ep.chatId}_${ep.messageId}", fileName)
+            } else {
+                val backupUrl = TelegramStreamingProxy.refreshUrl(ep.streamUrl)
+                if (backupUrl.isNotBlank()) {
+                    checkResumeAndSelectPlayer(backupUrl, playTitle, seriesItem.posterUrl, "${ep.chatId}_${ep.messageId}", fileName)
+                } else {
+                    Toast.makeText(this@MainActivity, "Media stream unavailable", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun handleDownloadAutoEpisode(ep: AutoEpisode, seriesTitle: String) {
+        val title = "$seriesTitle - S${ep.season}E${ep.episode}"
+        DownloadManager.startDownload(
+            context = this,
+            title = title,
+            fileName = ep.fileName,
+            fileId = ep.fileId,
+            chatId = ep.chatId,
+            messageId = ep.messageId,
+            posterUrl = "",
+            totalBytes = ep.fileSize
+        )
+        Toast.makeText(this, "Download started: $title", Toast.LENGTH_SHORT).show()
+    }
+
     private fun showSeasonPicker(seriesTitle: String, seasons: Map<Int, List<EpisodeItem>>, posterUrl: String = "", isDownloadMode: Boolean = false, year: Int? = null) {
         val seasonList = seasons.keys.toList()
 
@@ -3670,12 +4638,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPlayerActionDialog(streamUrl: String, title: String, resumeMs: Long = 0L, mediaId: String = "") {
         val options = arrayOf(
-            "⚡ ExoPlayer (External App / Just Player)",
-            "🔴 MPVEX / MPV Player (External App)",
-            "🧡 VLC Player",
+            "🎬 Inbuilt MPV Player (In-App)",
+            "🔵 External MPV Player (is.xyz.mpv)",
+            "⚡ External ExoPlayer (Just Player / Next Player)",
+            "🔴 External MPVEX Player",
+            "🧡 External VLC Player",
             "📱 Choose From All Installed Players..."
         )
-        val keys = arrayOf("exo", "mpv", "vlc", "chooser")
+        val keys = arrayOf("internal", "mpv", "exo", "mpvex", "vlc", "chooser")
 
         val scrollView = ScrollView(this).apply {
             setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
@@ -3773,6 +4743,11 @@ class MainActivity : AppCompatActivity() {
             "$base.mkv"
         } else cleanDisplayTitle
 
+        if (playerType == "internal") {
+            PlayerActivity.launch(this, streamUrl, title, resumeMs, mediaId)
+            return
+        }
+
         val baseIntent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(Uri.parse(streamUrl), mimeType)
             putExtra("title", videoSafeTitle)
@@ -3869,41 +4844,196 @@ class MainActivity : AppCompatActivity() {
                         .show()
                 }
             }
-            "mpv", "mpvex" -> {
+            "mpv" -> {
+                // Internal Preferred Player: MPV Android (is.xyz.mpv)
                 val packagesToTry = listOf(
-                    "app.marlboroadvance.mpvex",
-                    "app.marlboroadvance.mpvex.debug",
-                    "com.marlboroadvance.mpvex",
                     "is.xyz.mpv",
                     "is.xyz.mpv.debug",
                     "id.nzxm.mpv"
                 )
                 var launched = false
-                for (pkg in packagesToTry) {
+                val explicitClasses = listOf(
+                    "is.xyz.mpv" to "is.xyz.mpv.MPVActivity",
+                    "is.xyz.mpv.debug" to "is.xyz.mpv.MPVActivity"
+                )
+                for ((pkg, cls) in explicitClasses) {
                     try {
-                        val intent = Intent(baseIntent).apply { setPackage(pkg) }
+                        val intent = Intent(baseIntent).apply {
+                            setClassName(pkg, cls)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        playerLauncher.launch(intent)
+                        launched = true
+                        break
+                    } catch (_: Exception) {}
+                    try {
+                        val intent = Intent(baseIntent).apply {
+                            setClassName(pkg, cls)
+                            setDataAndType(Uri.parse(streamUrl), "video/*")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
                         playerLauncher.launch(intent)
                         launched = true
                         break
                     } catch (_: Exception) {}
                 }
                 if (!launched) {
+                    for (pkg in packagesToTry) {
+                        try {
+                            val intent = Intent(baseIntent).apply {
+                                setPackage(pkg)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            playerLauncher.launch(intent)
+                            launched = true
+                            break
+                        } catch (_: Exception) {}
+                        try {
+                            val intent = Intent(baseIntent).apply {
+                                setPackage(pkg)
+                                setDataAndType(Uri.parse(streamUrl), "video/*")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            playerLauncher.launch(intent)
+                            launched = true
+                            break
+                        } catch (_: Exception) {}
+                    }
+                }
+                if (!launched) {
                     try {
-                        val resolveInfo = packageManager.queryIntentActivities(baseIntent, 0)
+                        val resolveInfo = packageManager.queryIntentActivities(
+                            Intent(Intent.ACTION_VIEW).apply { setDataAndType(Uri.parse(streamUrl), "video/*") },
+                            0
+                        )
                         val mpvMatch = resolveInfo.firstOrNull { 
                             val pkgName = it.activityInfo.packageName.lowercase()
                             val label = it.loadLabel(packageManager).toString().lowercase()
-                            pkgName.contains("mpvex") || pkgName.contains("mpv") || label.contains("mpvex") || label.contains("mpv")
+                            pkgName == "is.xyz.mpv" || pkgName == "is.xyz.mpv.debug" || label.contains("mpv")
                         }
                         if (mpvMatch != null) {
-                            val intent = Intent(baseIntent).apply { setPackage(mpvMatch.activityInfo.packageName) }
+                            val intent = Intent(baseIntent).apply {
+                                setClassName(mpvMatch.activityInfo.packageName, mpvMatch.activityInfo.name)
+                                setDataAndType(Uri.parse(streamUrl), "video/*")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
                             playerLauncher.launch(intent)
                             launched = true
                         }
                     } catch (_: Exception) {}
                 }
                 if (!launched) {
-                    val chooser = Intent.createChooser(baseIntent, "Select MPV / MPVEX Player")
+                    AlertDialog.Builder(this)
+                        .setTitle("🎬 MPV Player (Internal) Not Found")
+                        .setMessage("MPV Player (is.xyz.mpv) was not detected on your device.\n\nInstall MPV Player directly from the Google Play Store for the best internal streaming experience, or choose another installed player.")
+                        .setPositiveButton("Choose Installed Player") { _, _ ->
+                            val chooser = Intent.createChooser(baseIntent, "Select Video Player")
+                            try { playerLauncher.launch(chooser) } catch (_: Exception) {
+                                Toast.makeText(this, "No video player found on device!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .setNeutralButton("Install from Play Store") { _, _ ->
+                            try {
+                                val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=is.xyz.mpv")).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(marketIntent)
+                            } catch (_: Exception) {
+                                try {
+                                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=is.xyz.mpv")).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    startActivity(webIntent)
+                                } catch (_: Exception) {
+                                    Toast.makeText(this, "Could not open Play Store or browser", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            }
+            "mpvex" -> {
+                val packagesToTry = listOf(
+                    "app.marlboroadvance.mpvex",
+                    "app.marlboroadvance.mpvex.debug",
+                    "com.marlboroadvance.mpvex",
+                    "id.nzxm.mpvex"
+                )
+                var launched = false
+                val explicitClasses = listOf(
+                    "app.marlboroadvance.mpvex" to "app.marlboroadvance.mpvex.player.PlayerActivity",
+                    "app.marlboroadvance.mpvex" to "app.marlboroadvance.mpvex.MainActivity",
+                    "app.marlboroadvance.mpvex.debug" to "app.marlboroadvance.mpvex.player.PlayerActivity"
+                )
+                for ((pkg, cls) in explicitClasses) {
+                    try {
+                        val intent = Intent(baseIntent).apply {
+                            setClassName(pkg, cls)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        playerLauncher.launch(intent)
+                        launched = true
+                        break
+                    } catch (_: Exception) {}
+                    try {
+                        val intent = Intent(baseIntent).apply {
+                            setClassName(pkg, cls)
+                            setDataAndType(Uri.parse(streamUrl), "video/*")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        playerLauncher.launch(intent)
+                        launched = true
+                        break
+                    } catch (_: Exception) {}
+                }
+                if (!launched) {
+                    for (pkg in packagesToTry) {
+                        try {
+                            val intent = Intent(baseIntent).apply {
+                                setPackage(pkg)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            playerLauncher.launch(intent)
+                            launched = true
+                            break
+                        } catch (_: Exception) {}
+                        try {
+                            val intent = Intent(baseIntent).apply {
+                                setPackage(pkg)
+                                setDataAndType(Uri.parse(streamUrl), "video/*")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            playerLauncher.launch(intent)
+                            launched = true
+                            break
+                        } catch (_: Exception) {}
+                    }
+                }
+                if (!launched) {
+                    try {
+                        val resolveInfo = packageManager.queryIntentActivities(
+                            Intent(Intent.ACTION_VIEW).apply { setDataAndType(Uri.parse(streamUrl), "video/*") },
+                            0
+                        )
+                        val mpvMatch = resolveInfo.firstOrNull { 
+                            val pkgName = it.activityInfo.packageName.lowercase()
+                            val label = it.loadLabel(packageManager).toString().lowercase()
+                            pkgName.contains("mpvex") || label.contains("mpvex")
+                        }
+                        if (mpvMatch != null) {
+                            val intent = Intent(baseIntent).apply {
+                                setClassName(mpvMatch.activityInfo.packageName, mpvMatch.activityInfo.name)
+                                setDataAndType(Uri.parse(streamUrl), "video/*")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            playerLauncher.launch(intent)
+                            launched = true
+                        }
+                    } catch (_: Exception) {}
+                }
+                if (!launched) {
+                    val chooser = Intent.createChooser(baseIntent, "Select MPVEX Player")
                     try { playerLauncher.launch(chooser) } catch (_: Exception) {}
                 }
             }
@@ -4116,6 +5246,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return result
+    }
+
+    private fun clearWatchHistory() {
+        try {
+            getSharedPreferences("teleflix_watch_history", android.content.Context.MODE_PRIVATE)
+                .edit()
+                .remove("history_items")
+                .apply()
+        } catch (_: Exception) {}
     }
 
     // Show a file picker dialog for grouped history entries (uses standard showGroupPartsSelectionDialog)
@@ -4962,9 +6101,12 @@ class MainActivity : AppCompatActivity() {
             if (isTelegramCatalogMode) {
                 loadTelegramChannelsCatalog()
             } else {
-                updateCategoryBanner(selectedLabel)
-                loadInitialCinemeta(selectedCategory, selectedLabel)
+                loadNetflixHome("home")
             }
+            return
+        }
+        if (selectedCategory != "home/netflix" && !isTelegramCatalogMode) {
+            loadNetflixHome("home")
             return
         }
         super.onBackPressed()
@@ -4977,7 +6119,7 @@ class MainActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         val isLandscape = newConfig.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        (recyclerView.layoutManager as? GridLayoutManager)?.spanCount = if (isLandscape) 4 else 2
+        (recyclerView.layoutManager as? GridLayoutManager)?.spanCount = if (isLandscape) 12 else 6
         mediaAdapter?.notifyDataSetChanged()
     }
 
@@ -5014,8 +6156,8 @@ class MainActivity : AppCompatActivity() {
         val isZip = stream.isZip || stream.id.startsWith("zip_") || TelegramRepository.isZipArchiveFilename(cleanFileName)
         val isSplit = stream.isSplit || stream.id.startsWith("group_") || (cachedParts != null && cachedParts.size > 1)
 
-        // Only show popup when downloading a zip or multi-part split file
-        if (isZip || isSplit) {
+        // Only show popup for multi-part split video files (NEVER for zip files)
+        if (!isZip && isSplit) {
             if (cachedParts != null && cachedParts.isNotEmpty()) {
                 val mediaItem = MediaItem(
                     id = stream.id,
@@ -5300,6 +6442,10 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Select a video inside the channel to download", Toast.LENGTH_SHORT).show()
             return
         }
+        if (item.type == "auto_series") {
+            showAutoSeriesSeasons(item, isDownloadMode = true)
+            return
+        }
 
         val cleanOriginalName = item.originalFileName.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
         val cleanDisplayTitle = item.title.removePrefix("Select:").removePrefix("Select").removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
@@ -5333,8 +6479,8 @@ class MainActivity : AppCompatActivity() {
         val isZip = item.id.startsWith("zip_") || TelegramRepository.isZipArchiveFilename(originalName) || parts.any { TelegramRepository.isZipArchiveFilename(it.fileName) }
         val isSplit = item.id.startsWith("group_") || item.type == "history_group" || parts.size > 1
 
-        // Only show popup for zip files or multi-part split files
-        if (isZip || isSplit) {
+        // Only show popup for multi-part split video files (NEVER for zip files)
+        if (!isZip && isSplit) {
             if (parts.isNotEmpty()) {
                 showGroupDownloadOptionsDialog(item, parts, originalName)
                 return
@@ -5845,6 +6991,15 @@ class MainActivity : AppCompatActivity() {
             val (label, catalogId) = categories[newIndex]
             if (catalogId == "library/list") {
                 loadLibraryCatalog(label)
+            } else if (catalogId == "channels/list") {
+                isTelegramCatalogMode = true
+                modeToggleButton.text = "🎬 ARVIO Stream"
+                modeToggleButton.setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
+                modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.ACCENT_BLUE, 1)
+                updateCategoryBanner("Monitored Telegram Channels")
+                searchInput.hint = "Search chats & channels..."
+                loadTelegramChannelsCatalog()
+                updateTabSelection(catalogId)
             } else {
                 selectedCategory = catalogId
                 selectedLabel = label

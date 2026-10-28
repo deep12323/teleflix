@@ -11,8 +11,8 @@ android {
         applicationId = "com.teleflix.app"
         minSdk = 21
         targetSdk = 34
-        versionCode = 12
-        versionName = "1.0.11"
+        versionCode = 32
+        versionName = "1.0.32"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -61,6 +61,9 @@ android {
                 "META-INF/*.version"
             )
         }
+        jniLibs {
+            pickFirsts += listOf("**/libc++_shared.so")
+        }
     }
 
     splits {
@@ -94,6 +97,9 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.2.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.cardview:cardview:1.0.0")
+
+    // Inbuilt Native MPV Player
+    implementation(files("libs/libmpv-1.0.0.aar"))
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

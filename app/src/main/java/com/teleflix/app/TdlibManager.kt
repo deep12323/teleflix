@@ -19,7 +19,7 @@ data class StreamSource(
     val quality: String,
     val fileName: String,
     val size: String,
-    val channel: String,
+    val channel: String = "",
     val url: String,
     val isSplit: Boolean = false,
     val isZip: Boolean = false,
@@ -28,7 +28,8 @@ data class StreamSource(
     val qualityTier: Int = 0,
     val sizeBytes: Long = 0L,
     val rawName: String = "",
-    val cleanName: String = ""
+    val cleanName: String = "",
+    val audioTag: String = ""
 )
 
 object TdlibManager {
@@ -211,12 +212,13 @@ object TdlibManager {
                         TelegramRepository.groupCache[groupId] = Pair(groupChats.zip(groupMsgs), partSizes)
                         TelegramRepository.groupCache[zipId] = Pair(groupChats.zip(groupMsgs), partSizes)
                         val qualityTag = extractQualityTag(group.baseName).ifBlank { if (parsedQuality != "Unknown") parsedQuality else "ZIP" }
+                        val audioTag = extractAudioTags(group.baseName)
                         StreamSource(
                             id = groupId,
                             quality = qualityTag,
                             fileName = "🗄️ ${group.baseName}",
                             size = formatBytes(totalSize),
-                            channel = "Telegram Stream",
+                            channel = "ZIP",
                             url = zipUrl,
                             isZip = true,
                             isSplit = false,
@@ -225,7 +227,8 @@ object TdlibManager {
                             qualityTier = qTier,
                             sizeBytes = totalSize,
                             rawName = group.baseName,
-                            cleanName = TelegramSearchMatcher.normalizeReleaseName(group.baseName)
+                            cleanName = TelegramSearchMatcher.normalizeReleaseName(group.baseName),
+                            audioTag = audioTag
                         )
                     } else {
                         val groupId = "group_${firstPart.chatId}_${group.baseName}"
@@ -237,12 +240,13 @@ object TdlibManager {
                         TelegramRepository.groupCache[groupId] = Pair(groupChats.zip(groupMsgs), partSizes)
                         val qualityTag = extractQualityTag(group.baseName).ifBlank { if (parsedQuality != "Unknown") parsedQuality else "SPLIT PACK" }
                         val mergedStreamUrl = TelegramRepository.getMergedStreamUrl(freshIds, group.baseName, partSizes, groupChats, groupMsgs)
+                        val audioTag = extractAudioTags(group.baseName)
                         StreamSource(
                             id = groupId,
                             quality = "$qualityTag (${group.parts.size} Parts)",
                             fileName = "📦 ${group.baseName}",
                             size = formatBytes(totalSize),
-                            channel = "Telegram Multi-Part",
+                            channel = "Split Video",
                             url = mergedStreamUrl,
                             isZip = false,
                             isSplit = true,
@@ -251,7 +255,8 @@ object TdlibManager {
                             qualityTier = qTier,
                             sizeBytes = totalSize,
                             rawName = group.baseName,
-                            cleanName = TelegramSearchMatcher.normalizeReleaseName(group.baseName)
+                            cleanName = TelegramSearchMatcher.normalizeReleaseName(group.baseName),
+                            audioTag = audioTag
                         )
                     }
 
@@ -285,12 +290,13 @@ object TdlibManager {
                     val qTier = TelegramSearchMatcher.qualityTier(parsedQuality)
                     val qualityTag = extractQualityTag(msg.fileName).ifBlank { if (parsedQuality != "Unknown") parsedQuality else ext.uppercase().ifBlank { "VIDEO" } }
                     val prefix = if (isZip) "🗄️ " else "📺 "
+                    val audioTag = extractAudioTags(msg.fileName, caption)
                     val streamSource = StreamSource(
                         id = if (isZip) "zip_${msg.chatId}_${msg.messageId}" else "${msg.chatId}_${msg.messageId}",
                         quality = qualityTag,
                         fileName = prefix + msg.fileName.ifBlank { "telegram_video.$ext" },
                         size = sizeStr,
-                        channel = "Telegram Stream",
+                        channel = if (isZip) "ZIP" else "",
                         url = streamUrl,
                         isZip = isZip,
                         chatId = msg.chatId,
@@ -298,7 +304,8 @@ object TdlibManager {
                         qualityTier = qTier,
                         sizeBytes = msg.fileSize,
                         rawName = msg.fileName,
-                        cleanName = TelegramSearchMatcher.normalizeReleaseName(msg.fileName)
+                        cleanName = TelegramSearchMatcher.normalizeReleaseName(msg.fileName),
+                        audioTag = audioTag
                     )
 
                     validSources.add(streamSource)
@@ -385,6 +392,47 @@ object TdlibManager {
         return tags.joinToString(" ")
     }
 
+    fun extractAudioTags(fileName: String, caption: String = ""): String {
+        val text = "$fileName $caption".lowercase()
+        val hasMulti = Regex("""\b(multi[\s._-]*audio|multiaudio|multi)\b""").containsMatchIn(text)
+        val hasDual = Regex("""\b(dual[\s._-]*audio|dualaudio|dual)\b""").containsMatchIn(text)
+
+        val langMap = listOf(
+            "Hi" to Regex("""\b(hindi|hin)\b"""),
+            "Eng" to Regex("""\b(english|eng)\b"""),
+            "Tam" to Regex("""\b(tamil|tam)\b"""),
+            "Tel" to Regex("""\b(telugu|tel)\b"""),
+            "Mal" to Regex("""\b(malayalam|mal)\b"""),
+            "Kan" to Regex("""\b(kannada|kan)\b"""),
+            "Ben" to Regex("""\b(bengali|ben|bangla)\b"""),
+            "Mar" to Regex("""\b(marathi|mar)\b"""),
+            "Pan" to Regex("""\b(punjabi|pan)\b"""),
+            "Guj" to Regex("""\b(gujarati|guj)\b"""),
+            "Jap" to Regex("""\b(japanese|jap|jpn)\b"""),
+            "Kor" to Regex("""\b(korean|kor)\b"""),
+            "Spa" to Regex("""\b(spanish|spa|esp)\b"""),
+            "Fre" to Regex("""\b(french|fre|fra)\b"""),
+            "Ger" to Regex("""\b(german|ger|deu)\b"""),
+            "Rus" to Regex("""\b(russian|rus)\b"""),
+            "Chi" to Regex("""\b(chinese|chi)\b""")
+        )
+
+        val foundLangs = mutableListOf<String>()
+        for ((tag, regex) in langMap) {
+            if (regex.containsMatchIn(text)) {
+                foundLangs.add(tag)
+            }
+        }
+
+        return when {
+            hasMulti -> if (foundLangs.isNotEmpty()) "Multi (${foundLangs.joinToString(", ")})" else "Multi"
+            hasDual -> if (foundLangs.isNotEmpty()) "Dual (${foundLangs.joinToString(", ")})" else "Dual"
+            foundLangs.size > 2 -> "Multi (${foundLangs.joinToString(", ")})"
+            foundLangs.isNotEmpty() -> foundLangs.joinToString(", ")
+            else -> ""
+        }
+    }
+
     private fun isLowQuality(name: String): Boolean {
         val upper = name.uppercase()
         if (upper.contains("CAMRIP") || upper.contains("CAM-RIP") || upper.contains("HDCAM") ||
@@ -395,7 +443,7 @@ object TdlibManager {
         return Regex("""\b(CAM|HDCAM|HDTS|TS|SCR|DVDSCR|TELESYNC)\b""").containsMatchIn(upper)
     }
 
-    private fun formatBytes(bytes: Long): String {
+    fun formatBytes(bytes: Long): String {
         if (bytes <= 0) return "0 B"
         val units = arrayOf("B", "KB", "MB", "GB", "TB")
         val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()

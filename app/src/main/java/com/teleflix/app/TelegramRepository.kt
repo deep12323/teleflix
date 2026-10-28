@@ -1070,7 +1070,8 @@ object TelegramRepository {
         val results = java.util.Collections.synchronizedList(mutableListOf<TelegramVideoMessage>())
         val seen = java.util.Collections.synchronizedSet(mutableSetOf<Pair<String, Long>>())
 
-        val filters = mutableListOf<TdApi.SearchMessagesFilter>(
+        val filters = mutableListOf<TdApi.SearchMessagesFilter?>(
+            null, // Native Telegram Default Search: queries ALL messages matching query across all types/captions/files
             TdApi.SearchMessagesFilterVideo(),
             TdApi.SearchMessagesFilterDocument()
         )
@@ -1461,7 +1462,8 @@ object TelegramRepository {
         val chatId = getChatId(channelUsernameOrId) ?: return@coroutineScope Pair(emptyList(), 0L)
         val topicFilter = if (topicId > 0) TdApi.MessageTopicForum(topicId) else null
 
-        val filters = listOf(
+        val filters: List<TdApi.SearchMessagesFilter?> = listOf(
+            null, // Native Telegram Default Search: queries all messages in chat matching query text/captions
             TdApi.SearchMessagesFilterDocument(),
             TdApi.SearchMessagesFilterVideo(),
             TdApi.SearchMessagesFilterAudio()
@@ -1540,7 +1542,8 @@ object TelegramRepository {
         val chatId = getChatId(channelUsernameOrId) ?: return@coroutineScope emptyList()
         val topicFilter = if (topicId > 0) TdApi.MessageTopicForum(topicId) else null
 
-        val filters = listOf(
+        val filters: List<TdApi.SearchMessagesFilter?> = listOf(
+            null, // Native Telegram Default Search: queries all messages in chat matching query text/captions
             TdApi.SearchMessagesFilterDocument(),
             TdApi.SearchMessagesFilterVideo(),
             TdApi.SearchMessagesFilterAudio()
