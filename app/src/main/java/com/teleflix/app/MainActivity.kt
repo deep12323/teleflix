@@ -4744,16 +4744,7 @@ class MainActivity : AppCompatActivity() {
         } else cleanDisplayTitle
 
         if (playerType == "internal") {
-            val intent = Intent(this, PlayerActivity::class.java).apply {
-                putExtra("stream_url", streamUrl)
-                putExtra("title", title)
-                putExtra("resume_ms", resumeMs)
-                putExtra("media_id", mediaId)
-                if (resumeMs <= 0L) {
-                    putExtra("from_start", true)
-                }
-            }
-            playerLauncher.launch(intent)
+            PlayerActivity.launch(this, streamUrl, title, resumeMs, mediaId)
             return
         }
 

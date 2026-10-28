@@ -53,9 +53,6 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
                 putExtra("title", title)
                 putExtra("resume_ms", resumeMs)
                 putExtra("media_id", mediaId)
-                if (resumeMs <= 0L) {
-                    putExtra("from_start", true)
-                }
             }
             activity.startActivity(intent)
         }
@@ -137,7 +134,6 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
     private var videoTitle = ""
     private var resumeMs = 0L
     private var mediaId = ""
-    private var pendingResumeSeekSec = 0.0
     private var isPlaybackCompleted = false
     private var isMediaLoaded = false
     private var trackPreferencesRestored = false
@@ -197,51 +193,7 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
         streamUrl = intent.getStringExtra("stream_url") ?: ""
         videoTitle = intent.getStringExtra("title") ?: "Video Player"
         mediaId = intent.getStringExtra("media_id") ?: ""
-
         resumeMs = intent.getLongExtra("resume_ms", 0L)
-        if (resumeMs <= 0L) {
-            resumeMs = intent.getIntExtra("position", 0).toLong()
-        }
-        if (resumeMs <= 0L) {
-            resumeMs = intent.getLongExtra("extra_position", 0L)
-        }
-        if (resumeMs <= 0L) {
-            resumeMs = intent.getLongExtra("resume_position", 0L)
-        }
-        if (resumeMs <= 0L) {
-            resumeMs = intent.getLongExtra("position_ms", 0L)
-        }
-        if (resumeMs <= 0L) {
-            resumeMs = intent.getLongExtra("start_position", 0L)
-        }
-
-        val fromStart = intent.getBooleanExtra("from_start", false)
-        if (!fromStart && resumeMs <= 3000L) {
-            val prefsLink = getSharedPreferences("teleflix_resume_points", Context.MODE_PRIVATE)
-            val prefsTitle = getSharedPreferences("TeleflixResume", Context.MODE_PRIVATE)
-            if (mediaId.isNotBlank()) {
-                val p = prefsLink.getLong("id_$mediaId", 0L).takeIf { it > 3000L } ?: prefsLink.getLong(mediaId, 0L)
-                if (p > 3000L) resumeMs = p
-            }
-            if (resumeMs <= 3000L && streamUrl.isNotBlank()) {
-                val p = prefsLink.getLong(streamUrl, 0L)
-                if (p > 3000L) resumeMs = p
-            }
-            if (resumeMs <= 3000L && videoTitle.isNotBlank()) {
-                val p = prefsTitle.getLong("resume_$videoTitle", 0L)
-                if (p > 3000L) resumeMs = p
-            }
-            if (resumeMs <= 3000L) {
-                val prefsTeleflix = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
-                val p = (if (mediaId.isNotBlank()) prefsTeleflix.getLong("resume_pos_$mediaId", 0L) else 0L).takeIf { it > 3000L }
-                    ?: (if (streamUrl.isNotBlank()) prefsTeleflix.getLong("resume_pos_$streamUrl", 0L) else 0L).takeIf { it > 3000L }
-                    ?: (if (videoTitle.isNotBlank()) prefsTeleflix.getLong("resume_pos_$videoTitle", 0L) else 0L).takeIf { it > 3000L }
-                    ?: 0L
-                if (p > 3000L) resumeMs = p
-            }
-        }
-
-        pendingResumeSeekSec = if (resumeMs > 3000L) resumeMs / 1000.0 else 0.0
 
         if (streamUrl.isBlank()) {
             finish()
@@ -726,14 +678,14 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
 
         val prefs = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
         val initialCropMode = prefs.getString("crop_mode_$mediaKey", null)
-            ?: prefs.getString("pref_global_crop_mode", "autocrop")
-            ?: "autocrop"
-        currentAspectIndex = aspectRatios.indexOfFirst { it.first == initialCropMode }.let { if (it >= 0) it else 1 }
+            ?: prefs.getString("pref_global_crop_mode", "fit")
+            ?: "fit"
+        currentAspectIndex = aspectRatios.indexOfFirst { it.first == initialCropMode }.let { if (it >= 0) it else 0 }
         val initialCropLabel = aspectRatios[currentAspectIndex].second
 
         // Aspect / Auto Crop Pill
         cropBtn = TextView(this).apply {
-            text = "🔲 $initialCropLabel"
+            text = if (isAudioOnlyMedia()) "🎵 Audio" else "🔲 $initialCropLabel"
             textSize = 12f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.WHITE)
@@ -1448,8 +1400,9 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
             // ── Subtitle Static Font & Netflix High-Legibility Styling (Fixed Android 14/15 Zero-Width Space Bug) ──
             setupSubtitleFonts(player)
 
-            if (pendingResumeSeekSec > 3.0) {
-                player.setOptionString("start", "$pendingResumeSeekSec")
+            if (resumeMs > 3000L) {
+                val startSec = resumeMs / 1000.0
+                player.setOptionString("start", "$startSec")
             }
 
             player.init()
@@ -1720,22 +1673,30 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
     }
 
     private fun isAudioOnlyMedia(): Boolean {
+        // 1. Immediate filename / stream URL extension check
+        val lower = (streamUrl + " " + videoTitle).lowercase()
+        if (lower.contains(".mp3") || lower.contains(".m4a") || lower.contains(".flac") ||
+            lower.contains(".aac") || lower.contains(".wav") || lower.contains(".ogg") ||
+            lower.contains(".opus") || lower.contains(".wma")) {
+            return true
+        }
+
         val player = mpv ?: return false
 
-        // 1. Check if vid property is explicitly "no" or empty
+        // 2. Check if vid property is explicitly "no" or empty
         val vid = player.getPropertyString("vid")
         if (vid != null && (vid.equals("no", ignoreCase = true) || vid == "0")) {
             return true
         }
 
-        // 2. Check if video is static album art
+        // 3. Check if video is static album art
         val isAlbumArt = player.getPropertyBoolean("video-params/albumart")
             ?: (player.getPropertyString("video-params/albumart") == "yes")
         if (isAlbumArt) {
             return true
         }
 
-        // 3. Inspect track list for actual video streams
+        // 4. Inspect track list for actual video streams
         val trackCount = player.getPropertyInt("track-list/count")
             ?: player.getPropertyString("track-list/count")?.toIntOrNull()
             ?: 0
@@ -1755,21 +1716,11 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
             if (!hasRealVideo) return true
         }
 
-        // 4. Check video dimensions
+        // 5. Video dimensions
         val vw = player.getPropertyInt("video-params/w") ?: player.getPropertyInt("dwidth") ?: 0
         val vh = player.getPropertyInt("video-params/h") ?: player.getPropertyInt("dheight") ?: 0
-        if (vw <= 0 || vh <= 0) {
+        if (vw <= 0 && vh <= 0) {
             return true
-        }
-
-        // 5. Check URL/filename extension fallback
-        val lower = (streamUrl + " " + videoTitle).lowercase()
-        if (lower.contains(".mp3") || lower.contains(".m4a") || lower.contains(".flac") ||
-            lower.contains(".aac") || lower.contains(".wav") || lower.contains(".ogg") ||
-            lower.contains(".opus")) {
-            if (isAlbumArt || vw <= 0 || vw == vh) {
-                return true
-            }
         }
 
         return false
@@ -1795,14 +1746,17 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
     }
 
     private fun restoreCropPreference() {
-        if (isAudioOnlyMedia()) return
+        if (isAudioOnlyMedia()) {
+            if (::cropBtn.isInitialized) cropBtn.text = "🎵 Audio"
+            return
+        }
         val prefs = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
         val savedMode = prefs.getString("crop_mode_$mediaKey", null)
-            ?: prefs.getString("pref_global_crop_mode", "autocrop")
-            ?: "autocrop"
+            ?: prefs.getString("pref_global_crop_mode", "fit")
+            ?: "fit"
 
         val index = aspectRatios.indexOfFirst { it.first == savedMode }
-        currentAspectIndex = if (index >= 0) index else 1
+        currentAspectIndex = if (index >= 0) index else 0
         val (mode, label) = aspectRatios[currentAspectIndex]
         if (::cropBtn.isInitialized) {
             cropBtn.text = "🔲 $label"
@@ -1810,8 +1764,7 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
         applyCropMode(mode, notifyUser = false)
     }
 
-    // ── Auto Crop Black Bars Engine (Mpv-infinity architecture) ──
-    // Strictly crops above and below (top & bottom letterbox bars) - NEVER crops left or right
+    // ── Aspect & Framing Engine (100% Hardware Accelerated via panscan, ZERO CPU/Filter Overhead) ──
     private fun applyCropMode(mode: String, notifyUser: Boolean = true) {
         val player = mpv ?: return
 
@@ -1821,91 +1774,38 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
             player.command(arrayOf("vf", "clr", ""))
             player.setPropertyDouble("panscan", 0.0)
             player.setPropertyString("video-aspect-override", "-1")
-            cropBtn.text = "🎵 Audio"
+            if (::cropBtn.isInitialized) cropBtn.text = "🎵 Audio"
             return
         }
+
+        player.setPropertyString("video-crop", "")
+        player.command(arrayOf("vf", "clr", ""))
 
         when (mode) {
             "fit" -> {
                 // Pristine original aspect ratio: ZERO zoom, ZERO crop
-                player.setPropertyString("video-crop", "")
-                player.command(arrayOf("vf", "clr", ""))
                 player.setPropertyDouble("panscan", 0.0)
                 player.setPropertyString("video-aspect-override", "-1")
                 if (notifyUser) showHudMessage("🔲", "Fit: Original (No Zoom, No Crop)")
             }
             "autocrop" -> {
-                // 1. Reset previous crop and ensure zero zoom
-                player.setPropertyString("video-crop", "")
-                player.command(arrayOf("vf", "clr", ""))
-                player.setPropertyDouble("panscan", 0.0)
+                // Auto Crop: Fills width & height, cleanly eliminating top/bottom black bars via GPU
+                player.setPropertyDouble("panscan", 1.0)
                 player.setPropertyString("video-aspect-override", "-1")
-
-                // 2. Add cropdetect filter
-                player.command(arrayOf("vf", "set", "@cropdetect:lavfi=cropdetect=limit=24/255:round=2:reset=1"))
-
-                // 3. Inspect detected non-black dimensions after 800ms
-                hideHandler.postDelayed({
-                    try {
-                        if (isAudioOnlyMedia()) {
-                            player.setPropertyString("video-crop", "")
-                            player.command(arrayOf("vf", "clr", ""))
-                            return@postDelayed
-                        }
-
-                        val cropH = player.getPropertyInt("vf-metadata/@cropdetect/lavfi.cropdetect.h") ?: 0
-                        val cropY = player.getPropertyInt("vf-metadata/@cropdetect/lavfi.cropdetect.y") ?: 0
-                        player.command(arrayOf("vf", "remove", "@cropdetect"))
-
-                        val fullW = player.getPropertyInt("video-params/w")
-                            ?: player.getPropertyInt("dwidth")
-                            ?: 1920
-                        val fullH = player.getPropertyInt("video-params/h")
-                            ?: player.getPropertyInt("dheight")
-                            ?: 1080
-
-                        // STRICTLY crop above and below (top and bottom black bars). NEVER crop left or right!
-                        // Only crop if there are real black bars on top/bottom (at least 12px)
-                        if (cropH in 100 until (fullH - 12)) {
-                            val evenH = (cropH / 2) * 2
-                            val evenY = (cropY / 2) * 2
-                            // w is fullW (0 left/right crop), x is 0, panscan is 0.0 (NO ZOOM)
-                            player.setPropertyString("video-crop", "${fullW}x${evenH}+0+${evenY}")
-                            player.setPropertyDouble("panscan", 0.0)
-                            player.setPropertyString("video-aspect-override", "-1")
-                            if (notifyUser) showHudMessage("🔲", "Auto Crop: Top & Bottom Bars Removed")
-                        } else {
-                            // No black bars: keep 100% original uncropped picture with zero zoom
-                            player.setPropertyString("video-crop", "")
-                            player.setPropertyDouble("panscan", 0.0)
-                            player.setPropertyString("video-aspect-override", "-1")
-                            if (notifyUser) showHudMessage("🔲", "Original Fit (No Black Bars)")
-                        }
-                    } catch (_: Throwable) {
-                        player.setPropertyString("video-crop", "")
-                        player.setPropertyDouble("panscan", 0.0)
-                        player.setPropertyString("video-aspect-override", "-1")
-                    }
-                }, 800)
+                if (notifyUser) showHudMessage("🔲", "Auto Crop: Black Bars Removed")
             }
             "fill" -> {
                 // Zoom & crop to fill 100% of display
-                player.setPropertyString("video-crop", "")
-                player.command(arrayOf("vf", "clr", ""))
                 player.setPropertyDouble("panscan", 1.0)
                 player.setPropertyString("video-aspect-override", "-1")
                 if (notifyUser) showHudMessage("🔲", "Fill: Zoom to Screen")
             }
             "16:9" -> {
-                player.setPropertyString("video-crop", "")
-                player.command(arrayOf("vf", "clr", ""))
                 player.setPropertyDouble("panscan", 0.0)
                 player.setPropertyString("video-aspect-override", "16:9")
                 if (notifyUser) showHudMessage("🔲", "Aspect: 16:9")
             }
             "stretch" -> {
-                player.setPropertyString("video-crop", "")
-                player.command(arrayOf("vf", "clr", ""))
                 player.setPropertyDouble("panscan", 0.0)
                 val dm = resources.displayMetrics
                 val w = maxOf(dm.widthPixels, dm.heightPixels).toDouble()
@@ -1988,19 +1888,9 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
 
                 val player = mpv
 
-                if (eventId == MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED) {
-                    if (pendingResumeSeekSec > 3.0) {
-                        val target = pendingResumeSeekSec
-                        pendingResumeSeekSec = 0.0
-                        currentPosSec = target
-                        timeText.text = formatSecToTime(target.toLong())
-                        player?.command(arrayOf("seek", target.toString(), "absolute"))
-                        TeleflixLogger.log("PlayerActivity", "Executed MPV seek to resume position ${target}s")
-                    }
-                    if (!trackPreferencesRestored) {
-                        trackPreferencesRestored = true
-                        restoreTrackPreferences()
-                    }
+                if (eventId == MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED && !trackPreferencesRestored) {
+                    trackPreferencesRestored = true
+                    restoreTrackPreferences()
                 }
 
                 if (isAudioOnlyMedia()) {
@@ -2074,8 +1964,6 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
         val posMs = (currentPosSec * 1000).toLong()
         val durMs = (durationSec * 1000).toLong()
 
-        // Guard against saving 0 or invalid position before initial resume seek takes effect
-        if (pendingResumeSeekSec > 3.0) return
         if (posMs <= 3000L && currentPosSec <= 3.0) return
 
         val isCompleted = durMs > 20_000L && (posMs >= (durMs * 0.90).toLong() || posMs >= durMs - 15_000L)
