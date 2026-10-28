@@ -815,13 +815,6 @@ object TelegramStreamingProxy {
                     continue
                 }
 
-                // Header probes only need container header elements (EBML, SeekHead, Tracks).
-                // Cap to maximum 2 chunks (~1MB) so it doesn't stream the entire file to EOF in the background.
-                if (m.requestType == "header_probe" && m.chunksOk >= 2) {
-                    m.exitReason = "completed"
-                    break
-                }
-
                 val chunkSize = minOf(CHUNK_SIZE.toLong(), end - offset + 1).toInt()
                 val alignedOffset = offset - (offset % (1024 * 1024))
                 val targetPrefetch = if (m.requestType == "header_probe") 2L else prefetchSizeMb

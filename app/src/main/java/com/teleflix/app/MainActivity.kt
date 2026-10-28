@@ -4744,7 +4744,9 @@ class MainActivity : AppCompatActivity() {
         } else cleanDisplayTitle
 
         if (playerType == "internal") {
-            PlayerActivity.launch(this, streamUrl, title, resumeMs, mediaId)
+            activeStreamUrlForResume = streamUrl
+            activeTitleForResume = title
+            playerLauncher.launch(PlayerActivity.createIntent(this, streamUrl, title, resumeMs, mediaId))
             return
         }
 
