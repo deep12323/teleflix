@@ -487,16 +487,17 @@ class SettingsActivity : AppCompatActivity() {
         playerInfo.addView(playerTitle)
 
         val playerMap = mapOf(
+            "internal" to "🎬 Inbuilt MPV Player (In-App)",
             "ask" to "Always Ask",
-            "exo" to "⚡ ExoPlayer",
-            "mpvex" to "🔴 MPVEX Player",
-            "mpv" to "🔵 MPV Player",
-            "vlc" to "🧡 VLC Player",
-            "chooser" to "📱 System Chooser"
+            "mpv" to "🔵 External MPV Player (is.xyz.mpv)",
+            "exo" to "⚡ External ExoPlayer",
+            "mpvex" to "🔴 External MPVEX Player",
+            "vlc" to "🧡 External VLC Player",
+            "chooser" to "📱 External System Chooser"
         )
-        var currentDefault = prefs.getString("default_player", "ask") ?: "ask"
+        var currentDefault = prefs.getString("default_player", "internal") ?: "internal"
         val playerSub = TextView(this).apply {
-            text = playerMap[currentDefault] ?: "Always Ask"
+            text = playerMap[currentDefault] ?: "🎬 Inbuilt MPV Player (In-App)"
             UITheme.applyMetadataStyle(this)
             setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
         }
@@ -510,14 +511,15 @@ class SettingsActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
             setOnClickListener {
                 val labels = arrayOf(
+                    "🎬 Inbuilt MPV Player (Play Inside Teleflix) [Recommended]",
                     "Always Ask (Select Player on Tap)",
-                    "⚡ ExoPlayer (External App / Just Player)",
-                    "🔴 MPVEX Player (app.marlboroadvance.mpvex)",
-                    "🔵 MPV Player (is.xyz.mpv)",
-                    "🧡 VLC Player",
-                    "📱 Android System Player Chooser"
+                    "🔵 External MPV Player (is.xyz.mpv)",
+                    "⚡ External ExoPlayer (Just Player / Next Player)",
+                    "🔴 External MPVEX Player (app.marlboroadvance.mpvex)",
+                    "🧡 External VLC Player",
+                    "📱 External System Player Chooser"
                 )
-                val keys = arrayOf("ask", "exo", "mpvex", "mpv", "vlc", "chooser")
+                val keys = arrayOf("internal", "ask", "mpv", "exo", "mpvex", "vlc", "chooser")
 
                 val scrollView = ScrollView(this@SettingsActivity).apply {
                     setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
@@ -660,7 +662,7 @@ class SettingsActivity : AppCompatActivity() {
         defaultPageInfo.addView(defaultPageTitle)
 
         val defaultPageSub = TextView(this).apply {
-            text = "Open Monitored Telegram Channels on app launch"
+            text = "Open Channels View on app launch (instead of ARVIO Discovery Hub)"
             UITheme.applyMetadataStyle(this)
         }
         defaultPageInfo.addView(defaultPageSub)
@@ -670,7 +672,7 @@ class SettingsActivity : AppCompatActivity() {
             isChecked = prefs.getBoolean("default_opening_monitored", false)
             setOnCheckedChangeListener { _, isChecked ->
                 prefs.edit().putBoolean("default_opening_monitored", isChecked).apply()
-                val msg = if (isChecked) "Monitored Channels set as default opening page" else "Cinemeta set as default opening page"
+                val msg = if (isChecked) "Channels View set as default opening page" else "ARVIO Discovery Hub set as default opening page"
                 Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_SHORT).show()
             }
         }
