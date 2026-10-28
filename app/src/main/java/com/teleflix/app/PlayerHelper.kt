@@ -185,14 +185,13 @@ object PlayerHelper {
         mediaId: String = ""
     ) {
         val options = arrayOf(
-            "🎬 Inbuilt MPV Player (In-App)",
-            "🔵 External MPV Player (is.xyz.mpv)",
             "⚡ External ExoPlayer (Just Player / Next Player)",
+            "🔵 External MPV Player (is.xyz.mpv)",
             "🔴 External MPVEX Player",
             "🧡 External VLC Player",
             "📱 Choose From All Installed Players..."
         )
-        val keys = arrayOf("internal", "mpv", "exo", "mpvex", "vlc", "chooser")
+        val keys = arrayOf("exo", "mpv", "mpvex", "vlc", "chooser")
 
         fun dp(v: Int) = UITheme.dpToPx(activity, v)
 
@@ -304,6 +303,8 @@ object PlayerHelper {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
             putExtra("title", videoSafeTitle)
             putExtra("filename", videoSafeTitle)
+            putExtra("uri", streamUrl)
+            putExtra("url", streamUrl)
             putExtra("org.videolan.vlc.player.ForceVideo", true)
             putExtra("ForceVideo", true)
             putExtra("return_result", true)
@@ -325,11 +326,6 @@ object PlayerHelper {
         }
 
         val pm = activity.packageManager
-
-        if (playerType == "internal") {
-            PlayerActivity.launch(activity, streamUrl, title, resumeMs, mediaId)
-            return
-        }
 
         when (playerType) {
             "exo" -> {
@@ -446,9 +442,13 @@ object PlayerHelper {
 
             "mpvex" -> {
                 val explicitToTry = listOf(
-                    "app.marlboroadvance.mpvex" to "app.marlboroadvance.mpvex.player.PlayerActivity",
-                    "app.marlboroadvance.mpvex" to "app.marlboroadvance.mpvex.MainActivity",
-                    "app.marlboroadvance.mpvex.debug" to "app.marlboroadvance.mpvex.player.PlayerActivity"
+                    "app.marlboroadvance.mpvex" to "app.marlboroadvance.mpvex.ui.player.PlayerActivity",
+                    "app.marlboroadvance.mpvex.debug" to "app.marlboroadvance.mpvex.ui.player.PlayerActivity",
+                    "com.marlboroadvance.mpvex" to "com.marlboroadvance.mpvex.ui.player.PlayerActivity",
+                    "id.nzxm.mpvex" to "id.nzxm.mpvex.ui.player.PlayerActivity",
+                    "id.nzxm.mpvex.debug" to "id.nzxm.mpvex.ui.player.PlayerActivity",
+                    "id.nzxm.mpv" to "is.xyz.mpv.MPVActivity",
+                    "com.mpvex.app" to "com.mpvex.app.ui.player.PlayerActivity"
                 )
                 val packagesToTry = listOf(
                     "app.marlboroadvance.mpvex",
@@ -564,6 +564,8 @@ object PlayerHelper {
                 activity.startActivity(intent)
                 return true
             } catch (_: Exception) {}
+
+            return false
         }
 
         // 2. Try setPackage with base mimeType

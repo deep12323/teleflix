@@ -4638,14 +4638,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPlayerActionDialog(streamUrl: String, title: String, resumeMs: Long = 0L, mediaId: String = "") {
         val options = arrayOf(
-            "🎬 Inbuilt MPV Player (In-App)",
-            "🔵 External MPV Player (is.xyz.mpv)",
             "⚡ External ExoPlayer (Just Player / Next Player)",
+            "🔵 External MPV Player (is.xyz.mpv)",
             "🔴 External MPVEX Player",
             "🧡 External VLC Player",
             "📱 Choose From All Installed Players..."
         )
-        val keys = arrayOf("internal", "mpv", "exo", "mpvex", "vlc", "chooser")
+        val keys = arrayOf("exo", "mpv", "mpvex", "vlc", "chooser")
 
         val scrollView = ScrollView(this).apply {
             setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
@@ -4743,17 +4742,12 @@ class MainActivity : AppCompatActivity() {
             "$base.mkv"
         } else cleanDisplayTitle
 
-        if (playerType == "internal") {
-            activeStreamUrlForResume = streamUrl
-            activeTitleForResume = title
-            playerLauncher.launch(PlayerActivity.createIntent(this, streamUrl, title, resumeMs, mediaId))
-            return
-        }
-
         val baseIntent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(Uri.parse(streamUrl), mimeType)
             putExtra("title", videoSafeTitle)
             putExtra("filename", videoSafeTitle)
+            putExtra("uri", streamUrl)
+            putExtra("url", streamUrl)
             putExtra("org.videolan.vlc.player.ForceVideo", true)
             putExtra("ForceVideo", true)
             putExtra("return_result", true)
@@ -4960,13 +4954,19 @@ class MainActivity : AppCompatActivity() {
                     "app.marlboroadvance.mpvex",
                     "app.marlboroadvance.mpvex.debug",
                     "com.marlboroadvance.mpvex",
-                    "id.nzxm.mpvex"
+                    "id.nzxm.mpvex",
+                    "id.nzxm.mpvex.debug",
+                    "com.mpvex.app"
                 )
                 var launched = false
                 val explicitClasses = listOf(
-                    "app.marlboroadvance.mpvex" to "app.marlboroadvance.mpvex.player.PlayerActivity",
-                    "app.marlboroadvance.mpvex" to "app.marlboroadvance.mpvex.MainActivity",
-                    "app.marlboroadvance.mpvex.debug" to "app.marlboroadvance.mpvex.player.PlayerActivity"
+                    "app.marlboroadvance.mpvex" to "app.marlboroadvance.mpvex.ui.player.PlayerActivity",
+                    "app.marlboroadvance.mpvex.debug" to "app.marlboroadvance.mpvex.ui.player.PlayerActivity",
+                    "com.marlboroadvance.mpvex" to "com.marlboroadvance.mpvex.ui.player.PlayerActivity",
+                    "id.nzxm.mpvex" to "id.nzxm.mpvex.ui.player.PlayerActivity",
+                    "id.nzxm.mpvex.debug" to "id.nzxm.mpvex.ui.player.PlayerActivity",
+                    "id.nzxm.mpv" to "is.xyz.mpv.MPVActivity",
+                    "com.mpvex.app" to "com.mpvex.app.ui.player.PlayerActivity"
                 )
                 for ((pkg, cls) in explicitClasses) {
                     try {

@@ -487,17 +487,16 @@ class SettingsActivity : AppCompatActivity() {
         playerInfo.addView(playerTitle)
 
         val playerMap = mapOf(
-            "internal" to "🎬 Inbuilt MPV Player (In-App)",
             "ask" to "Always Ask",
-            "mpv" to "🔵 External MPV Player (is.xyz.mpv)",
-            "exo" to "⚡ External ExoPlayer",
-            "mpvex" to "🔴 External MPVEX Player",
-            "vlc" to "🧡 External VLC Player",
-            "chooser" to "📱 External System Chooser"
+            "exo" to "⚡ ExoPlayer (Just Player / Next Player)",
+            "mpv" to "🔵 MPV Player (is.xyz.mpv)",
+            "mpvex" to "🔴 MPVEX Player",
+            "vlc" to "🧡 VLC Player",
+            "chooser" to "📱 Android System Chooser"
         )
-        var currentDefault = prefs.getString("default_player", "internal") ?: "internal"
+        var currentDefault = prefs.getString("default_player", "ask") ?: "ask"
         val playerSub = TextView(this).apply {
-            text = playerMap[currentDefault] ?: "🎬 Inbuilt MPV Player (In-App)"
+            text = playerMap[currentDefault] ?: "Always Ask"
             UITheme.applyMetadataStyle(this)
             setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
         }
@@ -511,15 +510,14 @@ class SettingsActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
             setOnClickListener {
                 val labels = arrayOf(
-                    "🎬 Inbuilt MPV Player (Play Inside Teleflix) [Recommended]",
                     "Always Ask (Select Player on Tap)",
-                    "🔵 External MPV Player (is.xyz.mpv)",
-                    "⚡ External ExoPlayer (Just Player / Next Player)",
-                    "🔴 External MPVEX Player (app.marlboroadvance.mpvex)",
-                    "🧡 External VLC Player",
-                    "📱 External System Player Chooser"
+                    "⚡ ExoPlayer (External App / Just Player)",
+                    "🔵 MPV Player (is.xyz.mpv)",
+                    "🔴 MPVEX Player (app.marlboroadvance.mpvex)",
+                    "🧡 VLC Player",
+                    "📱 Android System Player Chooser"
                 )
-                val keys = arrayOf("internal", "ask", "mpv", "exo", "mpvex", "vlc", "chooser")
+                val keys = arrayOf("ask", "exo", "mpv", "mpvex", "vlc", "chooser")
 
                 val scrollView = ScrollView(this@SettingsActivity).apply {
                     setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
