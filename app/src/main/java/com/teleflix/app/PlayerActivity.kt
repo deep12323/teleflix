@@ -128,6 +128,7 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
     private val hudHideRunnable = Runnable { hudPill.visibility = View.GONE }
 
     private var isDrcEnabled = false
+    private var loudnessEnhancer: android.media.audiofx.LoudnessEnhancer? = null
 
     private var streamUrl = ""
     private var videoTitle = ""
@@ -886,18 +887,39 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
                 .apply()
         } catch (_: Exception) {}
 
-        val filter = if (isDrcEnabled) DRC_FILTER else ""
+        val player = mpv
+        if (player != null) {
+            try {
+                if (isDrcEnabled) {
+                    player.setPropertyDouble("volume-gain", 7.0)
+                    player.setPropertyString("ad-lavc-ac3drc", "1.0")
+                    player.setPropertyString("audio-normalize-downmix", "yes")
+                } else {
+                    player.setPropertyDouble("volume-gain", 0.0)
+                    player.setPropertyString("ad-lavc-ac3drc", "0.0")
+                    player.setPropertyString("audio-normalize-downmix", "no")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("PlayerActivity", "Failed to apply MPV DRC properties: ${e.message}")
+            }
+        }
+
         try {
-            mpv?.setPropertyString("af", filter)
+            if (isDrcEnabled) {
+                loudnessEnhancer?.setTargetGain(600)
+                loudnessEnhancer?.enabled = true
+            } else {
+                loudnessEnhancer?.enabled = false
+            }
         } catch (e: Exception) {
-            android.util.Log.e("PlayerActivity", "Failed to set af: ${e.message}")
+            android.util.Log.e("PlayerActivity", "Failed to apply LoudnessEnhancer: ${e.message}")
         }
 
         updateDrcButtonVisual()
 
         if (notifyUser) {
             if (isDrcEnabled) {
-                showHudMessage("🎚️", "DRC: ON (Dialogue Boosted)")
+                showHudMessage("🎚️", "DRC: ON (Dialogue Boosted +7dB)")
             } else {
                 showHudMessage("🎚️", "DRC: OFF (Original Sound)")
             }
@@ -1161,7 +1183,7 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
         drcCard.addView(drcHeaderRow)
 
         val drcDesc = TextView(this).apply {
-            text = "Compress audio to boost dialogue & tame loud sounds"
+            text = "Boost dialogue (+7dB) & tame loud sounds without distortion"
             textSize = 10f
             setTextColor(Color.parseColor("#9CA3AF"))
             val pT = dp(3)
@@ -1327,12 +1349,43 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
             player.setOptionString("demuxer-lavf-o", "reconnect_streamed=1,reconnect_delay_max=5")
             player.setOptionString("force-window", "yes")
             player.setOptionString("keep-open", "yes")
-            player.setOptionString("ao", "audiotrack,opensles")
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            val audioSessionId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                audioManager?.generateAudioSessionId() ?: 0
+            } else {
+                0
+            }
+
+            if (audioSessionId > 0) {
+                player.setOptionString("ao", "audiotrack:session-id=$audioSessionId,opensles")
+                try {
+                    loudnessEnhancer = android.media.audiofx.LoudnessEnhancer(audioSessionId)
+                } catch (e: Exception) {
+                    android.util.Log.e("PlayerActivity", "Could not init LoudnessEnhancer: ${e.message}")
+                }
+            } else {
+                player.setOptionString("ao", "audiotrack,opensles")
+            }
             player.setOptionString("audio-client-name", "Teleflix")
 
-            // ── Dynamic Range Compression (DRC) from Mpv-infinity ──
+            // ── Software Volume Limits & Dolby DRC Options ──
+            player.setOptionString("volume-max", "200")
+            player.setOptionString("volume-gain-max", "150")
+            player.setOptionString("volume-gain-min", "-150")
+
+            // ── Dynamic Range Compression (DRC) & Dialogue Boost ──
             if (isDrcEnabled) {
-                player.setOptionString("af", DRC_FILTER)
+                player.setOptionString("volume-gain", "7.0")
+                player.setOptionString("ad-lavc-ac3drc", "1.0")
+                player.setOptionString("audio-normalize-downmix", "yes")
+                try {
+                    loudnessEnhancer?.setTargetGain(600)
+                    loudnessEnhancer?.enabled = true
+                } catch (_: Throwable) {}
+            } else {
+                player.setOptionString("volume-gain", "0.0")
+                player.setOptionString("ad-lavc-ac3drc", "0.0")
+                player.setOptionString("audio-normalize-downmix", "no")
             }
 
             // ── Subtitle Static Font & Netflix High-Legibility Styling (Fixed Android 14/15 Zero-Width Space Bug) ──
@@ -1913,6 +1966,11 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
         super.onDestroy()
         savePlaybackPosition()
         hideHandler.removeCallbacks(hideRunnable)
+        try {
+            loudnessEnhancer?.enabled = false
+            loudnessEnhancer?.release()
+        } catch (_: Throwable) {}
+        loudnessEnhancer = null
         val player = mpv
         if (player != null) {
             try {
