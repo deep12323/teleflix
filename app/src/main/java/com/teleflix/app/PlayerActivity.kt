@@ -53,6 +53,9 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
                 putExtra("title", title)
                 putExtra("resume_ms", resumeMs)
                 putExtra("media_id", mediaId)
+                if (resumeMs <= 0L) {
+                    putExtra("from_start", true)
+                }
             }
             activity.startActivity(intent)
         }
@@ -134,6 +137,9 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
     private var videoTitle = ""
     private var resumeMs = 0L
     private var mediaId = ""
+    private var pendingResumeSeekSec = 0.0
+    private var isPlaybackCompleted = false
+    private var isMediaLoaded = false
     private var trackPreferencesRestored = false
     private val mediaKey: String
         get() {
@@ -190,8 +196,52 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
 
         streamUrl = intent.getStringExtra("stream_url") ?: ""
         videoTitle = intent.getStringExtra("title") ?: "Video Player"
-        resumeMs = intent.getLongExtra("resume_ms", 0L)
         mediaId = intent.getStringExtra("media_id") ?: ""
+
+        resumeMs = intent.getLongExtra("resume_ms", 0L)
+        if (resumeMs <= 0L) {
+            resumeMs = intent.getIntExtra("position", 0).toLong()
+        }
+        if (resumeMs <= 0L) {
+            resumeMs = intent.getLongExtra("extra_position", 0L)
+        }
+        if (resumeMs <= 0L) {
+            resumeMs = intent.getLongExtra("resume_position", 0L)
+        }
+        if (resumeMs <= 0L) {
+            resumeMs = intent.getLongExtra("position_ms", 0L)
+        }
+        if (resumeMs <= 0L) {
+            resumeMs = intent.getLongExtra("start_position", 0L)
+        }
+
+        val fromStart = intent.getBooleanExtra("from_start", false)
+        if (!fromStart && resumeMs <= 3000L) {
+            val prefsLink = getSharedPreferences("teleflix_resume_points", Context.MODE_PRIVATE)
+            val prefsTitle = getSharedPreferences("TeleflixResume", Context.MODE_PRIVATE)
+            if (mediaId.isNotBlank()) {
+                val p = prefsLink.getLong("id_$mediaId", 0L).takeIf { it > 3000L } ?: prefsLink.getLong(mediaId, 0L)
+                if (p > 3000L) resumeMs = p
+            }
+            if (resumeMs <= 3000L && streamUrl.isNotBlank()) {
+                val p = prefsLink.getLong(streamUrl, 0L)
+                if (p > 3000L) resumeMs = p
+            }
+            if (resumeMs <= 3000L && videoTitle.isNotBlank()) {
+                val p = prefsTitle.getLong("resume_$videoTitle", 0L)
+                if (p > 3000L) resumeMs = p
+            }
+            if (resumeMs <= 3000L) {
+                val prefsTeleflix = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
+                val p = (if (mediaId.isNotBlank()) prefsTeleflix.getLong("resume_pos_$mediaId", 0L) else 0L).takeIf { it > 3000L }
+                    ?: (if (streamUrl.isNotBlank()) prefsTeleflix.getLong("resume_pos_$streamUrl", 0L) else 0L).takeIf { it > 3000L }
+                    ?: (if (videoTitle.isNotBlank()) prefsTeleflix.getLong("resume_pos_$videoTitle", 0L) else 0L).takeIf { it > 3000L }
+                    ?: 0L
+                if (p > 3000L) resumeMs = p
+            }
+        }
+
+        pendingResumeSeekSec = if (resumeMs > 3000L) resumeMs / 1000.0 else 0.0
 
         if (streamUrl.isBlank()) {
             finish()
@@ -674,9 +724,16 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
         }
         actionsRow.addView(audioSubBtn)
 
-        // Aspect / Auto Crop Pill (Default: Fit)
+        val prefs = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
+        val initialCropMode = prefs.getString("crop_mode_$mediaKey", null)
+            ?: prefs.getString("pref_global_crop_mode", "autocrop")
+            ?: "autocrop"
+        currentAspectIndex = aspectRatios.indexOfFirst { it.first == initialCropMode }.let { if (it >= 0) it else 1 }
+        val initialCropLabel = aspectRatios[currentAspectIndex].second
+
+        // Aspect / Auto Crop Pill
         cropBtn = TextView(this).apply {
-            text = "🔲 Fit"
+            text = "🔲 $initialCropLabel"
             textSize = 12f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.WHITE)
@@ -1391,9 +1448,8 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
             // ── Subtitle Static Font & Netflix High-Legibility Styling (Fixed Android 14/15 Zero-Width Space Bug) ──
             setupSubtitleFonts(player)
 
-            if (resumeMs > 0) {
-                val startSec = resumeMs / 1000.0
-                player.setOptionString("start", "$startSec")
+            if (pendingResumeSeekSec > 3.0) {
+                player.setOptionString("start", "$pendingResumeSeekSec")
             }
 
             player.init()
@@ -1409,7 +1465,7 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
             surfaceHolder?.surface?.let { surf ->
                 if (surf.isValid) {
                     player.attachSurface(surf)
-                    if (currentPosSec == 0.0) {
+                    if (!isMediaLoaded) {
                         loadMedia()
                     }
                 }
@@ -1613,7 +1669,7 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
         if (holder.surface.isValid) {
             try {
                 player.attachSurface(holder.surface)
-                if (currentPosSec == 0.0) {
+                if (!isMediaLoaded) {
                     loadMedia()
                 }
             } catch (e: Throwable) {
@@ -1632,6 +1688,8 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
 
     private fun loadMedia() {
         val player = mpv ?: return
+        if (isMediaLoaded) return
+        isMediaLoaded = true
         trackPreferencesRestored = false
         bufferingProgress.visibility = View.VISIBLE
         player.command(arrayOf("loadfile", streamUrl))
@@ -1725,12 +1783,36 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
         currentAspectIndex = (currentAspectIndex + 1) % aspectRatios.size
         val (mode, label) = aspectRatios[currentAspectIndex]
         cropBtn.text = "🔲 $label"
-        applyCropMode(mode)
+
+        // Persist crop mode selection per media and globally
+        val prefs = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("crop_mode_$mediaKey", mode)
+            .putString("pref_global_crop_mode", mode)
+            .apply()
+
+        applyCropMode(mode, notifyUser = true)
+    }
+
+    private fun restoreCropPreference() {
+        if (isAudioOnlyMedia()) return
+        val prefs = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
+        val savedMode = prefs.getString("crop_mode_$mediaKey", null)
+            ?: prefs.getString("pref_global_crop_mode", "autocrop")
+            ?: "autocrop"
+
+        val index = aspectRatios.indexOfFirst { it.first == savedMode }
+        currentAspectIndex = if (index >= 0) index else 1
+        val (mode, label) = aspectRatios[currentAspectIndex]
+        if (::cropBtn.isInitialized) {
+            cropBtn.text = "🔲 $label"
+        }
+        applyCropMode(mode, notifyUser = false)
     }
 
     // ── Auto Crop Black Bars Engine (Mpv-infinity architecture) ──
     // Strictly crops above and below (top & bottom letterbox bars) - NEVER crops left or right
-    private fun applyCropMode(mode: String) {
+    private fun applyCropMode(mode: String, notifyUser: Boolean = true) {
         val player = mpv ?: return
 
         // NEVER apply video crop or video filter on audio/music tracks - prevents pipeline stall
@@ -1750,7 +1832,7 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
                 player.command(arrayOf("vf", "clr", ""))
                 player.setPropertyDouble("panscan", 0.0)
                 player.setPropertyString("video-aspect-override", "-1")
-                showHudMessage("🔲", "Fit: Original (No Zoom, No Crop)")
+                if (notifyUser) showHudMessage("🔲", "Fit: Original (No Zoom, No Crop)")
             }
             "autocrop" -> {
                 // 1. Reset previous crop and ensure zero zoom
@@ -1791,13 +1873,13 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
                             player.setPropertyString("video-crop", "${fullW}x${evenH}+0+${evenY}")
                             player.setPropertyDouble("panscan", 0.0)
                             player.setPropertyString("video-aspect-override", "-1")
-                            showHudMessage("🔲", "Auto Crop: Top & Bottom Bars Removed")
+                            if (notifyUser) showHudMessage("🔲", "Auto Crop: Top & Bottom Bars Removed")
                         } else {
                             // No black bars: keep 100% original uncropped picture with zero zoom
                             player.setPropertyString("video-crop", "")
                             player.setPropertyDouble("panscan", 0.0)
                             player.setPropertyString("video-aspect-override", "-1")
-                            showHudMessage("🔲", "Original Fit (No Black Bars)")
+                            if (notifyUser) showHudMessage("🔲", "Original Fit (No Black Bars)")
                         }
                     } catch (_: Throwable) {
                         player.setPropertyString("video-crop", "")
@@ -1812,14 +1894,14 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
                 player.command(arrayOf("vf", "clr", ""))
                 player.setPropertyDouble("panscan", 1.0)
                 player.setPropertyString("video-aspect-override", "-1")
-                showHudMessage("🔲", "Fill: Zoom to Screen")
+                if (notifyUser) showHudMessage("🔲", "Fill: Zoom to Screen")
             }
             "16:9" -> {
                 player.setPropertyString("video-crop", "")
                 player.command(arrayOf("vf", "clr", ""))
                 player.setPropertyDouble("panscan", 0.0)
                 player.setPropertyString("video-aspect-override", "16:9")
-                showHudMessage("🔲", "Aspect: 16:9")
+                if (notifyUser) showHudMessage("🔲", "Aspect: 16:9")
             }
             "stretch" -> {
                 player.setPropertyString("video-crop", "")
@@ -1830,7 +1912,7 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
                 val h = minOf(dm.widthPixels, dm.heightPixels).toDouble()
                 val ratio = if (h > 0) w / h else (16.0 / 9.0)
                 player.setPropertyString("video-aspect-override", String.format(java.util.Locale.US, "%.4f", ratio))
-                showHudMessage("🔲", "Stretch to Screen")
+                if (notifyUser) showHudMessage("🔲", "Stretch to Screen")
             }
         }
     }
@@ -1862,6 +1944,9 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
                             val rem = maxOf(0.0, durationSec - value)
                             remainingTimeText.text = "-${formatSecToTime(rem.toLong())}"
                         }
+                        if (value > 5.0 && value.toLong() % 15L == 0L) {
+                            savePlaybackPosition()
+                        }
                     }
                 }
                 "duration" -> {
@@ -1880,6 +1965,9 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
                     isPlaying = !value
                     playPauseBtn.text = if (value) "▶" else "⏸"
                     resetHideTimer()
+                    if (value) {
+                        savePlaybackPosition()
+                    }
                 }
                 "paused-for-cache" -> {
                     bufferingProgress.visibility = if (value) View.VISIBLE else View.GONE
@@ -1898,12 +1986,23 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
                 playPauseBtn.text = "⏸"
                 resetHideTimer()
 
-                if (eventId == MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED && !trackPreferencesRestored) {
-                    trackPreferencesRestored = true
-                    restoreTrackPreferences()
+                val player = mpv
+
+                if (eventId == MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED) {
+                    if (pendingResumeSeekSec > 3.0) {
+                        val target = pendingResumeSeekSec
+                        pendingResumeSeekSec = 0.0
+                        currentPosSec = target
+                        timeText.text = formatSecToTime(target.toLong())
+                        player?.command(arrayOf("seek", target.toString(), "absolute"))
+                        TeleflixLogger.log("PlayerActivity", "Executed MPV seek to resume position ${target}s")
+                    }
+                    if (!trackPreferencesRestored) {
+                        trackPreferencesRestored = true
+                        restoreTrackPreferences()
+                    }
                 }
 
-                val player = mpv
                 if (isAudioOnlyMedia()) {
                     // For music / audio files: ensure video filters and crop are completely cleared so audio never stalls
                     player?.setPropertyString("video-crop", "")
@@ -1912,10 +2011,7 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
                     player?.setPropertyString("video-aspect-override", "-1")
                     cropBtn.text = "🎵 Audio"
                 } else {
-                    // Automatically run Auto Crop on playback start for video
-                    if (currentAspectIndex == 0) {
-                        applyCropMode("autocrop")
-                    }
+                    restoreCropPreference()
                 }
             }
         } else if (eventId == MPVLib.MpvEvent.MPV_EVENT_END_FILE) {
@@ -1923,6 +2019,9 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
                 isPlaying = false
                 playPauseBtn.text = "▶"
                 showControls()
+                isPlaybackCompleted = true
+                clearResumePosition()
+                prepareResultIntent()
             }
         }
     }
@@ -1939,21 +2038,117 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
         }
     }
 
-    private fun savePlaybackPosition() {
-        if (currentPosSec > 5.0) {
-            val posMs = (currentPosSec * 1000).toLong()
-            PlayerHelper.saveLinkToWatchHistory(this, streamUrl, videoTitle, mediaId = mediaId)
-            val prefs = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
-            val edit = prefs.edit()
-            if (mediaId.isNotBlank()) edit.putLong("resume_pos_$mediaId", posMs)
-            if (streamUrl.isNotBlank()) edit.putLong("resume_pos_$streamUrl", posMs)
-            edit.apply()
+    private fun clearResumePosition() {
+        val prefsResume = getSharedPreferences("teleflix_resume_points", Context.MODE_PRIVATE)
+        val prefsTitle = getSharedPreferences("TeleflixResume", Context.MODE_PRIVATE)
+        val prefsTeleflix = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
+
+        val editResume = prefsResume.edit()
+        val editTitle = prefsTitle.edit()
+        val editTeleflix = prefsTeleflix.edit()
+
+        if (mediaId.isNotBlank()) {
+            editResume.remove("id_$mediaId").remove(mediaId).remove("dur_id_$mediaId").remove("dur_$mediaId")
+            editTeleflix.remove("resume_pos_$mediaId")
         }
+        if (streamUrl.isNotBlank()) {
+            editResume.remove(streamUrl).remove("dur_$streamUrl")
+            editTeleflix.remove("resume_pos_$streamUrl")
+        }
+        if (videoTitle.isNotBlank()) {
+            editTitle.remove("resume_$videoTitle").remove("dur_$videoTitle")
+            editTeleflix.remove("resume_pos_$videoTitle")
+        }
+        editResume.apply()
+        editTitle.apply()
+        editTeleflix.apply()
+        TeleflixLogger.log("PlayerActivity", "Cleared resume point for '$videoTitle'")
+    }
+
+    private fun savePlaybackPosition() {
+        if (isPlaybackCompleted) {
+            clearResumePosition()
+            return
+        }
+
+        val posMs = (currentPosSec * 1000).toLong()
+        val durMs = (durationSec * 1000).toLong()
+
+        // Guard against saving 0 or invalid position before initial resume seek takes effect
+        if (pendingResumeSeekSec > 3.0) return
+        if (posMs <= 3000L && currentPosSec <= 3.0) return
+
+        val isCompleted = durMs > 20_000L && (posMs >= (durMs * 0.90).toLong() || posMs >= durMs - 15_000L)
+        if (isCompleted) {
+            isPlaybackCompleted = true
+            clearResumePosition()
+            return
+        }
+
+        val prefsResume = getSharedPreferences("teleflix_resume_points", Context.MODE_PRIVATE)
+        val prefsTitle = getSharedPreferences("TeleflixResume", Context.MODE_PRIVATE)
+        val prefsTeleflix = getSharedPreferences("teleflix_preferences", Context.MODE_PRIVATE)
+
+        val editResume = prefsResume.edit()
+        val editTitle = prefsTitle.edit()
+        val editTeleflix = prefsTeleflix.edit()
+
+        if (mediaId.isNotBlank()) {
+            editResume.putLong("id_$mediaId", posMs)
+            editResume.putLong(mediaId, posMs)
+            if (durMs > 0L) {
+                editResume.putLong("dur_id_$mediaId", durMs)
+                editResume.putLong("dur_$mediaId", durMs)
+            }
+            editTeleflix.putLong("resume_pos_$mediaId", posMs)
+        }
+        if (streamUrl.isNotBlank()) {
+            editResume.putLong(streamUrl, posMs)
+            if (durMs > 0L) {
+                editResume.putLong("dur_$streamUrl", durMs)
+            }
+            editTeleflix.putLong("resume_pos_$streamUrl", posMs)
+        }
+        if (videoTitle.isNotBlank()) {
+            editTitle.putLong("resume_$videoTitle", posMs)
+            if (durMs > 0L) {
+                editTitle.putLong("dur_$videoTitle", durMs)
+            }
+            editTeleflix.putLong("resume_pos_$videoTitle", posMs)
+        }
+
+        editResume.apply()
+        editTitle.apply()
+        editTeleflix.apply()
+
+        PlayerHelper.saveLinkToWatchHistory(this, streamUrl, videoTitle, mediaId = mediaId)
+        TeleflixLogger.log("PlayerActivity", "Saved resume position $posMs ms (dur=$durMs ms) for '$videoTitle'")
+    }
+
+    private fun prepareResultIntent() {
+        val posMs = (currentPosSec * 1000).toLong()
+        val durMs = (durationSec * 1000).toLong()
+        val resIntent = Intent().apply {
+            putExtra("position", posMs)
+            putExtra("position_ms", posMs)
+            putExtra("extra_position", posMs)
+            putExtra("duration", durMs)
+            putExtra("duration_ms", durMs)
+            putExtra("stream_url", streamUrl)
+            putExtra("media_id", mediaId)
+            putExtra("title", videoTitle)
+            if (isPlaybackCompleted || (durMs > 20_000L && (posMs >= (durMs * 0.90).toLong() || posMs >= durMs - 15_000L))) {
+                putExtra("completed", true)
+                putExtra("playback_completed", true)
+            }
+        }
+        setResult(Activity.RESULT_OK, resIntent)
     }
 
     override fun onPause() {
         super.onPause()
         savePlaybackPosition()
+        prepareResultIntent()
         mpv?.setPropertyBoolean("pause", true)
     }
 
@@ -1962,9 +2157,16 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
         hideSystemUI()
     }
 
+    override fun onStop() {
+        super.onStop()
+        savePlaybackPosition()
+        prepareResultIntent()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         savePlaybackPosition()
+        prepareResultIntent()
         hideHandler.removeCallbacks(hideRunnable)
         try {
             loudnessEnhancer?.enabled = false
@@ -1989,6 +2191,7 @@ class PlayerActivity : AppCompatActivity(), SurfaceHolder.Callback, MPVLib.Event
             return
         }
         savePlaybackPosition()
+        prepareResultIntent()
         super.onBackPressed()
     }
 }
