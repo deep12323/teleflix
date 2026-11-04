@@ -619,7 +619,7 @@ class SearchActivity : AppCompatActivity() {
             return
         }
 
-        // Open ARVIO / Netflix-style Details Page
+        // Open Details Page
         val intent = Intent(this, MediaDetailsActivity::class.java).apply {
             putExtra("id", item.id)
             putExtra("title", item.title)

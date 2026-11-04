@@ -255,7 +255,7 @@ class MainActivity : AppCompatActivity() {
     private val cinemetaCatalogCache = java.util.concurrent.ConcurrentHashMap<String, List<MediaItem>>()
     private val cinemetaSeriesCache = java.util.concurrent.ConcurrentHashMap<String, Map<Int, List<EpisodeItem>>>()
 
-    private var selectedCategory = "home/netflix"
+    private var selectedCategory = "home/discovery"
     private var selectedLabel = "🏠 Home"
     private var currentSkip = 0
     private var isLoadingMore = false
@@ -263,9 +263,9 @@ class MainActivity : AppCompatActivity() {
     private var isInSearchMode = false
 
     private val categories = listOf(
-        "🏠 Home" to "home/netflix",
-        "🎬 Movies" to "movies/netflix",
-        "📺 TV Shows" to "series/netflix",
+        "🏠 Home" to "home/discovery",
+        "🎬 Movies" to "movies/discovery",
+        "📺 TV Shows" to "series/discovery",
         "📚 My List" to "library/list",
         "🕒 History" to "history/list",
         "🎭 Genres" to "genres/picker",
@@ -315,7 +315,7 @@ class MainActivity : AppCompatActivity() {
             text = "TELEFLIX"
             UITheme.applyLargeTitleStyle(this)
             letterSpacing = 0.12f
-            setTextColor(Color.parseColor(UITheme.PRIMARY)) // Netflix Red
+            setTextColor(Color.parseColor(UITheme.PRIMARY))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         headerLayout.addView(titleView)
@@ -473,7 +473,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         searchInput = EditText(this).apply {
-            hint = "Search Movies, TV Series, Channels..."
+            hint = "Search Movies, TV Shows, Channels..."
             setHintTextColor(Color.parseColor(UITheme.TEXT_SECONDARY))
             setTextColor(Color.WHITE)
             background = null
@@ -547,18 +547,18 @@ class MainActivity : AppCompatActivity() {
                 ).apply { setMargins(0, 0, UITheme.dpToPx(this@MainActivity, 6), 0) }
                 layoutParams = lp
                 setOnClickListener {
-                    if (catalogId == "home/netflix") {
-                        loadNetflixHome("home")
+                    if (catalogId == "home/discovery") {
+                        loadDiscoveryHome("home")
                         updateTabSelection(catalogId)
                         return@setOnClickListener
                     }
-                    if (catalogId == "movies/netflix") {
-                        loadNetflixHome("movies")
+                    if (catalogId == "movies/discovery") {
+                        loadDiscoveryHome("movies")
                         updateTabSelection(catalogId)
                         return@setOnClickListener
                     }
-                    if (catalogId == "series/netflix") {
-                        loadNetflixHome("series")
+                    if (catalogId == "series/discovery") {
+                        loadDiscoveryHome("series")
                         updateTabSelection(catalogId)
                         return@setOnClickListener
                     }
@@ -572,11 +572,11 @@ class MainActivity : AppCompatActivity() {
                     }
                     if (catalogId == "channels/list") {
                         isTelegramCatalogMode = true
-                        modeToggleButton.text = "🎬 ARVIO Stream"
+                        modeToggleButton.text = "🎬 Discovery"
                         modeToggleButton.setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
                         modeToggleButton.background = UITheme.createCardShape(this@MainActivity, UITheme.SECONDARY, 14, UITheme.ACCENT_BLUE, 1)
-                        updateCategoryBanner("Monitored Telegram Channels")
-                        searchInput.hint = "Search chats & channels..."
+                        updateCategoryBanner("")
+                        searchInput.hint = "Search Movies, TV Shows, Channels..."
                         loadTelegramChannelsCatalog()
                         updateTabSelection(catalogId)
                         return@setOnClickListener
@@ -586,7 +586,7 @@ class MainActivity : AppCompatActivity() {
                         modeToggleButton.text = "💬 Channels"
                         modeToggleButton.setTextColor(Color.parseColor(UITheme.SUCCESS))
                         modeToggleButton.background = UITheme.createCardShape(this@MainActivity, UITheme.SECONDARY, 14, UITheme.SUCCESS, 1)
-                        searchInput.hint = "Search Movies & Series..."
+                        searchInput.hint = "Search Movies, TV Shows, Channels..."
                     }
                     selectedCategory = catalogId
                     selectedLabel = label
@@ -885,10 +885,21 @@ class MainActivity : AppCompatActivity() {
             handleDownloadItem(item)
         }, { categoryTitle, catalogTarget ->
             if (catalogTarget.isNotBlank()) {
+                val previousMode = when (selectedCategory) {
+                    "movies/discovery" -> "movies"
+                    "series/discovery" -> "series"
+                    else -> "home"
+                }
                 selectedCategory = catalogTarget
                 selectedLabel = categoryTitle
-                updateCategoryBanner("$categoryTitle  •  [ ⬅ Back to Home ]", isClickable = true) {
-                    loadNetflixHome("home")
+                isTelegramCatalogMode = false
+                val backLabel = when (previousMode) {
+                    "movies" -> "⬅ Back to Movies"
+                    "series" -> "⬅ Back to TV Shows"
+                    else -> "⬅ Back to Home"
+                }
+                updateCategoryBanner("$categoryTitle  •  [ $backLabel ]", isClickable = true) {
+                    loadDiscoveryHome(previousMode)
                 }
                 loadInitialCinemeta(catalogTarget, categoryTitle)
             }
@@ -905,7 +916,7 @@ class MainActivity : AppCompatActivity() {
                     return when (item?.type) {
                         "channel", "hero_billboard", "horizontal_row" -> currentSpan
                         "telegram_media", "history_group", "topic" -> if (isLandscapeMode) 4 else 3
-                        else -> 2 // 3-column Netflix compact poster grid in portrait (6 / 2 = 3), 6-column in landscape (12 / 2 = 6)
+                        else -> 2 // 3-column compact poster grid in portrait (6 / 2 = 3), 6-column in landscape (12 / 2 = 6)
                     }
                 }
             }
@@ -921,20 +932,28 @@ class MainActivity : AppCompatActivity() {
 
         // Attach Endless Scroll Listener
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                super.onScrollStateChanged(recyclerView, newState)
+                checkEndlessScroll()
+            }
+
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(recyclerView, dx, dy)
-                if (dy <= 0) return // Only check on downward scroll
+                if (dy > 0 || !recyclerView.canScrollVertically(1)) {
+                    checkEndlessScroll()
+                }
+            }
 
-                if (!isLoadingMore && hasMoreItems && !isInSearchMode) {
-                    val totalItemCount = gridLayoutManager.itemCount
-                    val lastVisibleItemPosition = gridLayoutManager.findLastVisibleItemPosition()
+            private fun checkEndlessScroll() {
+                if (isLoadingMore || !hasMoreItems || isInSearchMode) return
+                val totalItemCount = gridLayoutManager.itemCount
+                val lastVisibleItemPosition = gridLayoutManager.findLastVisibleItemPosition()
 
-                    if (totalItemCount > 0 && lastVisibleItemPosition + 4 >= totalItemCount) {
-                        if (isTelegramCatalogMode && currentOpenChannelId != null) {
-                            loadMoreTelegramChannelMedia()
-                        } else if (!isTelegramCatalogMode) {
-                            loadMoreCinemeta()
-                        }
+                if (totalItemCount > 0 && (lastVisibleItemPosition + 10 >= totalItemCount || !recyclerView.canScrollVertically(1))) {
+                    if (isTelegramCatalogMode && currentOpenChannelId != null) {
+                        loadMoreTelegramChannelMedia()
+                    } else if (!isTelegramCatalogMode && !selectedCategory.endsWith("/discovery")) {
+                        loadMoreCinemeta()
                     }
                 }
             }
@@ -978,23 +997,36 @@ class MainActivity : AppCompatActivity() {
         if (defaultMonitored) {
             isTelegramCatalogMode = true
             tabScroll.visibility = android.view.View.VISIBLE
-            modeToggleButton.text = "🎬 ARVIO Stream"
+            modeToggleButton.text = "🎬 Discovery"
             modeToggleButton.setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
             modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.ACCENT_BLUE, 1)
-            updateCategoryBanner("Monitored Telegram Channels")
-            searchInput.hint = "Search chats & channels..."
+            updateCategoryBanner("")
+            searchInput.hint = "Search Movies, TV Shows, Channels..."
+            selectedCategory = "channels/list"
+            selectedLabel = "📁 Channels"
             loadTelegramChannelsCatalog()
+            updateTabSelection("channels/list")
+            tabScroll.post {
+                val idx = categories.indexOfFirst { it.second == "channels/list" }
+                if (idx != -1) {
+                    val tab = tabRow.getChildAt(idx)
+                    if (tab != null) {
+                        val scrollX = tab.left - (tabScroll.width / 2) + (tab.width / 2)
+                        tabScroll.smoothScrollTo(scrollX, 0)
+                    }
+                }
+            }
         } else {
             isTelegramCatalogMode = false
             tabScroll.visibility = android.view.View.VISIBLE
             modeToggleButton.text = "💬 Channels"
             modeToggleButton.setTextColor(Color.parseColor(UITheme.SUCCESS))
             modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.SUCCESS, 1)
-            searchInput.hint = "Search Movies & Series..."
-            selectedCategory = "home/netflix"
+            searchInput.hint = "Search Movies, TV Shows, Channels..."
+            selectedCategory = "home/discovery"
             selectedLabel = "🏠 Home"
             updateCategoryBanner(selectedLabel)
-            loadNetflixHome("home")
+            loadDiscoveryHome("home")
             updateTabSelection(selectedCategory)
         }
     }
@@ -1012,9 +1044,9 @@ class MainActivity : AppCompatActivity() {
         val isClearAction = text.contains("Clear History") || text.contains("Clear Library") || text.contains("Clear List")
         val isSearchAction = text.startsWith("Search:") || text.startsWith("Telegram Default Search:")
         val isGenreAction = text.contains("Top ") && (text.contains("Movies") || text.contains("Series"))
-        val isTelegramMode = isTelegramCatalogMode || (::channelMenuButton.isInitialized && channelMenuButton.visibility == android.view.View.VISIBLE)
+        val isInsideChannel = (currentOpenChannelId != null) || (::channelMenuButton.isInitialized && channelMenuButton.visibility == android.view.View.VISIBLE)
         if (::categoryHeaderLayout.isInitialized) {
-            categoryHeaderLayout.visibility = if (isBackAction || isClearAction || isSearchAction || isGenreAction || isTelegramMode) android.view.View.VISIBLE else android.view.View.GONE
+            categoryHeaderLayout.visibility = if (text.isNotBlank() && (isBackAction || isClearAction || isSearchAction || isGenreAction || isInsideChannel)) android.view.View.VISIBLE else android.view.View.GONE
         }
     }
 
@@ -1049,14 +1081,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Netflix-Style Categories & Genres Dashboard ────────────
+    // ── Categories & Genres Dashboard ────────────
     private var isGenreMoviesMode = true
 
     private fun showGenreSelectionDialog() {
-        showNetflixGenreDashboard()
+        showGenreDashboard()
     }
 
-    private fun showNetflixGenreDashboard() {
+    private fun showGenreDashboard() {
         val genres = listOf(
             "Action" to ("💥" to Pair("#DC2626", "#EA580C")),
             "Adventure" to ("🗺️" to Pair("#047857", "#059669")),
@@ -1325,8 +1357,9 @@ class MainActivity : AppCompatActivity() {
         val label = if (isGenreMoviesMode) "🎬 Top $genre Movies" else "📺 Top $genre Series"
         selectedCategory = targetCatalog
         selectedLabel = label
+        isTelegramCatalogMode = false
         updateCategoryBanner("$label  •  [ 🎭 Genres ]  •  [ 🏠 Home ]", isClickable = true) {
-            showNetflixGenreDashboard()
+            showGenreDashboard()
         }
         updateTabSelection("genres/picker")
         loadInitialCinemeta(targetCatalog, label)
@@ -1338,6 +1371,7 @@ class MainActivity : AppCompatActivity() {
         isInSearchMode = false
         hasMoreItems = false
         isLoadingMore = false
+        if (::tabScroll.isInitialized) tabScroll.visibility = android.view.View.VISIBLE
         selectedCategory = "library/list"
         selectedLabel = label
         updateCategoryBanner(label)
@@ -1367,7 +1401,7 @@ class MainActivity : AppCompatActivity() {
                             loadingText.visibility = android.view.View.VISIBLE
                             Toast.makeText(this, "My List cleared", Toast.LENGTH_SHORT).show()
                         } else {
-                            loadNetflixHome("home")
+                            loadDiscoveryHome("home")
                         }
                     }
                     .setNegativeButton("Cancel", null)
@@ -1473,10 +1507,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadNetflixHome(mode: String = "home") {
+    private fun loadDiscoveryHome(mode: String = "home") {
         isInSearchMode = false
+        isTelegramCatalogMode = false
         currentOpenChannelId = null
         if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+        if (::tabScroll.isInitialized) tabScroll.visibility = android.view.View.VISIBLE
         if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.GONE
         if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
         currentSkip = 0
@@ -1484,9 +1520,9 @@ class MainActivity : AppCompatActivity() {
         isLoadingMore = false
 
         selectedCategory = when (mode) {
-            "movies" -> "movies/netflix"
-            "series" -> "series/netflix"
-            else -> "home/netflix"
+            "movies" -> "movies/discovery"
+            "series" -> "series/discovery"
+            else -> "home/discovery"
         }
         selectedLabel = when (mode) {
             "movies" -> "🎬 Movies"
@@ -1496,7 +1532,7 @@ class MainActivity : AppCompatActivity() {
         updateTabSelection(selectedCategory)
         updateCategoryBanner(selectedLabel)
 
-        val cachedHome = cinemetaCatalogCache["netflix_home_$mode"]
+        val cachedHome = cinemetaCatalogCache["discovery_home_$mode"]
         if (!cachedHome.isNullOrEmpty()) {
             mediaList.clear()
             mediaList.addAll(cachedHome)
@@ -1505,7 +1541,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        loadingText.text = "Loading Netflix Experience from Cinemeta..."
+        loadingText.text = "Loading Discovery from Cinemeta..."
         loadingText.visibility = android.view.View.VISIBLE
 
         CoroutineScope(Dispatchers.IO).launch {
@@ -1708,7 +1744,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (rows.isNotEmpty()) {
-                    cinemetaCatalogCache["netflix_home_$mode"] = rows
+                    cinemetaCatalogCache["discovery_home_$mode"] = rows
                 }
 
                 withContext(Dispatchers.Main) {
@@ -1760,26 +1796,30 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadInitialCinemeta(catalogId: String, label: String) {
         isInSearchMode = false
+        isTelegramCatalogMode = false
         currentOpenChannelId = null
+        selectedCategory = catalogId
+        selectedLabel = label
         if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+        if (::tabScroll.isInitialized) tabScroll.visibility = android.view.View.VISIBLE
         if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.GONE
         if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
         currentSkip = 0
         hasMoreItems = true
         isLoadingMore = true
 
-        if (catalogId == "home/netflix") {
-            loadNetflixHome("home")
+        if (catalogId == "home/discovery") {
+            loadDiscoveryHome("home")
             return
         }
 
-        if (catalogId == "movies/netflix") {
-            loadNetflixHome("movies")
+        if (catalogId == "movies/discovery") {
+            loadDiscoveryHome("movies")
             return
         }
 
-        if (catalogId == "series/netflix") {
-            loadNetflixHome("series")
+        if (catalogId == "series/discovery") {
+            loadDiscoveryHome("series")
             return
         }
 
@@ -1823,27 +1863,27 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val hasCached = cinemetaCatalogCache.containsKey(catalogId)
-        if (hasCached) {
-            val cached = cinemetaCatalogCache[catalogId]
-            if (!cached.isNullOrEmpty()) {
-                mediaList.clear()
-                mediaList.addAll(cached)
-                hasMoreItems = true
-                mediaAdapter?.notifyDataSetChanged()
-                loadingText.visibility = android.view.View.GONE
-                isLoadingMore = false
-            }
-        } else {
-            loadingText.text = "Loading $label from Cinemeta..."
-            loadingText.visibility = android.view.View.VISIBLE
+        val cached = cinemetaCatalogCache[catalogId]
+        if (!cached.isNullOrEmpty()) {
+            mediaList.clear()
+            mediaList.addAll(cached)
+            hasMoreItems = true
+            currentSkip = 0
+            mediaAdapter?.notifyDataSetChanged()
+            loadingText.visibility = android.view.View.GONE
+            isLoadingMore = false
+            recyclerView.scrollToPosition(0)
+            return
         }
+
+        loadingText.text = "Loading $label from Cinemeta..."
+        loadingText.visibility = android.view.View.VISIBLE
 
         val type = if (catalogId.startsWith("series")) "series" else "movie"
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val urlString = if (catalogId.contains("genre=")) {
+                val urlString = if (catalogId.contains("genre=") || catalogId.contains("search=")) {
                     "https://v3-cinemeta.strem.io/catalog/$catalogId&skip=0.json"
                 } else {
                     "https://v3-cinemeta.strem.io/catalog/$catalogId.json"
@@ -1857,6 +1897,7 @@ class MainActivity : AppCompatActivity() {
                 val text = connection.inputStream.bufferedReader().readText()
                 val json = JSONObject(text)
                 val metas = json.optJSONArray("metas") ?: JSONArray()
+                val hasMoreFlag = json.optBoolean("hasMore", true)
 
                 val results = parseMetas(metas, type)
                 val finalItems = if (results.isNotEmpty() && !catalogId.contains("genre=") && !catalogId.contains("search=") && catalogId != "history/list" && catalogId != "library/list") {
@@ -1872,10 +1913,11 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     mediaList.clear()
                     mediaList.addAll(finalItems)
-                    hasMoreItems = results.size >= 10
+                    hasMoreItems = results.isNotEmpty() && hasMoreFlag
                     mediaAdapter?.notifyDataSetChanged()
                     loadingText.visibility = android.view.View.GONE
                     isLoadingMore = false
+                    recyclerView.scrollToPosition(0)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -1888,10 +1930,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadMoreCinemeta() {
-        if (isLoadingMore || !hasMoreItems || isInSearchMode || selectedCategory.endsWith("/netflix")) return
+        if (isLoadingMore || !hasMoreItems || isInSearchMode || selectedCategory.endsWith("/discovery")) return
 
         isLoadingMore = true
-        currentSkip += if (selectedCategory.contains("genre=")) 50 else 100
+        val nextSkip = currentSkip + 50
 
         loadingText.text = "Loading more $selectedLabel..."
         loadingText.visibility = android.view.View.VISIBLE
@@ -1900,10 +1942,10 @@ class MainActivity : AppCompatActivity() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val urlString = if (selectedCategory.contains("genre=")) {
-                    "https://v3-cinemeta.strem.io/catalog/$selectedCategory&skip=$currentSkip.json"
+                val urlString = if (selectedCategory.contains("genre=") || selectedCategory.contains("search=")) {
+                    "https://v3-cinemeta.strem.io/catalog/$selectedCategory&skip=$nextSkip.json"
                 } else {
-                    "https://v3-cinemeta.strem.io/catalog/$selectedCategory/skip=$currentSkip.json"
+                    "https://v3-cinemeta.strem.io/catalog/$selectedCategory/skip=$nextSkip.json"
                 }
                 val url = URL(urlString)
                 val connection = url.openConnection() as HttpURLConnection
@@ -1914,6 +1956,7 @@ class MainActivity : AppCompatActivity() {
                 val text = connection.inputStream.bufferedReader().readText()
                 val json = JSONObject(text)
                 val metas = json.optJSONArray("metas") ?: JSONArray()
+                val hasMoreFlag = json.optBoolean("hasMore", true)
 
                 val newItems = parseMetas(metas, type)
 
@@ -1922,12 +1965,17 @@ class MainActivity : AppCompatActivity() {
                     loadingText.visibility = android.view.View.GONE
 
                     if (newItems.isNotEmpty()) {
-                        val startPos = mediaList.size
-                        mediaList.addAll(newItems)
-                        mediaAdapter?.notifyItemRangeInserted(startPos, newItems.size)
+                        currentSkip = nextSkip
+                        val existingIds = mediaList.map { it.id }.toSet()
+                        val uniqueNewItems = newItems.filter { it.id !in existingIds }
+                        if (uniqueNewItems.isNotEmpty()) {
+                            val startPos = mediaList.size
+                            mediaList.addAll(uniqueNewItems)
+                            mediaAdapter?.notifyItemRangeInserted(startPos, uniqueNewItems.size)
+                        }
                     }
 
-                    if (newItems.isEmpty() || newItems.size < 10) {
+                    if (newItems.isEmpty() || !hasMoreFlag) {
                         hasMoreItems = false
                     }
                 }
@@ -1947,7 +1995,7 @@ class MainActivity : AppCompatActivity() {
         updateCategoryBanner("Search: \"$trimmed\"  •  [ ⬅ Back to Home ]", isClickable = true) {
             isInSearchMode = false
             searchInput.setText("")
-            loadNetflixHome("home")
+            loadDiscoveryHome("home")
         }
 
         loadingText.text = "Searching online metadata & channels for \"$trimmed\"..."
@@ -2147,18 +2195,22 @@ class MainActivity : AppCompatActivity() {
     private fun toggleCatalogMode() {
         isTelegramCatalogMode = !isTelegramCatalogMode
         if (isTelegramCatalogMode) {
-            tabScroll.visibility = android.view.View.VISIBLE
-            modeToggleButton.text = "🎬 ARVIO Stream"
+            modeToggleButton.text = "🎬 Discovery"
             modeToggleButton.setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
             modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.ACCENT_BLUE, 1)
-            updateCategoryBanner("Monitored Telegram Channels")
-            searchInput.hint = "Search chats & channels..."
+            updateCategoryBanner("")
+            searchInput.hint = "Search Movies, TV Shows, Channels..."
+            selectedCategory = "channels/list"
+            selectedLabel = "📁 Channels"
+            updateTabSelection("channels/list")
             if (currentOpenChannelId != null) {
                 if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
+                if (::tabScroll.isInitialized) tabScroll.visibility = android.view.View.GONE
                 if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.VISIBLE
                 if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.VISIBLE
             } else {
                 if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+                if (::tabScroll.isInitialized) tabScroll.visibility = android.view.View.VISIBLE
                 if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.GONE
                 if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
                 loadTelegramChannelsCatalog()
@@ -2166,17 +2218,17 @@ class MainActivity : AppCompatActivity() {
         } else {
             currentOpenChannelId = null
             if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+            if (::tabScroll.isInitialized) tabScroll.visibility = android.view.View.VISIBLE
             if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.GONE
             if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
-            tabScroll.visibility = android.view.View.VISIBLE
             modeToggleButton.text = "💬 Channels"
             modeToggleButton.setTextColor(Color.parseColor(UITheme.SUCCESS))
             modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.SUCCESS, 1)
-            searchInput.hint = "Search Movies & Series..."
-            selectedCategory = "home/netflix"
+            searchInput.hint = "Search Movies, TV Shows, Channels..."
+            selectedCategory = "home/discovery"
             selectedLabel = "🏠 Home"
             updateCategoryBanner(selectedLabel)
-            loadNetflixHome("home")
+            loadDiscoveryHome("home")
             updateTabSelection(selectedCategory)
         }
     }
@@ -2189,9 +2241,10 @@ class MainActivity : AppCompatActivity() {
         hasMoreItems = false
         isLoadingMore = false
         if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.VISIBLE
+        if (::tabScroll.isInitialized) tabScroll.visibility = android.view.View.VISIBLE
         if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.GONE
         if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.GONE
-        updateCategoryBanner("Monitored Telegram Channels")
+        updateCategoryBanner("")
 
         if (prevChannel != null) {
             CoroutineScope(Dispatchers.IO).launch {
@@ -2341,6 +2394,7 @@ class MainActivity : AppCompatActivity() {
         hasMoreItems = true
         isLoadingMore = true
         if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
+        if (::tabScroll.isInitialized) tabScroll.visibility = android.view.View.GONE
         if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.VISIBLE
         if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.VISIBLE
         mediaList.clear()
@@ -2443,6 +2497,7 @@ class MainActivity : AppCompatActivity() {
         hasMoreItems = true
         isLoadingMore = true
         if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
+        if (::tabScroll.isInitialized) tabScroll.visibility = android.view.View.GONE
         if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.VISIBLE
         if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.VISIBLE
         mediaList.clear()
@@ -2850,6 +2905,7 @@ class MainActivity : AppCompatActivity() {
         hasMoreItems = true
         isLoadingMore = true
         if (::searchContainer.isInitialized) searchContainer.visibility = android.view.View.GONE
+        if (::tabScroll.isInitialized) tabScroll.visibility = android.view.View.GONE
         if (::channelRefreshButton.isInitialized) channelRefreshButton.visibility = android.view.View.VISIBLE
         if (::channelMenuButton.isInitialized) channelMenuButton.visibility = android.view.View.VISIBLE
         mediaList.clear()
@@ -6093,6 +6149,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
+        if (currentOpenTopicId > 0 && currentOpenChannelId != null) {
+            val title = if (categoryLabel.text.toString().contains("Topic: ")) categoryLabel.text.toString().substringAfter("Topic: ") else currentOpenChannelId ?: "Channel"
+            loadTelegramChannelMedia(currentOpenChannelId!!, title)
+            return
+        }
         if (currentOpenChannelId != null) {
             loadTelegramChannelsCatalog()
             return
@@ -6103,12 +6164,12 @@ class MainActivity : AppCompatActivity() {
             if (isTelegramCatalogMode) {
                 loadTelegramChannelsCatalog()
             } else {
-                loadNetflixHome("home")
+                loadDiscoveryHome("home")
             }
             return
         }
-        if (selectedCategory != "home/netflix" && !isTelegramCatalogMode) {
-            loadNetflixHome("home")
+        if (selectedCategory != "home/discovery" && !isTelegramCatalogMode) {
+            loadDiscoveryHome("home")
             return
         }
         super.onBackPressed()
@@ -6995,11 +7056,11 @@ class MainActivity : AppCompatActivity() {
                 loadLibraryCatalog(label)
             } else if (catalogId == "channels/list") {
                 isTelegramCatalogMode = true
-                modeToggleButton.text = "🎬 ARVIO Stream"
+                modeToggleButton.text = "🎬 Discovery"
                 modeToggleButton.setTextColor(Color.parseColor(UITheme.ACCENT_BLUE))
                 modeToggleButton.background = UITheme.createCardShape(this, UITheme.SECONDARY, 14, UITheme.ACCENT_BLUE, 1)
-                updateCategoryBanner("Monitored Telegram Channels")
-                searchInput.hint = "Search chats & channels..."
+                updateCategoryBanner("")
+                searchInput.hint = "Search Movies, TV Shows, Channels..."
                 loadTelegramChannelsCatalog()
                 updateTabSelection(catalogId)
             } else {

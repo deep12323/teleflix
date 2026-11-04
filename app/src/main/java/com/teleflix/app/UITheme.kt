@@ -14,7 +14,7 @@ object UITheme {
     const val BACKGROUND = "#0B0B0F"
     const val SURFACE = "#15171D"
     const val CARD = "#1B1F29"
-    const val PRIMARY = "#E50914"       // Netflix Red
+    const val PRIMARY = "#E50914"       // Teleflix Crimson
     const val SECONDARY = "#2A2F3A"     // Surface pill/chip
     const val ACCENT_BLUE = "#3B82F6"   // Active blue accent
     const val TEXT_PRIMARY = "#FFFFFF"
