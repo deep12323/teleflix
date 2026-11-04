@@ -39,10 +39,25 @@ jobs:
           echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
           echo "Extracted App Version: ${VERSION}"
 
+      - name: Decode Signing Keystore
+        if: env.TELEFLIX_KEYSTORE_BASE64 != ''
+        env:
+          TELEFLIX_KEYSTORE_BASE64: ${{ secrets.TELEFLIX_KEYSTORE_BASE64 }}
+        run: |
+          echo "$TELEFLIX_KEYSTORE_BASE64" | base64 -d > app/teleflix.keystore
+
       - name: Build Multi-Architecture Release APKs
+        env:
+          TELEFLIX_STORE_PASSWORD: ${{ secrets.TELEFLIX_STORE_PASSWORD }}
+          TELEFLIX_KEY_ALIAS: ${{ secrets.TELEFLIX_KEY_ALIAS }}
+          TELEFLIX_KEY_PASSWORD: ${{ secrets.TELEFLIX_KEY_PASSWORD }}
         run: |
           sed -i '/android.aapt2FromMavenOverride/d' gradle.properties || true
           ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Clean Up Keystore
+        if: always()
+        run: rm -f app/teleflix.keystore
 
       - name: Rename and Package APKs
         run: |

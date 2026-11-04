@@ -16,3 +16,9 @@ local.properties
 *.py
 *.sh
 *.txt
+
+# Keystores & Signing credentials
+*.keystore
+*.jks
+signing.properties
+
