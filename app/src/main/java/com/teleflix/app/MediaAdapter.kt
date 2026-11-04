@@ -68,7 +68,7 @@ class MediaAdapter(
 
         when (viewType) {
             VIEW_TYPE_HERO_BILLBOARD -> {
-                // Netflix Featured Billboard (Top Hero Card)
+                // Featured Billboard (Top Hero Card)
                 val heroCard = FrameLayout(context).apply {
                     layoutParams = ViewGroup.MarginLayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -94,7 +94,7 @@ class MediaAdapter(
                     clipToOutline = true
                 }
 
-                // Netflix Deep Bottom Gradient
+                // Deep Bottom Gradient
                 val gradientOverlay = View(context).apply {
                     layoutParams = FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
@@ -113,7 +113,7 @@ class MediaAdapter(
                     }
                 }
 
-                // Top-Left Netflix Red "TOP 10" Badge
+                // Top-Left "TOP 10" Badge
                 val topBadge = TextView(context).apply {
                     text = "🔥 #1 IN MOVIES TODAY"
                     textSize = 10f
@@ -168,7 +168,7 @@ class MediaAdapter(
                     setPadding(0, 0, 0, dp(12))
                 }
 
-                // Netflix Action Buttons Row: [ ▶ Play ] [ + My List ] [ 📥 Download ]
+                // Action Buttons Row: [ ▶ Play ] [ + My List ] [ 📥 Download ]
                 val buttonRow = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
@@ -418,7 +418,7 @@ class MediaAdapter(
             }
 
             VIEW_TYPE_HORIZONTAL_ROW -> {
-                // Netflix Horizontal Scrolling Row (Shelf / Swimlane)
+                // Horizontal Scrolling Row (Shelf / Swimlane)
                 val rowContainer = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = ViewGroup.MarginLayoutParams(
@@ -485,7 +485,7 @@ class MediaAdapter(
             }
 
             else -> {
-                // Netflix Modern Borderless Poster Card (2:3 Aspect Ratio, 3-column compact grid)
+                // Modern Borderless Poster Card (2:3 Aspect Ratio, 3-column compact grid)
                 val card = object : FrameLayout(context) {
                     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
                         val width = MeasureSpec.getSize(widthMeasureSpec)
@@ -520,7 +520,7 @@ class MediaAdapter(
                     clipToOutline = true
                 }
 
-                // Netflix Smooth Dark Gradient Overlay
+                // Smooth Dark Gradient Overlay
                 val gradientOverlay = View(context).apply {
                     layoutParams = FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
@@ -539,7 +539,7 @@ class MediaAdapter(
                     }
                 }
 
-                // Top-Left Rating Pill (Netflix Gold on Matte Black)
+                // Top-Left Rating Pill (Gold on Matte Black)
                 val ratingBadge = TextView(context).apply {
                     textSize = 9.5f
                     setTypeface(null, android.graphics.Typeface.BOLD)
@@ -905,7 +905,7 @@ class HorizontalMediaCardAdapter(
             ).apply {
                 gravity = Gravity.BOTTOM or Gravity.START
             }
-            setBackgroundColor(Color.parseColor(UITheme.PRIMARY)) // Netflix Red
+            setBackgroundColor(Color.parseColor(UITheme.PRIMARY))
             visibility = View.GONE
         }
 

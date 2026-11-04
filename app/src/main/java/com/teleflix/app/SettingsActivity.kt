@@ -660,7 +660,7 @@ class SettingsActivity : AppCompatActivity() {
         defaultPageInfo.addView(defaultPageTitle)
 
         val defaultPageSub = TextView(this).apply {
-            text = "Open Channels View on app launch (instead of ARVIO Discovery Hub)"
+            text = "Open Channels View on app launch (instead of Discovery Hub)"
             UITheme.applyMetadataStyle(this)
         }
         defaultPageInfo.addView(defaultPageSub)
@@ -670,7 +670,7 @@ class SettingsActivity : AppCompatActivity() {
             isChecked = prefs.getBoolean("default_opening_monitored", false)
             setOnCheckedChangeListener { _, isChecked ->
                 prefs.edit().putBoolean("default_opening_monitored", isChecked).apply()
-                val msg = if (isChecked) "Channels View set as default opening page" else "ARVIO Discovery Hub set as default opening page"
+                val msg = if (isChecked) "Channels View set as default opening page" else "Discovery Hub set as default opening page"
                 Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_SHORT).show()
             }
         }
