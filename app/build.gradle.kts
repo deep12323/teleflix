@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -21,21 +24,47 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
+    val keystoreFile = file("teleflix.keystore")
+    val localSigningPropsFile = rootProject.file("signing.properties")
+    val localSigningProps = Properties().apply {
+        if (localSigningPropsFile.exists()) {
+            FileInputStream(localSigningPropsFile).use { load(it) }
+        }
+    }
+
+    val storePasswordVal = System.getenv("TELEFLIX_STORE_PASSWORD")
+        ?: localSigningProps.getProperty("STORE_PASSWORD")
+    val keyAliasVal = System.getenv("TELEFLIX_KEY_ALIAS")
+        ?: localSigningProps.getProperty("KEY_ALIAS")
+    val keyPasswordVal = System.getenv("TELEFLIX_KEY_PASSWORD")
+        ?: localSigningProps.getProperty("KEY_PASSWORD")
+
+    val isSigningConfigured = keystoreFile.exists() &&
+        !storePasswordVal.isNullOrBlank() &&
+        !keyAliasVal.isNullOrBlank() &&
+        !keyPasswordVal.isNullOrBlank()
+
     signingConfigs {
-        create("teleflix") {
-            storeFile = file("teleflix.keystore")
-            storePassword = System.getenv("TELEFLIX_STORE_PASSWORD") ?: "teleflix123"
-            keyAlias = System.getenv("TELEFLIX_KEY_ALIAS") ?: "teleflix"
-            keyPassword = System.getenv("TELEFLIX_KEY_PASSWORD") ?: "teleflix123"
+        if (isSigningConfigured) {
+            create("teleflix") {
+                storeFile = keystoreFile
+                storePassword = storePasswordVal
+                keyAlias = keyAliasVal
+                keyPassword = keyPasswordVal
+            }
         }
     }
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("teleflix")
+            if (isSigningConfigured) {
+                signingConfig = signingConfigs.getByName("teleflix")
+            }
         }
         release {
-            signingConfig = signingConfigs.getByName("teleflix")
+            if (isSigningConfigured) {
+                signingConfig = signingConfigs.getByName("teleflix")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             isCrunchPngs = true
