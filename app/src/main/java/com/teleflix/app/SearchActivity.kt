@@ -59,6 +59,7 @@ class SearchActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        DownloadManager.init(this)
         buildLayout()
 
         val initialQuery = intent.getStringExtra("query") ?: ""
@@ -259,7 +260,9 @@ class SearchActivity : AppCompatActivity() {
             },
             onLongClick = null,
             onBookmarkToggle = null,
-            onDownloadClick = null,
+            onDownloadClick = { item ->
+                PlayerHelper.handleDownloadItem(this, item)
+            },
             onSeeAllClick = { _, catalogTarget ->
                 if (catalogTarget.contains("type=movie") || catalogTarget.contains("movie/top")) {
                     activeFilter = "movies"
@@ -393,7 +396,8 @@ class SearchActivity : AppCompatActivity() {
                                         overview = msg.caption?.takeIf { it.isNotBlank() } ?: "From Telegram Channel",
                                         type = "telegram_media",
                                         streamUrl = streamUrl,
-                                        originalFileName = msg.fileName
+                                        originalFileName = msg.fileName,
+                                        fileSize = msg.fileSize
                                     )
                                 )
                             }
@@ -423,7 +427,8 @@ class SearchActivity : AppCompatActivity() {
                                         overview = "Split into ${group.parts.size} parts",
                                         type = "telegram_media",
                                         streamUrl = mergedUrl,
-                                        originalFileName = group.baseName
+                                        originalFileName = group.baseName,
+                                        fileSize = totalSize
                                     )
                                 )
                             }

@@ -134,6 +134,7 @@ jobs:
             - **`Teleflix-v${{ steps.app_version.outputs.version }}-x86_64.apk` / `Teleflix-v${{ steps.app_version.outputs.version }}-x86.apk`**: For Android emulators & Chromebooks (~14 MB).
 
             ### Key Features
+            - **Search Screen Direct Downloads:** Fixed search download action to directly trigger background multi-part and single-stream downloads with full notification progress
             - **Restored v1.0.6 Rock-Solid Streaming & Service Engine:** Full restoration of proven v1.0.6 streaming proxy and background service lifecycle, permanently resolving the issue where subsequent movies failed to play after player disconnect
             - **Zero TDLib Network Suspension:** Telegram MTProto connection remains continuously active and ready, eliminating connection drops, 30s timeouts, and offline stalls when switching between items or returning from external players
             - **Multi-Track Concurrent Seeking (Capacity 3):** Preserved concurrent stream handling up to 3 parallel tracks without mutual cancellation or ping-pong abort loops during rapid scrubbing

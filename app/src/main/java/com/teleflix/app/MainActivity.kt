@@ -118,26 +118,7 @@ class MainActivity : AppCompatActivity() {
     private var activeTitleForResume: String = ""
 
     private fun extractFileIdsFromUrl(url: String): List<Int> {
-        if (url.isBlank()) return emptyList()
-        val patterns = listOf("/file/", "/stream/", "/zip/", "/thumbnail/", "/merged/", "/playlist/")
-        for (pattern in patterns) {
-            if (url.contains(pattern)) {
-                val segment = url.substringAfter(pattern).substringBefore("/").substringBefore("?")
-                val ids = segment.split(",").mapNotNull { it.toIntOrNull() }.filter { it != 0 }
-                if (ids.isNotEmpty()) return ids
-            }
-        }
-        if (url.contains("fileId=")) {
-            val idStr = url.substringAfter("fileId=").substringBefore("&")
-            val parsed = idStr.toIntOrNull()
-            if (parsed != null && parsed != 0) return listOf(parsed)
-        }
-        if (url.contains("ids=")) {
-            val idsStr = url.substringAfter("ids=").substringBefore("&")
-            val ids = idsStr.split(",").mapNotNull { it.toIntOrNull() }.filter { it != 0 }
-            if (ids.isNotEmpty()) return ids
-        }
-        return emptyList()
+        return PlayerHelper.extractFileIdsFromUrl(url)
     }
 
     private val playerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -6204,7 +6185,7 @@ class MainActivity : AppCompatActivity() {
     // ── Downloads Engine & UI Helpers ─────────────────────────────
 
     private fun extractFileIdFromUrl(url: String): Int? {
-        return extractFileIdsFromUrl(url).firstOrNull()
+        return PlayerHelper.extractFileIdFromUrl(url)
     }
 
 
@@ -6495,9 +6476,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun extractSizeFromUrl(url: String): Long {
-        if (url.isBlank()) return 0L
-        val match = Regex("""[?&]size=(\d+)""", RegexOption.IGNORE_CASE).find(url)
-        return match?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
+        return PlayerHelper.extractSizeFromUrl(url)
     }
 
     private fun handleDownloadItem(item: MediaItem) {
@@ -6594,10 +6573,11 @@ class MainActivity : AppCompatActivity() {
         val fileId = extractFileIdFromUrl(rawUrl)
 
         if (fileId != null && fileId != 0) {
-            val rest = item.id.removePrefix("single_").removePrefix("stream_").removePrefix("zip_")
+            val rest = item.id.removePrefix("single_").removePrefix("stream_").removePrefix("automovie_").removePrefix("zip_")
             val pList = rest.split("_")
             val chatId = pList.getOrNull(0)?.toLongOrNull() ?: 0L
             val messageId = pList.getOrNull(1)?.toLongOrNull() ?: 0L
+            val totalBytes = if (item.fileSize > 0) item.fileSize else extractSizeFromUrl(rawUrl)
 
             DownloadManager.startDownload(
                 context = this,
@@ -6606,7 +6586,8 @@ class MainActivity : AppCompatActivity() {
                 fileId = fileId,
                 chatId = chatId,
                 messageId = messageId,
-                posterUrl = item.posterUrl
+                posterUrl = item.posterUrl,
+                totalBytes = totalBytes
             )
             Toast.makeText(this, "Started downloading '$originalName' 📥", Toast.LENGTH_SHORT).show()
             return

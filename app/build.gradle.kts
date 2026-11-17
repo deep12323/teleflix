@@ -14,8 +14,8 @@ android {
         applicationId = "com.teleflix.app"
         minSdk = 21
         targetSdk = 34
-        versionCode = 39
-        versionName = "1.0.39"
+        versionCode = 40
+        versionName = "1.0.40"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -87,7 +87,9 @@ android {
                 "META-INF/notice.txt",
                 "META-INF/ASL2.0",
                 "META-INF/*.kotlin_module",
-                "META-INF/*.version"
+                "META-INF/*.version",
+                "META-INF/INDEX.LIST",
+                "DebugProbesKt.bin"
             )
         }
         jniLibs {
