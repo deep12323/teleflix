@@ -1173,4 +1173,190 @@ object PlayerHelper {
         dialog.window?.setLayout(w, h)
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.parseColor(UITheme.BACKGROUND)))
     }
+
+    fun extractFileIdsFromUrl(url: String): List<Int> {
+        if (url.isBlank()) return emptyList()
+        val patterns = listOf("/file/", "/stream/", "/zip/", "/thumbnail/", "/merged/", "/playlist/")
+        for (pattern in patterns) {
+            if (url.contains(pattern)) {
+                val segment = url.substringAfter(pattern).substringBefore("/").substringBefore("?")
+                val ids = segment.split(",").mapNotNull { it.toIntOrNull() }.filter { it != 0 }
+                if (ids.isNotEmpty()) return ids
+            }
+        }
+        if (url.contains("fileId=")) {
+            val id = url.substringAfter("fileId=").substringBefore("&").toIntOrNull()
+            if (id != null && id != 0) return listOf(id)
+        }
+        if (url.contains("ids=")) {
+            val idsStr = url.substringAfter("ids=").substringBefore("&")
+            val ids = idsStr.split(",").mapNotNull { it.toIntOrNull() }.filter { it != 0 }
+            if (ids.isNotEmpty()) return ids
+        }
+        return emptyList()
+    }
+
+    fun extractFileIdFromUrl(url: String): Int? = extractFileIdsFromUrl(url).firstOrNull()
+
+    fun extractSizeFromUrl(url: String): Long {
+        if (url.isBlank()) return 0L
+        val match = Regex("""[?&]size=(\d+)""", RegexOption.IGNORE_CASE).find(url)
+        return match?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
+    }
+
+    fun handleDownloadItem(activity: Activity, item: MediaItem) {
+        if (item.type == "channel") {
+            Toast.makeText(activity, "Select a video inside the channel to download", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val cleanOriginalName = item.originalFileName.removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
+        val cleanDisplayTitle = item.title.removePrefix("Select:").removePrefix("Select").removePrefix("📺 ").removePrefix("🗄️ ").removePrefix("📦 ").trim()
+        val originalName = cleanOriginalName.ifBlank { cleanDisplayTitle }
+        val fileName = DownloadManager.sanitizeFileName(originalName)
+
+        val cachedParts = TelegramRepository.groupPartsCache[item.id]
+        val parts = if (item.groupedFiles.isNotEmpty()) {
+            item.groupedFiles.map { 
+                val pId = it.id.removePrefix("single_").removePrefix("stream_").removePrefix("zip_").removePrefix("automovie_")
+                val pParts = pId.split("_")
+                val cId = pParts.getOrNull(0)?.toLongOrNull() ?: 0L
+                val mId = pParts.getOrNull(1)?.toLongOrNull() ?: 0L
+                val fId = extractFileIdFromUrl(it.streamUrl) ?: 0
+                val sz = if (it.fileSize > 0) it.fileSize else extractSizeFromUrl(it.streamUrl)
+                TelegramVideoMessage(
+                    messageId = mId,
+                    chatId = cId,
+                    fileName = it.originalFileName.ifBlank { it.title },
+                    fileSize = sz,
+                    duration = 0,
+                    fileId = fId,
+                    mimeType = "video/mp4",
+                    caption = ""
+                )
+            }
+        } else {
+            cachedParts ?: emptyList()
+        }
+
+        val isZip = item.id.startsWith("zip_") || 
+                    TelegramRepository.isZipArchiveFilename(originalName) || 
+                    parts.any { TelegramRepository.isZipArchiveFilename(it.fileName) }
+        val isSplit = item.id.startsWith("group_") || item.type == "history_group" || parts.size > 1
+
+        // Multi-part split video files: show popup to combine or download separate parts
+        if (!isZip && isSplit) {
+            if (parts.isNotEmpty()) {
+                showGroupDownloadOptionsDialog(activity, item.id, originalName, originalName, item.posterUrl, parts, isZip)
+                return
+            }
+            if (item.id.startsWith("group_")) {
+                val cleanId = item.id.removePrefix("group_")
+                val chatId = cleanId.substringBefore("_").toLongOrNull()
+                val baseName = cleanId.substringAfter("_")
+                if (chatId != null && chatId != 0L) {
+                    Toast.makeText(activity, "Resolving video download...", Toast.LENGTH_SHORT).show()
+                    CoroutineScope(Dispatchers.Main).launch {
+                        val mediaMessages = withContext(Dispatchers.IO) {
+                            TelegramRepository.fetchChannelMedia(chatId.toString(), limit = 200).first
+                        }
+                        val groupedItems = TelegramRepository.groupAndPreserveOrder(mediaMessages)
+                        val matchGroup = groupedItems.filterIsInstance<DisplayItem.Group>()
+                            .find { it.group.baseName.equals(baseName, ignoreCase = true) || it.group.baseName.equals(originalName, ignoreCase = true) || it.group.parts.any { p -> item.streamUrl.contains(p.fileId.toString()) } }
+                        val resolvedParts = matchGroup?.group?.parts ?: emptyList()
+                        if (resolvedParts.isNotEmpty()) {
+                            TelegramRepository.groupPartsCache[item.id] = resolvedParts
+                            showGroupDownloadOptionsDialog(activity, item.id, originalName, originalName, item.posterUrl, resolvedParts, isZip)
+                        } else {
+                            val fileId = extractFileIdFromUrl(item.streamUrl)
+                            val messageId = cleanId.substringAfter("_").toLongOrNull() ?: 0L
+                            if (fileId != null && fileId != 0) {
+                                val singlePart = listOf(
+                                    TelegramVideoMessage(
+                                        messageId = messageId,
+                                        chatId = chatId,
+                                        fileName = originalName,
+                                        fileSize = if (item.fileSize > 0) item.fileSize else extractSizeFromUrl(item.streamUrl),
+                                        duration = 0,
+                                        fileId = fileId,
+                                        mimeType = "video/mp4",
+                                        caption = ""
+                                    )
+                                )
+                                showGroupDownloadOptionsDialog(activity, item.id, originalName, originalName, item.posterUrl, singlePart, isZip)
+                            }
+                        }
+                    }
+                    return
+                }
+            }
+        }
+
+        // Single telegram media or stream
+        val fileId = extractFileIdFromUrl(item.streamUrl)
+        val cleanId = item.id.removePrefix("single_").removePrefix("stream_").removePrefix("automovie_").removePrefix("zip_").removePrefix("group_")
+        val pList = cleanId.split("_")
+        val chatId = pList.getOrNull(0)?.toLongOrNull() ?: 0L
+        val messageId = pList.getOrNull(1)?.toLongOrNull() ?: 0L
+
+        if (fileId != null && fileId != 0) {
+            val totalBytes = if (item.fileSize > 0) item.fileSize else extractSizeFromUrl(item.streamUrl)
+            DownloadManager.startDownload(
+                context = activity,
+                title = originalName,
+                fileName = fileName,
+                fileId = fileId,
+                chatId = chatId,
+                messageId = messageId,
+                posterUrl = item.posterUrl,
+                totalBytes = totalBytes
+            )
+            Toast.makeText(activity, "Started downloading '$originalName' 📥", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (item.type == "telegram_media" || item.streamUrl.contains("/stream") || item.streamUrl.contains("/file/") || item.streamUrl.contains("http") || (chatId != 0L && messageId != 0L)) {
+            if (chatId != 0L && messageId != 0L) {
+                Toast.makeText(activity, "Resolving video link for download...", Toast.LENGTH_SHORT).show()
+                CoroutineScope(Dispatchers.Main).launch {
+                    val freshUrl = withContext(Dispatchers.IO) {
+                        TelegramRepository.getFreshMediaUrl(chatId, messageId)
+                    }
+                    if (freshUrl != null) {
+                        val freshId = extractFileIdFromUrl(freshUrl)
+                        if (freshId != null && freshId != 0) {
+                            val totalBytes = if (item.fileSize > 0) item.fileSize else extractSizeFromUrl(freshUrl)
+                            DownloadManager.startDownload(
+                                context = activity,
+                                title = originalName,
+                                fileName = fileName,
+                                fileId = freshId,
+                                chatId = chatId,
+                                messageId = messageId,
+                                posterUrl = item.posterUrl,
+                                totalBytes = totalBytes
+                            )
+                            Toast.makeText(activity, "Started downloading '$originalName' 📥", Toast.LENGTH_SHORT).show()
+                            return@launch
+                        }
+                    }
+                    Toast.makeText(activity, "Failed to resolve download link", Toast.LENGTH_SHORT).show()
+                }
+                return
+            }
+        }
+
+        // Cinemeta / Catalog item: Open MediaDetailsActivity so user can pick which stream to download
+        val intent = Intent(activity, MediaDetailsActivity::class.java).apply {
+            putExtra("id", item.id)
+            putExtra("title", item.title)
+            putExtra("posterUrl", item.posterUrl)
+            putExtra("year", item.year)
+            putExtra("rating", item.rating)
+            putExtra("overview", item.overview)
+            putExtra("type", item.type)
+        }
+        activity.startActivity(intent)
+        Toast.makeText(activity, "Select an available stream to download", Toast.LENGTH_SHORT).show()
+    }
 }
