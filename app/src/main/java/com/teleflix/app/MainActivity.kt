@@ -6170,7 +6170,9 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         if (isFinishing) {
             TeleflixLogger.clearLogsOnExit()
-            try { TelegramClient.clearMediaCacheSync(this) } catch (_: Exception) {}
+            if (!DownloadManager.hasActiveDownloads()) {
+                try { TelegramClient.clearMediaCacheSync(this) } catch (_: Exception) {}
+            }
         }
         super.onDestroy()
     }
