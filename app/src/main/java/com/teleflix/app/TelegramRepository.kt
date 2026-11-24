@@ -791,7 +791,7 @@ object TelegramRepository {
 
             while (hasMore) {
                 val topicsResult = TelegramClient.sendRequest(TdApi.GetForumTopics(
-                    chatId, "", offsetDate, offsetMessageId, offsetTopicId, 100
+                    chatId, "", 0L, false, false, offsetDate, offsetMessageId, offsetTopicId, 100
                 )) as? TdApi.ForumTopics ?: break
 
                 for (topic in topicsResult.topics) {
