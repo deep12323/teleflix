@@ -100,9 +100,22 @@ class TelegramService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        Log.d(TAG, "Task removed by user. Purging temporary media cache...")
-        try { TelegramClient.clearMediaCache(this) } catch (_: Exception) {}
+        Log.d(TAG, "Task removed by user from recent apps. Stopping TelegramService...")
+        if (!DownloadManager.hasActiveDownloads()) {
+            try { TelegramClient.clearMediaCache(this) } catch (_: Exception) {}
+        }
         try { TelegramStreamingProxy.stop() } catch (_: Exception) {}
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            manager?.cancel(NOTIFICATION_ID)
+        } catch (_: Exception) {}
+        stopSelf()
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -111,7 +124,9 @@ class TelegramService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        try { TelegramClient.clearMediaCache(this) } catch (_: Exception) {}
+        if (!DownloadManager.hasActiveDownloads()) {
+            try { TelegramClient.clearMediaCache(this) } catch (_: Exception) {}
+        }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -119,7 +134,7 @@ class TelegramService : Service() {
                 @Suppress("DEPRECATION")
                 stopForeground(true)
             }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             manager?.cancel(NOTIFICATION_ID)
         } catch (_: Exception) {}
         Log.d(TAG, "TelegramService stopped and notification removed")

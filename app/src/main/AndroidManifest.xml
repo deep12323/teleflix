@@ -87,6 +87,7 @@
             android:name="com.teleflix.app.TelegramService"
             android:enabled="true"
             android:exported="false"
+            android:stopWithTask="true"
             android:foregroundServiceType="dataSync" />
 
         <service

@@ -154,6 +154,13 @@ class TeleflixDownloadService : Service() {
         observeJob?.cancel()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        if (!DownloadManager.hasActiveDownloads()) {
+            stopSelfIfNoActive()
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun createNotificationChannel() {
