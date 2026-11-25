@@ -1,11 +1,12 @@
 package com.teleflix.app
 
 import android.content.Context
+import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
-import android.content.res.ColorStateList
 import android.util.TypedValue
 import android.widget.TextView
 
@@ -30,6 +31,32 @@ object UITheme {
             dp.toFloat(),
             context.resources.displayMetrics
         ).toInt()
+    }
+
+    fun isLandscape(context: Context): Boolean {
+        return context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    }
+
+    fun screenWidthDp(context: Context): Int {
+        val dm = context.resources.displayMetrics
+        return (dm.widthPixels / dm.density).toInt()
+    }
+
+    fun getDialogDimensions(
+        context: Context,
+        maxLandscapeWidthDp: Int = 720,
+        heightFraction: Float = 0.84f
+    ): Pair<Int, Int> {
+        val metrics = context.resources.displayMetrics
+        return if (isLandscape(context)) {
+            val w = minOf((metrics.widthPixels * 0.84f).toInt(), dpToPx(context, maxLandscapeWidthDp))
+            val h = (metrics.heightPixels * heightFraction.coerceAtLeast(0.86f)).toInt()
+            w to h
+        } else {
+            val w = (metrics.widthPixels * 0.92f).toInt()
+            val h = (metrics.heightPixels * heightFraction).toInt()
+            w to h
+        }
     }
 
     // Shapes & Drawables (Rounded corners 16-20dp)

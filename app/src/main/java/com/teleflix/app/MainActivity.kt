@@ -77,6 +77,11 @@ data class EpisodeItem(
 class MainActivity : AppCompatActivity() {
 
     private lateinit var recyclerView: RecyclerView
+    private lateinit var rootView: LinearLayout
+    private lateinit var headerLayout: LinearLayout
+    private lateinit var headerMiddleSlot: FrameLayout
+    private lateinit var titleView: TextView
+    private lateinit var downloadsButton: TextView
     private lateinit var searchInput: EditText
     private lateinit var searchButton: Button
     private lateinit var statusButton: TextView
@@ -90,6 +95,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var categoryHeaderLayout: LinearLayout
     private lateinit var channelRefreshButton: TextView
     private lateinit var channelMenuButton: TextView
+    private var lastInsetsLeft = 0
+    private var lastInsetsTop = 0
+    private var lastInsetsRight = 0
+    private var lastInsetsBottom = 0
     private var isTelegramCatalogMode = false
     private var currentOpenChannelId: String? = null
     private var currentOpenTopicId: Int = 0
@@ -261,45 +270,44 @@ class MainActivity : AppCompatActivity() {
             TeleflixLogger.clearLogsOnExit()
         }
 
-        val rootView = LinearLayout(this).apply {
+        rootView = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor(UITheme.BACKGROUND))
-            val padH = UITheme.dpToPx(this@MainActivity, 6)
-            val padV = UITheme.dpToPx(this@MainActivity, 16)
-            setPadding(padH, padV, padH, padV)
             fitsSystemWindows = true
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            val padH = UITheme.dpToPx(this@MainActivity, 6)
-            val padV = UITheme.dpToPx(this@MainActivity, 16)
-            view.setPadding(
-                padH + insets.left,
-                padV + insets.top,
-                padH + insets.right,
-                padV + insets.bottom
-            )
+            lastInsetsLeft = insets.left
+            lastInsetsTop = insets.top
+            lastInsetsRight = insets.right
+            lastInsetsBottom = insets.bottom
+            applyRootPadding(UITheme.isLandscape(this@MainActivity))
             WindowInsetsCompat.CONSUMED
         }
 
         // Top App Header
-        val headerLayout = LinearLayout(this).apply {
+        headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            val pH = UITheme.dpToPx(this@MainActivity, 10)
-            val pB = UITheme.dpToPx(this@MainActivity, 14)
-            setPadding(pH, 0, pH, pB)
         }
 
-        val titleView = TextView(this).apply {
+        titleView = TextView(this).apply {
             text = "TELEFLIX"
             UITheme.applyLargeTitleStyle(this)
             letterSpacing = 0.12f
             setTextColor(Color.parseColor(UITheme.PRIMARY))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         }
         headerLayout.addView(titleView)
+
+        headerMiddleSlot = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        headerLayout.addView(headerMiddleSlot)
 
         statusButton = TextView(this).apply {
             text = "⚙️"
@@ -333,7 +341,7 @@ class MainActivity : AppCompatActivity() {
 
         DownloadManager.init(this)
 
-        val downloadsButton = TextView(this).apply {
+        downloadsButton = TextView(this).apply {
             text = "📥"
             textSize = 18f
             gravity = android.view.Gravity.CENTER
@@ -895,8 +903,11 @@ class MainActivity : AppCompatActivity() {
                     val currentSpan = spanCount
                     val isLandscapeMode = currentSpan > 6
                     return when (item?.type) {
-                        "channel", "hero_billboard", "horizontal_row" -> currentSpan
-                        "telegram_media", "history_group", "topic" -> if (isLandscapeMode) 4 else 3
+                        "hero_billboard", "horizontal_row" -> currentSpan
+                        "channel" -> if (isLandscapeMode) 6 else currentSpan
+                        "telegram_media", "history_group", "topic" -> if (isLandscapeMode) {
+                            if (UITheme.screenWidthDp(this@MainActivity) >= 800) 3 else 4
+                        } else 3
                         else -> 2 // 3-column compact poster grid in portrait (6 / 2 = 3), 6-column in landscape (12 / 2 = 6)
                     }
                 }
@@ -970,6 +981,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         mainContainer.addView(fabSelectChats)
+
+        applyOrientationLayout(isLandscape)
 
         setContentView(mainContainer)
 
@@ -1204,11 +1217,15 @@ class MainActivity : AppCompatActivity() {
         updateToggleUI.invoke()
         root.addView(toggleRow)
 
-        // 2-Column Responsive Grid of Gradient Genre Cards
+        val isLandscape = UITheme.isLandscape(this)
+        val cols = if (isLandscape) 3 else 2
+
+        // Responsive Grid of Gradient Genre Cards (2 cols portrait, 3 cols landscape)
         val scrollView = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                UITheme.dpToPx(this@MainActivity, 460)
+                0,
+                1f
             )
             isVerticalScrollBarEnabled = false
         }
@@ -1217,10 +1234,10 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        val cardHeight = UITheme.dpToPx(this@MainActivity, 74)
+        val cardHeight = UITheme.dpToPx(this@MainActivity, if (isLandscape) 60 else 74)
         val gap = UITheme.dpToPx(this@MainActivity, 8)
 
-        for (i in genres.indices step 2) {
+        for (i in genres.indices step cols) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
@@ -1229,37 +1246,26 @@ class MainActivity : AppCompatActivity() {
                 ).apply { setMargins(0, 0, 0, gap) }
             }
 
-            // Left Card
-            val (name1, pair1) = genres[i]
-            val (emoji1, colors1) = pair1
-            val card1 = createGenreCard(name1, emoji1, colors1.first, colors1.second, cardHeight) {
-                dialog?.dismiss()
-                onGenreSelected(name1)
-            }
-            val lp1 = LinearLayout.LayoutParams(0, cardHeight, 1f).apply {
-                setMargins(0, 0, gap / 2, 0)
-            }
-            card1.layoutParams = lp1
-            row.addView(card1)
-
-            // Right Card
-            if (i + 1 < genres.size) {
-                val (name2, pair2) = genres[i + 1]
-                val (emoji2, colors2) = pair2
-                val card2 = createGenreCard(name2, emoji2, colors2.first, colors2.second, cardHeight) {
-                    dialog?.dismiss()
-                    onGenreSelected(name2)
+            for (col in 0 until cols) {
+                val idx = i + col
+                val lp = LinearLayout.LayoutParams(0, cardHeight, 1f).apply {
+                    val leftMargin = if (col > 0) gap / 2 else 0
+                    val rightMargin = if (col < cols - 1) gap / 2 else 0
+                    setMargins(leftMargin, 0, rightMargin, 0)
                 }
-                val lp2 = LinearLayout.LayoutParams(0, cardHeight, 1f).apply {
-                    setMargins(gap / 2, 0, 0, 0)
+                if (idx < genres.size) {
+                    val (name, pair) = genres[idx]
+                    val (emoji, colors) = pair
+                    val card = createGenreCard(name, emoji, colors.first, colors.second, cardHeight) {
+                        dialog?.dismiss()
+                        onGenreSelected(name)
+                    }
+                    card.layoutParams = lp
+                    row.addView(card)
+                } else {
+                    val emptySpace = View(this).apply { layoutParams = lp }
+                    row.addView(emptySpace)
                 }
-                card2.layoutParams = lp2
-                row.addView(card2)
-            } else {
-                val emptySpace = View(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(0, cardHeight, 1f)
-                }
-                row.addView(emptySpace)
             }
 
             gridContainer.addView(row)
@@ -1274,6 +1280,8 @@ class MainActivity : AppCompatActivity() {
 
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.show()
+        val (w, h) = UITheme.getDialogDimensions(this, maxLandscapeWidthDp = 760, heightFraction = 0.85f)
+        dialog.window?.setLayout(w, h)
     }
 
     private fun createGenreCard(
@@ -3126,7 +3134,8 @@ class MainActivity : AppCompatActivity() {
                 val scrollView = ScrollView(this@MainActivity).apply {
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                        UITheme.dpToPx(this@MainActivity, 340)
+                        0,
+                        1f
                     )
                 }
                 val listLayout = LinearLayout(this@MainActivity).apply {
@@ -3295,6 +3304,8 @@ class MainActivity : AppCompatActivity() {
 
                 pDialog?.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
                 pDialog?.show()
+                val (pw, ph) = UITheme.getDialogDimensions(this@MainActivity, maxLandscapeWidthDp = 680, heightFraction = 0.84f)
+                pDialog?.window?.setLayout(pw, ph)
             }
         }
     }
@@ -4426,9 +4437,7 @@ class MainActivity : AppCompatActivity() {
                 if (!isFinishing && !isDestroyed) {
                     try {
                         streamDialog.show()
-                        val metrics = resources.displayMetrics
-                        val w = (metrics.widthPixels * 0.92).toInt()
-                        val h = (metrics.heightPixels * 0.82).toInt()
+                        val (w, h) = UITheme.getDialogDimensions(this@MainActivity, maxLandscapeWidthDp = 720, heightFraction = 0.84f)
                         streamDialog.window?.setLayout(w, h)
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -5870,9 +5879,7 @@ class MainActivity : AppCompatActivity() {
             .create()
 
         dialog.show()
-        val metrics = resources.displayMetrics
-        val w = (metrics.widthPixels * 0.92).toInt()
-        val h = (metrics.heightPixels * 0.82).toInt()
+        val (w, h) = UITheme.getDialogDimensions(this, maxLandscapeWidthDp = 700, heightFraction = 0.84f)
         dialog.window?.setLayout(w, h)
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.parseColor(UITheme.BACKGROUND)))
     }
@@ -5980,9 +5987,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         alertDialog.show()
-        val metrics = resources.displayMetrics
-        val dialogW = (metrics.widthPixels * 0.92).toInt()
-        val dialogH = (metrics.heightPixels * 0.85).toInt()
+        val (dialogW, dialogH) = UITheme.getDialogDimensions(this, maxLandscapeWidthDp = 720, heightFraction = 0.86f)
         alertDialog.window?.setLayout(dialogW, dialogH)
         alertDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.parseColor(UITheme.BACKGROUND)))
 
@@ -6164,7 +6169,93 @@ class MainActivity : AppCompatActivity() {
         super.onConfigurationChanged(newConfig)
         val isLandscape = newConfig.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         (recyclerView.layoutManager as? GridLayoutManager)?.spanCount = if (isLandscape) 12 else 6
+        recyclerView.recycledViewPool.clear()
+        applyOrientationLayout(isLandscape)
         mediaAdapter?.notifyDataSetChanged()
+    }
+
+    private fun applyRootPadding(isLandscape: Boolean) {
+        val padH = UITheme.dpToPx(this, if (isLandscape) 8 else 6)
+        val padVTop = UITheme.dpToPx(this, if (isLandscape) 4 else 12)
+        val padVBottom = UITheme.dpToPx(this, if (isLandscape) 2 else 10)
+        rootView.setPadding(
+            padH + lastInsetsLeft,
+            padVTop + lastInsetsTop,
+            padH + lastInsetsRight,
+            padVBottom + lastInsetsBottom
+        )
+    }
+
+    private fun applyOrientationLayout(isLandscape: Boolean) {
+        fun dp(v: Int) = UITheme.dpToPx(this, v)
+
+        applyRootPadding(isLandscape)
+
+        // Move searchContainer inline into headerMiddleSlot in landscape, or below headerLayout in portrait
+        (searchContainer.parent as? ViewGroup)?.removeView(searchContainer)
+        if (isLandscape) {
+            searchContainer.layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setMargins(dp(14), 0, dp(14), 0)
+            }
+            searchContainer.setPadding(dp(6), dp(1), dp(4), dp(1))
+            searchInput.setPadding(dp(8), dp(4), dp(8), dp(4))
+            searchButton.setPadding(dp(10), dp(4), dp(10), dp(4))
+            headerMiddleSlot.addView(searchContainer)
+
+            headerLayout.setPadding(dp(8), 0, dp(8), dp(6))
+            titleView.textSize = 19f
+            modeToggleButton.setPadding(dp(11), dp(6), dp(11), dp(6))
+            downloadsButton.setPadding(dp(8), dp(6), dp(8), dp(6))
+            statusButton.setPadding(dp(8), dp(6), dp(8), dp(6))
+            tabScroll.setPadding(0, 0, 0, dp(5))
+        } else {
+            searchContainer.layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 0, 0, dp(8))
+            }
+            searchContainer.setPadding(dp(6), dp(2), dp(6), dp(2))
+            searchInput.setPadding(dp(10), dp(6), dp(10), dp(6))
+            searchButton.setPadding(dp(12), dp(6), dp(12), dp(6))
+            val insertIndex = rootView.indexOfChild(tabScroll).coerceAtLeast(1)
+            rootView.addView(searchContainer, insertIndex)
+
+            headerLayout.setPadding(dp(10), 0, dp(10), dp(12))
+            titleView.textSize = 24f
+            modeToggleButton.setPadding(dp(14), dp(8), dp(14), dp(8))
+            downloadsButton.setPadding(dp(10), dp(10), dp(10), dp(10))
+            statusButton.setPadding(dp(10), dp(10), dp(10), dp(10))
+            tabScroll.setPadding(0, 0, 0, dp(8))
+        }
+
+        // Compact tab pill vertical padding in landscape
+        val tabPadV = dp(if (isLandscape) 4 else 5)
+        val tabPadH = dp(if (isLandscape) 10 else 11)
+        for (i in 0 until tabRow.childCount) {
+            tabRow.getChildAt(i)?.setPadding(tabPadH, tabPadV, tabPadH, tabPadV)
+        }
+
+        // Keep RecyclerView scrollable past FAB and keep FAB compact in landscape
+        recyclerView.clipToPadding = false
+        recyclerView.setPadding(0, 0, 0, dp(if (isLandscape) 64 else 78))
+
+        val fabSize = dp(if (isLandscape) 46 else 56)
+        val fabLp = FrameLayout.LayoutParams(fabSize, fabSize).apply {
+            gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+            setMargins(
+                0,
+                0,
+                dp(if (isLandscape) 14 else 20),
+                dp(if (isLandscape) 12 else 24)
+            )
+        }
+        fabSelectChats.layoutParams = fabLp
+        fabSelectChats.background = UITheme.createBadgeDrawable(this, UITheme.PRIMARY, if (isLandscape) 23 else 28)
     }
 
     override fun onDestroy() {
@@ -6796,9 +6887,7 @@ class MainActivity : AppCompatActivity() {
 
         dialog.show()
 
-        val metrics = resources.displayMetrics
-        val w = (metrics.widthPixels * 0.92).toInt()
-        val h = (metrics.heightPixels * 0.78).toInt()
+        val (w, h) = UITheme.getDialogDimensions(this, maxLandscapeWidthDp = 720, heightFraction = 0.82f)
         dialog.window?.setLayout(w, h)
     }
 

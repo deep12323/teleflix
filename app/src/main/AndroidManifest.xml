@@ -60,6 +60,7 @@
             android:name="com.teleflix.app.MainActivity"
             android:label="Teleflix"
             android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@style/Theme.Teleflix">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -70,17 +71,20 @@
         <activity
             android:name="com.teleflix.app.SettingsActivity"
             android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@style/Theme.Teleflix" />
 
         <activity
             android:name="com.teleflix.app.SearchActivity"
             android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@style/Theme.Teleflix"
             android:windowSoftInputMode="stateVisible|adjustResize" />
 
         <activity
             android:name="com.teleflix.app.MediaDetailsActivity"
             android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@style/Theme.Teleflix" />
 
         <service

@@ -2,6 +2,7 @@ package com.teleflix.app
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -19,6 +20,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.CenterCrop
@@ -42,6 +45,17 @@ class MediaDetailsActivity : AppCompatActivity() {
     private var itemType: String = "movie"
     private var isSeries: Boolean = false
 
+    private lateinit var rootFrame: FrameLayout
+    private lateinit var portraitScroll: ScrollView
+    private lateinit var portraitContent: LinearLayout
+    private lateinit var landscapeRow: LinearLayout
+    private lateinit var leftScroll: ScrollView
+    private lateinit var leftContent: LinearLayout
+    private lateinit var rightScroll: ScrollView
+    private lateinit var rightContent: LinearLayout
+    private lateinit var heroFrame: FrameLayout
+    private lateinit var actionsContainer: LinearLayout
+    private lateinit var storyContainer: LinearLayout
     private lateinit var backdropImage: ImageView
     private lateinit var titleText: TextView
     private lateinit var metaBadgesContainer: LinearLayout
@@ -88,12 +102,18 @@ class MediaDetailsActivity : AppCompatActivity() {
     private fun dp(v: Int): Int = UITheme.dpToPx(this, v)
 
     private fun buildLayout() {
-        val root = FrameLayout(this).apply {
+        rootFrame = FrameLayout(this).apply {
             setBackgroundColor(Color.parseColor("#0B0B0F"))
             fitsSystemWindows = true
         }
 
-        val scroll = ScrollView(this).apply {
+        ViewCompat.setOnApplyWindowInsetsListener(rootFrame) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            view.setPadding(insets.left, insets.top, insets.right, insets.bottom)
+            WindowInsetsCompat.CONSUMED
+        }
+
+        portraitScroll = ScrollView(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -101,7 +121,7 @@ class MediaDetailsActivity : AppCompatActivity() {
             isVerticalScrollBarEnabled = false
         }
 
-        val content = LinearLayout(this).apply {
+        portraitContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -109,9 +129,52 @@ class MediaDetailsActivity : AppCompatActivity() {
             )
             setPadding(0, 0, 0, dp(40))
         }
+        portraitScroll.addView(portraitContent)
 
-        // ── 1. Hero Backdrop (340dp) ──
-        val heroFrame = FrameLayout(this).apply {
+        landscapeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        leftScroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 0.43f)
+            isVerticalScrollBarEnabled = false
+        }
+        leftContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+            setPadding(0, 0, 0, dp(24))
+        }
+        leftScroll.addView(leftContent)
+
+        rightScroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 0.57f)
+            isVerticalScrollBarEnabled = false
+        }
+        rightContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+            setPadding(0, dp(6), dp(8), dp(24))
+        }
+        rightScroll.addView(rightContent)
+
+        landscapeRow.addView(leftScroll)
+        landscapeRow.addView(rightScroll)
+
+        rootFrame.addView(portraitScroll)
+        rootFrame.addView(landscapeRow)
+
+        // ── 1. Hero Backdrop ──
+        heroFrame = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(340)
@@ -234,10 +297,9 @@ class MediaDetailsActivity : AppCompatActivity() {
         heroInfoBox.addView(metaBadgesContainer)
 
         heroFrame.addView(heroInfoBox)
-        content.addView(heroFrame)
 
         // ── 2. Primary Actions (Play, My List, Download, Trailer) ──
-        val actionsContainer = LinearLayout(this).apply {
+        actionsContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             val padH = dp(16)
             setPadding(padH, dp(12), padH, 0)
@@ -340,10 +402,9 @@ class MediaDetailsActivity : AppCompatActivity() {
 
         actionsContainer.addView(secondaryActionsRow)
         updateActionButtonsLayout()
-        content.addView(actionsContainer)
 
         // ── 3. Storyline / Overview & Genres ──
-        val storyContainer = LinearLayout(this).apply {
+        storyContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             val padH = dp(16)
             setPadding(padH, dp(18), padH, 0)
@@ -371,7 +432,6 @@ class MediaDetailsActivity : AppCompatActivity() {
             setLineSpacing(dp(3).toFloat(), 1.1f)
         }
         storyContainer.addView(storylineText)
-        content.addView(storyContainer)
 
         // ── 4. TV Series Episodes Section (Only for Series) ──
         episodesSection = LinearLayout(this).apply {
@@ -404,7 +464,6 @@ class MediaDetailsActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
         episodesSection.addView(episodesListLayout)
-        content.addView(episodesSection)
 
         // ── 5. Available Streams Section (Telegram Channels) ──
         streamsSection = LinearLayout(this).apply {
@@ -467,11 +526,59 @@ class MediaDetailsActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
         streamsSection.addView(streamsContainer)
-        content.addView(streamsSection)
 
-        scroll.addView(content)
-        root.addView(scroll)
-        setContentView(root)
+        applyDetailsOrientationLayout(UITheme.isLandscape(this))
+        setContentView(rootFrame)
+    }
+
+    private fun applyDetailsOrientationLayout(isLandscape: Boolean) {
+        val sections = listOf(heroFrame, actionsContainer, storyContainer, episodesSection, streamsSection)
+        sections.forEach { (it.parent as? ViewGroup)?.removeView(it) }
+
+        if (isLandscape) {
+            portraitScroll.visibility = View.GONE
+            landscapeRow.visibility = View.VISIBLE
+
+            val heroH = minOf(dp(200), (resources.displayMetrics.heightPixels * 0.50f).toInt())
+            heroFrame.layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                heroH
+            )
+            titleText.textSize = 20f
+            storyContainer.setPadding(dp(16), dp(12), dp(16), 0)
+            episodesSection.setPadding(dp(12), dp(10), dp(12), 0)
+            streamsSection.setPadding(dp(12), dp(10), dp(12), 0)
+
+            leftContent.addView(heroFrame)
+            leftContent.addView(actionsContainer)
+            leftContent.addView(storyContainer)
+
+            rightContent.addView(episodesSection)
+            rightContent.addView(streamsSection)
+        } else {
+            landscapeRow.visibility = View.GONE
+            portraitScroll.visibility = View.VISIBLE
+
+            heroFrame.layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(340)
+            )
+            titleText.textSize = 24f
+            storyContainer.setPadding(dp(16), dp(18), dp(16), 0)
+            episodesSection.setPadding(dp(16), dp(22), dp(16), 0)
+            streamsSection.setPadding(dp(16), dp(24), dp(16), 0)
+
+            portraitContent.addView(heroFrame)
+            portraitContent.addView(actionsContainer)
+            portraitContent.addView(storyContainer)
+            portraitContent.addView(episodesSection)
+            portraitContent.addView(streamsSection)
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyDetailsOrientationLayout(newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE)
     }
 
     private fun updateMyListButtonState(isBookmarked: Boolean) {

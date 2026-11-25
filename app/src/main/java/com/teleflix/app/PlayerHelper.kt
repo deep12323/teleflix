@@ -968,9 +968,7 @@ object PlayerHelper {
             .create()
 
         dialog.show()
-        val metrics = activity.resources.displayMetrics
-        val w = (metrics.widthPixels * 0.92).toInt()
-        val h = (metrics.heightPixels * 0.82).toInt()
+        val (w, h) = UITheme.getDialogDimensions(activity, maxLandscapeWidthDp = 700, heightFraction = 0.84f)
         dialog.window?.setLayout(w, h)
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.parseColor(UITheme.BACKGROUND)))
     }
@@ -1167,9 +1165,7 @@ object PlayerHelper {
             .create()
 
         dialog.show()
-        val metrics = activity.resources.displayMetrics
-        val w = (metrics.widthPixels * 0.92).toInt()
-        val h = (metrics.heightPixels * 0.82).toInt()
+        val (w, h) = UITheme.getDialogDimensions(activity, maxLandscapeWidthDp = 700, heightFraction = 0.84f)
         dialog.window?.setLayout(w, h)
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.parseColor(UITheme.BACKGROUND)))
     }

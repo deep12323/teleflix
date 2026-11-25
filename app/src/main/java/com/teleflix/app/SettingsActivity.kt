@@ -2,11 +2,13 @@ package com.teleflix.app
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.view.Gravity
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -39,6 +41,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var apiHashInput: EditText
     private lateinit var apiBox: LinearLayout
     private lateinit var cacheSub: TextView
+    private lateinit var rootContainer: LinearLayout
     private var authJob: Job? = null
     private var currentDialog: AlertDialog? = null
 
@@ -50,21 +53,28 @@ class SettingsActivity : AppCompatActivity() {
             fitsSystemWindows = true
         }
 
+        val centerWrapper = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            val pad = UITheme.dpToPx(this@SettingsActivity, 16)
-            setPadding(pad, pad, pad, pad)
         }
-        scrollView.addView(root)
+        rootContainer = root
+        centerWrapper.addView(root)
+        scrollView.addView(centerWrapper)
+        applySettingsOrientationLayout(UITheme.isLandscape(this))
 
         ViewCompat.setOnApplyWindowInsetsListener(scrollView) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            val pad = UITheme.dpToPx(this@SettingsActivity, 16)
             view.setPadding(
-                pad + insets.left,
-                pad + insets.top,
-                pad + insets.right,
-                pad + insets.bottom
+                insets.left,
+                insets.top,
+                insets.right,
+                insets.bottom
             )
             WindowInsetsCompat.CONSUMED
         }
@@ -1350,7 +1360,7 @@ class SettingsActivity : AppCompatActivity() {
         dialogView.addView(searchInput)
 
         val contentContainer = FrameLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, UITheme.dpToPx(this@SettingsActivity, 350))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         }
 
         var activeChatsList: List<TelegramChatInfo> = TelegramRepository.getCachedJoinedChatsInfo(this@SettingsActivity)
@@ -1412,6 +1422,8 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         alertDialog.show()
+        val (dw, dh) = UITheme.getDialogDimensions(this, maxLandscapeWidthDp = 720, heightFraction = 0.86f)
+        alertDialog.window?.setLayout(dw, dh)
 
         searchInput.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -1554,6 +1566,27 @@ class SettingsActivity : AppCompatActivity() {
                 holder.checkBox.isChecked = !holder.checkBox.isChecked
             }
         }
+    }
+
+    private fun applySettingsOrientationLayout(isLandscape: Boolean) {
+        val pad = UITheme.dpToPx(this, if (isLandscape) 10 else 16)
+        rootContainer.setPadding(pad, pad, pad, pad)
+        val targetWidth = if (isLandscape) {
+            minOf(resources.displayMetrics.widthPixels - pad * 2, UITheme.dpToPx(this, 760))
+        } else {
+            FrameLayout.LayoutParams.MATCH_PARENT
+        }
+        rootContainer.layoutParams = FrameLayout.LayoutParams(
+            targetWidth,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applySettingsOrientationLayout(newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

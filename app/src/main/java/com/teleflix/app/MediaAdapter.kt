@@ -68,13 +68,20 @@ class MediaAdapter(
 
         when (viewType) {
             VIEW_TYPE_HERO_BILLBOARD -> {
+                val isLandscape = UITheme.isLandscape(context)
+                val heroHeight = if (isLandscape) {
+                    minOf(dp(230), (context.resources.displayMetrics.heightPixels * 0.56f).toInt())
+                } else {
+                    dp(380)
+                }
+
                 // Featured Billboard (Top Hero Card)
                 val heroCard = FrameLayout(context).apply {
                     layoutParams = ViewGroup.MarginLayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(380)
+                        heroHeight
                     ).apply {
-                        setMargins(dp(4), dp(4), dp(4), dp(16))
+                        setMargins(dp(4), dp(4), dp(4), dp(if (isLandscape) 10 else 16))
                     }
                     background = UITheme.createCardShape(context, "#141414", 16, "#222736", 1)
                     isClickable = true
@@ -94,7 +101,7 @@ class MediaAdapter(
                     clipToOutline = true
                 }
 
-                // Deep Bottom Gradient
+                // Deep Bottom + Left Cinematic Gradient
                 val gradientOverlay = View(context).apply {
                     layoutParams = FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
@@ -111,6 +118,24 @@ class MediaAdapter(
                     ).apply {
                         cornerRadius = dp(16).toFloat()
                     }
+                }
+
+                val sideGradientOverlay = View(context).apply {
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                    background = android.graphics.drawable.GradientDrawable(
+                        android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                        intArrayOf(
+                            Color.parseColor("#D90B0B0F"),
+                            Color.parseColor("#880B0B0F"),
+                            Color.TRANSPARENT
+                        )
+                    ).apply {
+                        cornerRadius = dp(16).toFloat()
+                    }
+                    visibility = if (isLandscape) View.VISIBLE else View.GONE
                 }
 
                 // Top-Left "TOP 10" Badge
@@ -133,14 +158,19 @@ class MediaAdapter(
                 }
 
                 // Bottom Content Container (Title, Metadata, Overview, Action Buttons)
+                val contentWidth = if (isLandscape) {
+                    (context.resources.displayMetrics.widthPixels * 0.62f).toInt()
+                } else {
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                }
                 val contentContainer = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        contentWidth,
                         FrameLayout.LayoutParams.WRAP_CONTENT
                     ).apply {
-                        gravity = Gravity.BOTTOM
-                        setMargins(dp(16), 0, dp(16), dp(16))
+                        gravity = Gravity.BOTTOM or Gravity.START
+                        setMargins(dp(16), 0, dp(16), dp(if (isLandscape) 12 else 16))
                     }
                 }
 
@@ -235,6 +265,7 @@ class MediaAdapter(
 
                 heroCard.addView(posterView)
                 heroCard.addView(gradientOverlay)
+                heroCard.addView(sideGradientOverlay)
                 heroCard.addView(topBadge)
                 heroCard.addView(contentContainer)
 
@@ -252,17 +283,20 @@ class MediaAdapter(
             }
 
             VIEW_TYPE_CHANNEL -> {
+                val isLandscape = UITheme.isLandscape(context)
                 // Premium List Card for Telegram Monitored Channels
                 val row = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     background = UITheme.createRippleCardShape(context, UITheme.CARD, 16, UITheme.STROKE_COLOR)
-                    setPadding(dp(16), dp(16), dp(16), dp(16))
+                    val pV = dp(if (isLandscape) 11 else 16)
+                    val pH = dp(if (isLandscape) 14 else 16)
+                    setPadding(pH, pV, pH, pV)
                     layoutParams = ViewGroup.MarginLayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply {
-                        setMargins(dp(6), dp(6), dp(6), dp(8))
+                        setMargins(dp(if (isLandscape) 4 else 6), dp(4), dp(if (isLandscape) 4 else 6), dp(if (isLandscape) 4 else 8))
                     }
                 }
 
@@ -418,6 +452,7 @@ class MediaAdapter(
             }
 
             VIEW_TYPE_HORIZONTAL_ROW -> {
+                val isLandscape = UITheme.isLandscape(context)
                 // Horizontal Scrolling Row (Shelf / Swimlane)
                 val rowContainer = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
@@ -425,7 +460,7 @@ class MediaAdapter(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply {
-                        setMargins(0, dp(8), 0, dp(14))
+                        setMargins(0, dp(if (isLandscape) 4 else 8), 0, dp(if (isLandscape) 8 else 14))
                     }
                 }
 
@@ -436,7 +471,7 @@ class MediaAdapter(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply {
-                        setMargins(dp(14), 0, dp(14), dp(8))
+                        setMargins(dp(14), 0, dp(14), dp(if (isLandscape) 5 else 8))
                     }
                 }
 
@@ -813,9 +848,20 @@ class HorizontalMediaCardAdapter(
         val context = parent.context
         fun dp(v: Int): Int = UITheme.dpToPx(context, v)
 
-        val isLandscape = viewType == 1
-        val cardWidth = if (isLandscape) dp(190) else dp(116)
-        val cardHeight = if (isLandscape) dp(107) else dp(172)
+        val isLandscapeCard = viewType == 1
+        val isScreenLandscape = UITheme.isLandscape(context)
+        val cardWidth = when {
+            isLandscapeCard && isScreenLandscape -> dp(180)
+            isLandscapeCard -> dp(190)
+            isScreenLandscape -> dp(104)
+            else -> dp(116)
+        }
+        val cardHeight = when {
+            isLandscapeCard && isScreenLandscape -> dp(101)
+            isLandscapeCard -> dp(107)
+            isScreenLandscape -> dp(154)
+            else -> dp(172)
+        }
 
         val card = FrameLayout(context).apply {
             layoutParams = ViewGroup.MarginLayoutParams(cardWidth, cardHeight).apply {
@@ -974,7 +1020,7 @@ class HorizontalMediaCardAdapter(
         val dur = prefs.getLong("dur_${item.id}", 0L)
         if (pos > 0 && dur > 0 && holder.progressBar != null) {
             val percent = (pos.toFloat() / dur.toFloat()).coerceIn(0.05f, 1f)
-            val cardWidthPx = dp(116)
+            val cardWidthPx = holder.layout.layoutParams?.width?.takeIf { it > 0 } ?: dp(116)
             holder.progressBar.layoutParams = FrameLayout.LayoutParams(
                 (cardWidthPx * percent).toInt(),
                 dp(3)

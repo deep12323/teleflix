@@ -2,6 +2,7 @@ package com.teleflix.app
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -20,6 +21,8 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -38,12 +41,19 @@ import java.net.URLEncoder
 
 class SearchActivity : AppCompatActivity() {
 
+    private lateinit var root: LinearLayout
+    private lateinit var searchBarLayout: LinearLayout
+    private lateinit var filterScroll: HorizontalScrollView
     private lateinit var searchInput: EditText
     private lateinit var clearBtn: TextView
     private lateinit var loadingBar: ProgressBar
     private lateinit var statusText: TextView
     private lateinit var filterChipsLayout: LinearLayout
     private lateinit var searchRecyclerView: RecyclerView
+    private var lastInsetsLeft = 0
+    private var lastInsetsTop = 0
+    private var lastInsetsRight = 0
+    private var lastInsetsBottom = 0
 
     private var activeFilter = "all" // "all", "movies", "series", "channels"
     private var lastQuery: String = ""
@@ -75,16 +85,24 @@ class SearchActivity : AppCompatActivity() {
     private fun dp(v: Int): Int = UITheme.dpToPx(this, v)
 
     private fun buildLayout() {
-        val root = LinearLayout(this).apply {
+        root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#0B0B0F"))
             fitsSystemWindows = true
-            val pad = dp(12)
-            setPadding(pad, pad, pad, 0)
+        }
+
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            lastInsetsLeft = insets.left
+            lastInsetsTop = insets.top
+            lastInsetsRight = insets.right
+            lastInsetsBottom = insets.bottom
+            applySearchOrientationPadding(UITheme.isLandscape(this@SearchActivity))
+            WindowInsetsCompat.CONSUMED
         }
 
         // ── 1. Top Search Bar ──
-        val searchBarLayout = LinearLayout(this).apply {
+        searchBarLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, 0, 0, dp(10))
@@ -215,7 +233,7 @@ class SearchActivity : AppCompatActivity() {
         root.addView(searchBarLayout)
 
         // ── 2. Filter Chips Row ──
-        val filterScroll = HorizontalScrollView(this).apply {
+        filterScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             setPadding(0, 0, 0, dp(10))
         }
@@ -276,7 +294,7 @@ class SearchActivity : AppCompatActivity() {
             }
         )
 
-        val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val span = if (isLandscape) 12 else 6
 
         val gridLayout = GridLayoutManager(this, span).apply {
@@ -286,9 +304,12 @@ class SearchActivity : AppCompatActivity() {
                     val currentSpan = spanCount
                     val isLand = currentSpan > 6
                     return when (item?.type) {
-                        "horizontal_row", "channel", "hero_billboard" -> currentSpan
-                        "telegram_media", "history_group", "topic" -> if (isLand) 4 else 3
-                        else -> 2 // 3-column compact grid
+                        "horizontal_row", "hero_billboard" -> currentSpan
+                        "channel" -> if (isLand) 6 else currentSpan
+                        "telegram_media", "history_group", "topic" -> if (isLand) {
+                            if (UITheme.screenWidthDp(this@SearchActivity) >= 800) 3 else 4
+                        } else 3
+                        else -> 2 // 3-column compact grid in portrait, 6-column in landscape
                     }
                 }
             }
@@ -305,7 +326,30 @@ class SearchActivity : AppCompatActivity() {
         }
         root.addView(searchRecyclerView)
 
+        applySearchOrientationPadding(isLandscape)
         setContentView(root)
+    }
+
+    private fun applySearchOrientationPadding(isLandscape: Boolean) {
+        val padH = dp(12)
+        val padTop = dp(if (isLandscape) 6 else 12)
+        root.setPadding(
+            padH + lastInsetsLeft,
+            padTop + lastInsetsTop,
+            padH + lastInsetsRight,
+            lastInsetsBottom
+        )
+        searchBarLayout.setPadding(0, 0, 0, dp(if (isLandscape) 6 else 10))
+        filterScroll.setPadding(0, 0, 0, dp(if (isLandscape) 6 else 10))
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val isLandscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
+        (searchRecyclerView.layoutManager as? GridLayoutManager)?.spanCount = if (isLandscape) 12 else 6
+        searchRecyclerView.recycledViewPool.clear()
+        applySearchOrientationPadding(isLandscape)
+        searchAdapter?.notifyDataSetChanged()
     }
 
     private fun renderFilterChips() {
